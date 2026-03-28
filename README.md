@@ -4,6 +4,10 @@ An IPTV player for LG webOS TVs. Supports M3U playlists, XMLTV programme guides,
 
 ![icon](assets/icon.svg)
 
+## Preview
+
+![preview](preview.png)
+
 ## Features
 
 - **M3U Playlist Support** — Load multiple M3U/M3U8 playlists with auto-deduplication
