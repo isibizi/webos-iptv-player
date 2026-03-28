@@ -1,0 +1,35 @@
+[data-focusable] {
+  transition: border-color var(--transition), box-shadow var(--transition), background var(--transition);
+  outline: none;
+  cursor: pointer;
+}
+
+[data-focusable].focused {
+  border-color: var(--focus-ring) !important;
+  box-shadow: 0 0 0 3px var(--accent-glow), 0 0 20px var(--accent-glow);
+  z-index: 10;
+}
+
+.group-item.focused,
+.channel-item.focused {
+  background: var(--bg-tertiary) !important;
+  border-color: var(--focus-ring) !important;
+}
+
+.btn.focused {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: white;
+  transform: scale(1.02);
+}
+
+.settings-input.focused {
+  border-color: var(--accent) !important;
+  background: var(--bg-primary);
+}
+
+.epg-programme.focused {
+  background: var(--accent-dim) !important;
+  border-color: var(--accent) !important;
+  z-index: 10;
+}

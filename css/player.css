@@ -1,0 +1,420 @@
+#view-player {
+  z-index: 60;
+  background: transparent;
+  pointer-events: none;
+}
+
+#view-player * {
+  pointer-events: auto;
+}
+
+.player-osd {
+  position: absolute;
+  bottom: 20px;
+  left: 40px;
+  right: 40px;
+  background: rgba(30, 30, 50, 0.75);
+  border-radius: 12px;
+  padding: 16px 32px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(16px);
+  z-index: 60;
+}
+
+.osd-channel {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+
+.osd-channel-number {
+  font-size: 42px;
+  font-weight: 700;
+  color: var(--accent);
+  min-width: 60px;
+}
+
+.osd-channel-logo {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+.osd-channel-name {
+  font-size: 36px;
+  font-weight: 600;
+}
+
+.osd-programme {
+  margin-top: 4px;
+}
+
+.osd-now-label {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  margin-bottom: 2px;
+}
+
+.osd-programme-detail {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.osd-programme-icon {
+  width: 120px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.osd-programme-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.osd-programme-title {
+  font-size: 30px;
+  font-weight: 500;
+  margin-bottom: 2px;
+}
+
+.osd-programme-time {
+  font-size: 24px;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.osd-remaining {
+  color: var(--text-muted);
+  font-size: 22px;
+}
+
+.osd-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 0;
+}
+
+.osd-time-current,
+.osd-time-end {
+  font-size: 22px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.osd-time-current {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.osd-progress {
+  height: 6px;
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+  overflow: hidden;
+  flex: 1;
+}
+
+.osd-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-dim));
+  border-radius: 3px;
+  transition: width 1s linear;
+}
+
+.osd-description {
+  font-size: 24px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.osd-next {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 6px;
+  font-size: 24px;
+  color: var(--text-secondary);
+}
+
+.osd-next-label {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+}
+
+.osd-next-title {
+  flex: 1;
+}
+
+.osd-next-time {
+  color: var(--text-muted);
+  margin-left: 8px;
+}
+
+.osd-message {
+  font-size: 26px;
+  color: var(--warning);
+  text-align: center;
+  padding: 20px;
+}
+
+/* Player sidebar overlay (Magic Remote / left key) */
+.player-sidebar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 420px;
+  height: 1080px;
+  background: rgba(10, 10, 15, 0.92);
+  backdrop-filter: blur(12px);
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transform: translateX(-100%);
+  transition: transform 0.25s ease;
+  border-right: 1px solid var(--border);
+}
+
+.player-sidebar.visible {
+  transform: translateX(0);
+}
+
+.player-sidebar .sidebar-title {
+  padding: 20px 24px;
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--accent);
+  border-bottom: 1px solid var(--border);
+}
+
+.player-sidebar .sidebar-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 8px 0;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  overflow-x: auto;
+}
+
+.player-sidebar .sidebar-tab {
+  padding: 8px 14px;
+  font-size: 16px;
+  color: var(--text-secondary);
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: var(--transition);
+  white-space: nowrap;
+  flex-shrink: 0;
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+
+.player-sidebar .sidebar-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.player-sidebar .sidebar-tab:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.player-sidebar .sidebar-channel-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.player-sidebar .sidebar-ch-item {
+  display: flex;
+  align-items: center;
+  padding: 14px 20px;
+  border-radius: var(--radius);
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: var(--transition);
+  gap: 14px;
+  min-height: 72px;
+}
+
+.player-sidebar .sidebar-ch-item.playing {
+  background: rgba(0, 212, 255, 0.1);
+  border-color: var(--accent-dim);
+}
+
+.player-sidebar .sidebar-ch-item.focused {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: var(--text-primary);
+}
+
+.player-sidebar .sidebar-ch-item.playing.focused {
+  background: rgba(0, 212, 255, 0.2);
+  border-color: var(--accent);
+}
+
+.player-sidebar .sidebar-ch-item .ch-num {
+  font-size: 16px;
+  color: var(--text-muted);
+  min-width: 40px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.player-sidebar .sidebar-ch-item .ch-logo {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.player-sidebar .sidebar-ch-item .ch-logo-placeholder {
+  width: 40px;
+  height: 40px;
+  border-radius: 4px;
+  background: var(--bg-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.player-sidebar .sidebar-ch-item .ch-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.player-sidebar .sidebar-ch-item .ch-name {
+  font-size: 24px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player-sidebar .sidebar-ch-item .ch-now {
+  font-size: 20px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.player-sidebar .sidebar-ch-item .ch-now .ch-now-text {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.player-sidebar .sidebar-ch-item .ch-now .ch-now-text.scrolling {
+  animation: marquee-bounce 6s ease-in-out infinite;
+}
+
+@keyframes marquee-bounce {
+  0%, 15% { transform: translateX(0); }
+  45%, 55% { transform: translateX(var(--scroll-dist)); }
+  85%, 100% { transform: translateX(0); }
+}
+
+/* Player right menu (Magic Remote / right key) */
+.player-menu {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 340px;
+  height: 1080px;
+  background: rgba(10, 10, 15, 0.92);
+  backdrop-filter: blur(12px);
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  padding: 24px;
+  transform: translateX(100%);
+  transition: transform 0.25s ease;
+  border-left: 1px solid var(--border);
+}
+
+.player-menu.visible {
+  transform: translateX(0);
+}
+
+.player-menu .menu-header {
+  margin-bottom: 32px;
+}
+
+.player-menu .menu-header h2 {
+  font-size: 28px;
+  color: var(--accent);
+}
+
+.player-menu .menu-header .menu-subtitle {
+  font-size: 18px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.player-menu .menu-items {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.player-menu .menu-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  border-radius: var(--radius);
+  border: 2px solid transparent;
+  font-size: 22px;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.player-menu .menu-item.focused {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: var(--text-primary);
+}
+
+.player-menu .menu-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--text-muted);
+}
+
+.menu-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.menu-dot.red { background: #e74c3c; }
+.menu-dot.green { background: #2ecc71; }
+.menu-dot.yellow { background: #f1c40f; }
+.menu-dot.blue { background: #3498db; }

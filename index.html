@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1920, height=1080, initial-scale=1.0">
+  <title>webOS IPTV Player</title>
+  <link rel="stylesheet" href="css/main.css">
+  <link rel="stylesheet" href="css/navigation.css">
+  <link rel="stylesheet" href="css/channel-list.css">
+  <link rel="stylesheet" href="css/player.css">
+  <link rel="stylesheet" href="css/epg.css">
+  <link rel="stylesheet" href="css/settings.css">
+</head>
+<body>
+  <video id="video-player" autoplay></video>
+
+  <div id="view-loading" class="view">
+    <div class="loading-container">
+      <div class="loading-spinner"></div>
+      <div id="loading-text" class="loading-text">Loading...</div>
+    </div>
+  </div>
+
+  <div id="view-channels" class="view hidden"></div>
+
+  <div id="view-player" class="view hidden">
+    <div id="player-sidebar" class="player-sidebar hidden"></div>
+    <div id="player-menu" class="player-menu hidden"></div>
+    <div id="player-osd" class="player-osd hidden"></div>
+  </div>
+
+  <div id="view-epg" class="view hidden"></div>
+
+  <div id="view-settings" class="view hidden"></div>
+
+  <script>
+    // Load hls.js + mpegts.js only on desktop (not needed on webOS)
+    if (!/webOS|Web0S/i.test(navigator.userAgent)) {
+      document.write('<script src="js/preview-libs.js"><\/script>');
+    }
+  </script>
+  <script src="js/app.js"></script>
+</body>
+</html>

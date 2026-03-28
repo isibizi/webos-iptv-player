@@ -1,0 +1,260 @@
+.epg-view {
+  display: flex;
+  flex-direction: column;
+  height: 1080px;
+  background: var(--bg-primary);
+}
+
+.epg-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 24px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+}
+
+.epg-title {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.epg-title h2 {
+  font-size: 26px;
+}
+
+.epg-page-info {
+  font-size: 18px;
+  color: var(--text-muted);
+}
+
+.epg-day-bar {
+  display: flex;
+  gap: 4px;
+}
+
+.epg-day-btn {
+  padding: 6px 14px;
+  font-size: 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  transition: var(--transition);
+  white-space: nowrap;
+}
+
+.epg-day-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-card);
+}
+
+.epg-day-btn.active {
+  color: var(--bg-primary);
+  background: var(--accent);
+  font-weight: 600;
+}
+
+.epg-grid-container {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.epg-time-header {
+  display: flex;
+  align-items: center;
+  height: 48px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.epg-channel-col-header {
+  width: 200px;
+  flex-shrink: 0;
+}
+
+.epg-time-slot {
+  font-size: 20px;
+  color: var(--text-muted);
+  text-align: center;
+  border-left: 1px solid var(--border);
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.epg-body {
+  flex: 1;
+  overflow-y: auto;
+  position: relative;
+  scroll-behavior: smooth;
+}
+
+.epg-row {
+  display: flex;
+  height: 64px;
+  border-bottom: 1px solid rgba(42, 42, 62, 0.5);
+  transition: background 0.15s;
+}
+
+.epg-row.focused {
+  background: rgba(0, 212, 255, 0.06);
+}
+
+.epg-row.focused .epg-channel-col {
+  background: rgba(0, 212, 255, 0.12);
+}
+
+.epg-channel-col {
+  width: 200px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border);
+  overflow: hidden;
+  transition: background 0.15s;
+}
+
+.epg-ch-num {
+  font-size: 18px;
+  color: var(--text-muted);
+  min-width: 32px;
+}
+
+.epg-ch-name {
+  font-size: 20px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.epg-programmes {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  overflow: hidden;
+}
+
+.epg-programme {
+  position: absolute;
+  height: 52px;
+  top: 6px;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  background: var(--bg-card);
+  border: 2px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.epg-programme:hover {
+  border-color: var(--text-muted);
+}
+
+.epg-programme.focused {
+  background: rgba(0, 212, 255, 0.2);
+  border-color: var(--accent);
+}
+
+.epg-programme.current {
+  background: rgba(0, 212, 255, 0.12);
+  border-color: var(--accent-dim);
+}
+
+.epg-programme.current.focused {
+  background: rgba(0, 212, 255, 0.25);
+  border-color: var(--accent);
+}
+
+.epg-programme.empty {
+  background: var(--bg-tertiary);
+  border-color: transparent;
+}
+
+.epg-prog-title {
+  font-size: 18px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.epg-now-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--danger);
+  z-index: 20;
+  pointer-events: none;
+}
+
+.epg-now-line::before {
+  content: 'NOW';
+  position: absolute;
+  top: -22px;
+  left: -16px;
+  font-size: 12px;
+  color: var(--danger);
+  font-weight: 700;
+}
+
+/* Info panel — always visible */
+.epg-info-panel {
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+  padding: 12px 24px;
+  min-height: 90px;
+  flex-shrink: 0;
+}
+
+.epg-info-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.epg-info-icon {
+  width: 120px;
+  height: 76px;
+  object-fit: cover;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.epg-info-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.epg-info-title {
+  font-size: 24px;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.epg-info-time {
+  font-size: 18px;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+
+.epg-info-desc {
+  font-size: 18px;
+  color: var(--text-secondary);
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
