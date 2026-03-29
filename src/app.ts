@@ -78,11 +78,6 @@ class App {
         StorageService.setEpgUrl(epgUrl);
       }
 
-      if (epgUrl) {
-        if (loadingText) loadingText.textContent = 'Loading programme guide...';
-        await EpgService.load();
-      }
-
       hide(this.views.loading);
       this.showView('channels');
       this.channelList.render();
@@ -97,6 +92,7 @@ class App {
       }
 
       if (epgUrl) {
+        EpgService.load().catch(err => console.error('Failed to load EPG:', err));
         setInterval(() => EpgService.refresh(), CONFIG.EPG_REFRESH_INTERVAL);
       }
     } catch (err) {
