@@ -34,8 +34,11 @@
   <div id="view-settings" class="view hidden"></div>
 
   <script>
-    // Load hls.js + mpegts.js only on desktop (not needed on webOS)
-    if (!/webOS|Web0S/i.test(navigator.userAgent)) {
+    if (/webOS|Web0S/i.test(navigator.userAgent)) {
+      // Load webOS system library for Luna Service access
+      document.write('<script src="webOSjs/webOS.js"><\/script>');
+    } else {
+      // Load hls.js + mpegts.js only on desktop (not needed on webOS)
       document.write('<script src="js/preview-libs.js"><\/script>');
     }
   </script>

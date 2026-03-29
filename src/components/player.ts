@@ -22,6 +22,7 @@ export class Player {
   private catchupInfo: CatchupInfo | null = null;
   private osdVisible = false;
   private osdTimer: ReturnType<typeof setTimeout> | null = null;
+  private wasPlayingBeforeHide = false;
   constructor(container: HTMLElement, onBack: () => void) {
     this.container = container;
     this.onBack = onBack;
@@ -30,6 +31,60 @@ export class Player {
   init(videoEl: HTMLVideoElement): void {
     this.videoEl = videoEl;
     this.videoEl.addEventListener('error', () => this.onError());
+
+    // Suspend/resume playback when the app goes to background.
+    // webOS needs multiple event sources — blur/focus is what actually
+    // fires on Home press, but we also listen for visibility events.
+    const onHidden = () => this.suspend();
+    const onVisible = () => this.resume();
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) onHidden(); else onVisible();
+    });
+    document.addEventListener('webkitvisibilitychange', () => {
+      if ((document as unknown as Record<string, boolean>).webkitHidden) onHidden();
+      else onVisible();
+    });
+    window.addEventListener('blur', onHidden);
+    window.addEventListener('focus', onVisible);
+  }
+
+  suspend(): void {
+    if (!this.videoEl || !this.currentChannel) return;
+    if (this.wasPlayingBeforeHide) return; // already suspended
+    this.wasPlayingBeforeHide = !this.videoEl.paused;
+    if (this.wasPlayingBeforeHide) {
+      if (this.hls) {
+        this.hls.destroy();
+        this.hls = null;
+      }
+      if (this.mpegtsPlayer) {
+        this.mpegtsPlayer.destroy();
+        this.mpegtsPlayer = null;
+      }
+      // On webOS, the native media pipeline runs in a separate process.
+      // Removing src/innerHTML isn't enough — we must destroy the video
+      // element entirely and create a fresh one to kill the pipeline.
+      const old = this.videoEl;
+      old.pause();
+      old.removeAttribute('src');
+      old.innerHTML = '';
+      old.load();
+      const fresh = document.createElement('video');
+      fresh.id = old.id;
+      fresh.autoplay = true;
+      fresh.addEventListener('error', () => this.onError());
+      old.parentNode!.replaceChild(fresh, old);
+      this.videoEl = fresh;
+    }
+  }
+
+  resume(): void {
+    if (!this.videoEl || !this.currentChannel) return;
+    if (this.wasPlayingBeforeHide) {
+      this.wasPlayingBeforeHide = false;
+      this.play(this.currentIndex, this.catchupInfo || undefined);
+    }
   }
 
   play(channelIndex: number, catchup?: CatchupInfo): void {

@@ -44,6 +44,7 @@ class App {
     this.settings = new Settings(this.views.settings, (reload) => this.onSettingsSaved(reload));
 
     this.player.init($('#video-player') as HTMLVideoElement);
+    this.subscribeToForegroundState();
 
     KeyHandler.init();
     KeyHandler.setHandler((action, event) => this.handleKey(action, event));
@@ -616,6 +617,27 @@ class App {
         ? `Added "${ch.name}" to favorites`
         : `Removed "${ch.name}" from favorites`);
     }
+  }
+
+  private subscribeToForegroundState(): void {
+    // Use webOS Luna Service to detect when app goes to background/foreground.
+    // This is the only reliable way on webOS — visibilitychange/blur don't fire.
+    const webOS = (window as unknown as Record<string, unknown>).webOS as
+      { service?: { request(uri: string, params: Record<string, unknown>): void } } | undefined;
+    if (!webOS?.service?.request) return;
+
+    webOS.service.request('luna://com.webos.applicationManager', {
+      method: 'getForegroundAppInfo',
+      parameters: { subscribe: true },
+      onSuccess: (res: { appId?: string }) => {
+        if (res.appId && res.appId !== CONFIG.APP_ID) {
+          this.player.suspend();
+        } else if (res.appId === CONFIG.APP_ID) {
+          this.player.resume();
+        }
+      },
+      onFailure: () => { /* fallback to visibility/blur events in player */ },
+    });
   }
 
   private async onSettingsSaved(reload: boolean): Promise<void> {

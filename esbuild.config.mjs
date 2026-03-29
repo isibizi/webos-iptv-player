@@ -20,7 +20,10 @@ cpSync('assets/icon80.png', 'dist/icon.png');
 cpSync('assets/icon130.png', 'dist/largeIcon.png');
 
 // Main app bundle — excludes hls.js and mpegts.js (only needed on desktop)
-const define = { '__APP_VERSION__': JSON.stringify(version) };
+const define = {
+  '__APP_VERSION__': JSON.stringify(version),
+  '__APP_ID__': JSON.stringify(appinfo.id),
+};
 await esbuild.build({
   entryPoints: ['src/app.ts'],
   bundle: true,
