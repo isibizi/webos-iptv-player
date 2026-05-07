@@ -89,15 +89,15 @@ export const StorageService = {
     set('auto_play', val);
   },
 
-  getCachedPlaylist(): Channel[] | null {
-    const data = get<{ channels: Channel[]; timestamp: number } | null>('cached_playlist', null);
+  getCachedPlaylist(): { channels: Channel[]; epgUrls: string[] } | null {
+    const data = get<{ channels: Channel[]; epgUrls?: string[]; timestamp: number } | null>('cached_playlist', null);
     if (!data || Date.now() - data.timestamp > CONFIG.PLAYLIST_REFRESH_INTERVAL) return null;
     if (!data.channels || data.channels.length === 0) return null;
-    return data.channels;
+    return { channels: data.channels, epgUrls: data.epgUrls ?? [] };
   },
-  setCachedPlaylist(channels: Channel[]): void {
+  setCachedPlaylist(channels: Channel[], epgUrls: string[] = []): void {
     if (!channels.length) return;
-    set('cached_playlist', { channels, timestamp: Date.now() });
+    set('cached_playlist', { channels, epgUrls, timestamp: Date.now() });
   },
 
   getCachedEpg(): ParsedEpg | null {

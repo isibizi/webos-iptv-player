@@ -6,7 +6,11 @@ const log = createLogger('XMLTV');
 
 export function parseXMLTV(xmlString: string): ParsedEpg {
   // Strip DOCTYPE to avoid DOMParser issues with external DTD references
-  const cleaned = xmlString.replace(/<!DOCTYPE[^>]*>/i, '');
+  let cleaned = xmlString.replace(/<!DOCTYPE[^>]*>/i, '');
+  // Escape stray ampersands that aren't already part of an entity. Many
+  // real-world XMLTV feeds contain unescaped `&` (e.g. in titles), which
+  // would otherwise abort parsing in strict 'text/xml' mode.
+  cleaned = cleaned.replace(/&(?!(?:[a-zA-Z][a-zA-Z0-9]*|#\d+|#x[0-9a-fA-F]+);)/g, '&amp;');
   const parser = new DOMParser();
   const doc = parser.parseFromString(cleaned, 'text/xml');
 

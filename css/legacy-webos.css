@@ -1,0 +1,61 @@
+/*
+ * Legacy webOS compatibility — flex `gap` fallback.
+ *
+ * CSS `gap` for flexbox shipped in Chromium 84 (July 2020).
+ * webOS 5 (Chromium 68) and webOS 6 (Chromium 79) ignore it,
+ * leaving UI elements with no spacing. webOS 22 (Chromium 87)
+ * and newer support it natively.
+ *
+ * We use `@supports not (inset: 0)` (Chromium 87 introduced
+ * `inset`) as a proxy: false on webOS 22+ (gap works), true on
+ * webOS 5 & 6 (need fallback). On those older runtimes, `gap`
+ * is silently dropped and the margin rules below take effect;
+ * on newer runtimes, this whole block is skipped and `gap`
+ * does its thing — no double spacing.
+ */
+
+@supports not (inset: 0) {
+  /* settings.css */
+  .settings-row > * + * { margin-left: 16px; }
+  .settings-field > * + * { margin-top: 6px; }
+  .settings-actions > * + * { margin-left: 16px; }
+
+  /* channel-list.css */
+  .playlist-tabs > * + * { margin-left: 4px; }
+  .group-item > * + * { margin-left: 12px; }
+  .channel-list-scroll > * + * { margin-top: 4px; }
+  .channel-item > * + * { margin-left: 16px; }
+
+  /* player.css */
+  .osd-channel > * + * { margin-left: 16px; }
+  .osd-programme-detail > * + * { margin-left: 16px; }
+  .osd-programme-time > * + * { margin-left: 16px; }
+  .osd-progress-row > * + * { margin-left: 12px; }
+  .osd-next > * + * { margin-left: 12px; }
+  .player-sidebar .sidebar-tabs > * + * { margin-left: 4px; }
+  .player-sidebar .sidebar-channel-list > * + * { margin-top: 2px; }
+  .player-sidebar .sidebar-ch-item > * + * { margin-left: 14px; }
+  .player-sidebar .sidebar-ch-item .ch-info > * + * { margin-top: 2px; }
+  .player-menu .menu-items > * + * { margin-top: 6px; }
+  .player-menu .menu-item > * + * { margin-left: 14px; }
+
+  /* epg.css */
+  .epg-title > * + * { margin-left: 16px; }
+  .epg-day-bar > * + * { margin-left: 4px; }
+  .epg-channel-col > * + * { margin-left: 8px; }
+  .epg-info-content > * + * { margin-left: 16px; }
+
+  /* main.css */
+  .loading-container > * + * { margin-top: 24px; }
+
+  /* `backdrop-filter` is Chromium 76+. webOS 5 (68) ignores it,
+   * leaving the rgba background alone. The existing rgba alphas
+   * are already 0.75–0.92, so panels remain readable — but bump
+   * them to fully opaque on webOS 5 for safety. webOS 6 (79)
+   * supports backdrop-filter, so we don't need to cover it here. */
+  @supports not (backdrop-filter: blur(1px)) {
+    .player-sidebar { background: rgb(20, 20, 35); }
+    .player-menu,
+    .player-osd { background: rgb(10, 10, 15); }
+  }
+}
