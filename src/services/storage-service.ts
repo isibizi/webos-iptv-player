@@ -92,9 +92,11 @@ export const StorageService = {
   getCachedPlaylist(): Channel[] | null {
     const data = get<{ channels: Channel[]; timestamp: number } | null>('cached_playlist', null);
     if (!data || Date.now() - data.timestamp > CONFIG.PLAYLIST_REFRESH_INTERVAL) return null;
+    if (!data.channels || data.channels.length === 0) return null;
     return data.channels;
   },
   setCachedPlaylist(channels: Channel[]): void {
+    if (!channels.length) return;
     set('cached_playlist', { channels, timestamp: Date.now() });
   },
 
