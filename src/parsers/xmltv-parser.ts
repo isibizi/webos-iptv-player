@@ -1,5 +1,8 @@
 import type { ParsedEpg, Programme, EpgChannel } from '../types';
 import { parseXmltvDate } from '../utils/time';
+import { createLogger } from '../utils/logger';
+
+const log = createLogger('XMLTV');
 
 export function parseXMLTV(xmlString: string): ParsedEpg {
   // Strip DOCTYPE to avoid DOMParser issues with external DTD references
@@ -10,7 +13,7 @@ export function parseXMLTV(xmlString: string): ParsedEpg {
   // Check for parse errors
   const parseError = doc.querySelector('parsererror');
   if (parseError) {
-    console.error('[EPG] XML parse error:', parseError.textContent);
+    log.error('XML parse error:', parseError.textContent);
     return { channels: {}, programmes: {} };
   }
   const channels: Record<string, EpgChannel> = {};
@@ -28,7 +31,7 @@ export function parseXMLTV(xmlString: string): ParsedEpg {
   }
 
   const progElements = doc.querySelectorAll('programme');
-  console.log(`[EPG] Parsed ${Object.keys(channels).length} channels, ${progElements.length} programme elements`);
+  log.info(`Parsed ${Object.keys(channels).length} channels, ${progElements.length} programme elements`);
 
   const now = Date.now();
   const maxTime = now + 7 * 24 * 60 * 60 * 1000; // 7 days ahead
@@ -68,9 +71,9 @@ export function parseXMLTV(xmlString: string): ParsedEpg {
     });
   }
 
-  if (skippedDate) console.warn(`[EPG] Skipped ${skippedDate} programmes with unparseable dates`);
-  if (skippedRange) console.log(`[EPG] Skipped ${skippedRange} programmes outside time range`);
-  console.log(`[EPG] Loaded programmes for ${Object.keys(programmes).length} channels`);
+  if (skippedDate) log.warn(`Skipped ${skippedDate} programmes with unparseable dates`);
+  if (skippedRange) log.info(`Skipped ${skippedRange} programmes outside time range`);
+  log.info(`Loaded programmes for ${Object.keys(programmes).length} channels`);
 
   for (const id of Object.keys(programmes)) {
     programmes[id].sort((a, b) => a.start.getTime() - b.start.getTime());

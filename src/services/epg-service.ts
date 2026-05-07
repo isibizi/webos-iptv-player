@@ -1,7 +1,10 @@
 import type { Channel, EpgChannel, Programme } from '../types';
 import { parseXMLTV } from '../parsers/xmltv-parser';
 import { fetchText } from '../utils/fetch-helper';
+import { createLogger } from '../utils/logger';
 import { StorageService } from './storage-service';
+
+const log = createLogger('EPG');
 
 class EpgServiceImpl {
   channels: Record<string, EpgChannel> = {};
@@ -14,17 +17,28 @@ class EpgServiceImpl {
 
   async refresh(): Promise<void> {
     const url = StorageService.getEpgUrl();
-    if (!url) return;
+    if (!url) {
+      log.warn('No EPG URL — skipping refresh');
+      return;
+    }
 
+    const done = log.time('refresh');
+    log.info('Fetching EPG from', url);
     try {
       const text = await fetchText(url, 120000);
+      log.info('Fetched EPG:', text.length, 'bytes');
+      const parseDone = log.time('parse');
       const result = parseXMLTV(text);
+      parseDone();
       this.channels = result.channels;
       this.programmes = result.programmes;
       this.loaded = true;
+      log.info('Loaded', Object.keys(result.channels).length, 'channels,',
+        Object.keys(result.programmes).length, 'channels with programmes');
     } catch (err) {
-      console.error('Failed to load EPG:', err);
+      log.error('Failed to load EPG:', err);
     }
+    done();
   }
 
   getNowPlaying(channelId: string): Programme | null {

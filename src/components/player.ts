@@ -5,6 +5,9 @@ import { EpgService } from '../services/epg-service';
 import { StorageService } from '../services/storage-service';
 import { CONFIG } from '../config';
 import { formatTime, formatDuration, getProgress } from '../utils/time';
+import { createLogger } from '../utils/logger';
+
+const log = createLogger('Player');
 
 // hls.js and mpegts.js are loaded as globals via preview-libs.js (desktop only)
 const win = window as unknown as Record<string, unknown>;
@@ -31,22 +34,29 @@ export class Player {
   init(videoEl: HTMLVideoElement): void {
     this.videoEl = videoEl;
     this.videoEl.addEventListener('error', () => this.onError());
+    this.videoEl.addEventListener('loadedmetadata', () => {
+      log.info('loadedmetadata', this.videoEl?.videoWidth + 'x' + this.videoEl?.videoHeight,
+        '| duration:', this.videoEl?.duration);
+    });
+    this.videoEl.addEventListener('playing', () => log.info('playing'));
+    this.videoEl.addEventListener('waiting', () => log.debug('waiting (buffering)'));
+    this.videoEl.addEventListener('stalled', () => log.warn('stalled'));
 
     // Suspend/resume playback when the app goes to background.
     // webOS needs multiple event sources — blur/focus is what actually
     // fires on Home press, but we also listen for visibility events.
-    const onHidden = () => this.suspend();
-    const onVisible = () => this.resume();
+    const onHidden = (src: string) => { log.debug('suspend trigger:', src); this.suspend(); };
+    const onVisible = (src: string) => { log.debug('resume trigger:', src); this.resume(); };
 
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden) onHidden(); else onVisible();
+      if (document.hidden) onHidden('visibilitychange'); else onVisible('visibilitychange');
     });
     document.addEventListener('webkitvisibilitychange', () => {
-      if ((document as unknown as Record<string, boolean>).webkitHidden) onHidden();
-      else onVisible();
+      if ((document as unknown as Record<string, boolean>).webkitHidden) onHidden('webkitvisibilitychange');
+      else onVisible('webkitvisibilitychange');
     });
-    window.addEventListener('blur', onHidden);
-    window.addEventListener('focus', onVisible);
+    window.addEventListener('blur', () => onHidden('blur'));
+    window.addEventListener('focus', () => onVisible('focus'));
   }
 
   suspend(): void {
@@ -89,8 +99,12 @@ export class Player {
 
   play(channelIndex: number, catchup?: CatchupInfo): void {
     const channel = PlaylistService.getByIndex(channelIndex);
-    if (!channel || !this.videoEl) return;
+    if (!channel || !this.videoEl) {
+      log.warn('play() ignored — no channel or video element', { channelIndex, hasChannel: !!channel });
+      return;
+    }
 
+    log.info('play index', channelIndex, '|', channel.name, catchup ? '(catchup)' : '');
     this.currentChannel = channel;
     this.currentIndex = channelIndex;
     this.catchupInfo = catchup || null;
@@ -103,6 +117,7 @@ export class Player {
         .replace('{channel-id}', encodeURIComponent(channel.id || channel.name))
         .replace('{utc}', String(catchup.start))
         .replace('{utcend}', String(catchup.end));
+      log.debug('catchup URL:', url);
     }
 
     this.videoEl.classList.add('active');
@@ -147,6 +162,7 @@ export class Player {
     const isTs = url.endsWith('.ts') || url.includes('.ts?');
     const isFlv = url.endsWith('.flv') || url.includes('.flv?');
     const isWebOS = /webOS|Web0S/i.test(navigator.userAgent);
+    log.info('loadStream url=', url, '| webOS:', isWebOS, '| isHls:', isHls, '| isTs:', isTs, '| isFlv:', isFlv);
 
     // On webOS, prefer native playback — the TV has hardware HLS/TS decoders
     // that work better than MSE-based libraries
@@ -160,16 +176,20 @@ export class Player {
       source.type = isFlv ? 'video/x-flv'
         : isTs ? 'video/mp2t'
         : 'application/vnd.apple.mpegurl';
+      log.info('Using native playback with MIME', source.type);
       this.videoEl.appendChild(source);
       this.videoEl.load();
-      this.videoEl.play().catch(() => {});
+      this.videoEl.play().catch(e => log.warn('Native play() rejected:', e));
     } else if (isHls) {
+      log.info('Using hls.js');
       this.loadWithHls(url, extras);
     } else if (isTs || isFlv) {
+      log.info('Using mpegts.js');
       this.loadWithMpegts(url, isFlv);
     } else {
+      log.info('Using direct video src');
       this.videoEl.src = url;
-      this.videoEl.play().catch(() => {});
+      this.videoEl.play().catch(e => log.warn('Direct play() rejected:', e));
     }
   }
 
@@ -198,13 +218,17 @@ export class Player {
       this.hls.loadSource(url);
       this.hls.attachMedia(this.videoEl);
       this.hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        this.videoEl?.play().catch(() => {});
+        log.info('hls.js MANIFEST_PARSED — starting playback');
+        this.videoEl?.play().catch(e => log.warn('hls play() rejected:', e));
       });
       this.hls.on(Hls.Events.ERROR, (_event, data) => {
+        log.warn('hls.js error', { type: data.type, details: data.details, fatal: data.fatal });
         if (data.fatal) {
           if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+            log.info('hls.js fatal network error — restarting load');
             this.hls?.startLoad();
           } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+            log.info('hls.js fatal media error — recovering');
             this.hls?.recoverMediaError();
           } else {
             this.onError();
@@ -246,6 +270,9 @@ export class Player {
   }
 
   private onError(): void {
+    const v = this.videoEl;
+    log.error('video error', v?.error ? { code: v.error.code, message: v.error.message } : 'no error info',
+      '| channel:', this.currentChannel?.name, '| url:', this.currentChannel?.url);
     this.updateOSDMessage('Stream error - trying next channel...');
     setTimeout(() => this.channelUp(), 2000);
   }

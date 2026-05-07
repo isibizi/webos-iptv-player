@@ -1,7 +1,10 @@
 import type { Channel } from '../types';
 import { parseM3U } from '../parsers/m3u-parser';
 import { fetchText } from '../utils/fetch-helper';
+import { createLogger } from '../utils/logger';
 import { StorageService } from './storage-service';
+
+const log = createLogger('Playlist');
 
 class PlaylistServiceImpl {
   channels: Channel[] = [];
@@ -12,33 +15,49 @@ class PlaylistServiceImpl {
   async load(): Promise<Channel[]> {
     const cached = StorageService.getCachedPlaylist();
     if (cached) {
+      log.info('Cache hit:', cached.length, 'channels');
       this.channels = cached;
       this.buildGroups();
       this.buildPlaylistNames();
       return this.channels;
     }
+    log.info('Cache miss — refreshing from network');
     return this.refresh();
   }
 
   async refresh(): Promise<Channel[]> {
+    const done = log.time('refresh');
     const playlists = StorageService.getPlaylists();
-    if (!playlists.length) return [];
+    if (!playlists.length) {
+      log.warn('No playlists configured');
+      done();
+      return [];
+    }
 
     const allChannels: Channel[] = [];
     const seenUrls = new Set<string>();
     const epgUrls: string[] = [];
 
     for (const pl of playlists) {
+      const plDone = log.time(`fetch '${pl.name || pl.url}'`);
       try {
         const text = await fetchText(pl.url, 60000);
+        log.info('Fetched', pl.name || pl.url, '|', text.length, 'bytes');
         const parsed = parseM3U(text);
+        log.info('Parsed', parsed.channels.length, 'channels,', parsed.groups.length, 'groups',
+          parsed.epgUrl ? `| epg: ${parsed.epgUrl}` : '');
+        let added = 0, dupes = 0;
         for (const ch of parsed.channels) {
           if (!seenUrls.has(ch.url)) {
             seenUrls.add(ch.url);
             ch.playlist = pl.name || pl.url;
             allChannels.push(ch);
+            added++;
+          } else {
+            dupes++;
           }
         }
+        log.debug(`Added ${added} channels (${dupes} duplicates skipped)`);
         if (parsed.epgUrl) {
           // Resolve localhost/127.0.0.1 in embedded EPG URL to the playlist's host
           let epg = parsed.epgUrl;
@@ -48,13 +67,15 @@ class PlaylistServiceImpl {
               const plParsed = new URL(pl.url);
               epgParsed.hostname = plParsed.hostname;
               epg = epgParsed.toString();
+              log.info('Rewrote loopback EPG host to', epgParsed.hostname);
             }
-          } catch { /* keep original */ }
+          } catch (e) { log.warn('Could not parse EPG URL:', epg, e); }
           if (!epgUrls.includes(epg)) epgUrls.push(epg);
         }
       } catch (err) {
-        console.error(`Failed to load playlist ${pl.name}:`, err);
+        log.error(`Failed to load playlist '${pl.name || pl.url}':`, err);
       }
+      plDone();
     }
 
     this.channels = allChannels;
@@ -62,6 +83,8 @@ class PlaylistServiceImpl {
     this.buildGroups();
     this.buildPlaylistNames();
     StorageService.setCachedPlaylist(allChannels);
+    log.info('Refresh complete:', allChannels.length, 'total channels');
+    done();
     return allChannels;
   }
 

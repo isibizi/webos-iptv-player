@@ -9,7 +9,10 @@ import { EpgGrid } from './components/epg-grid';
 import { Settings } from './components/settings';
 import { showToast } from './components/toast';
 import { $, show, hide } from './utils/dom';
+import { createLogger, installGlobalErrorHandlers, logEnvironment } from './utils/logger';
 import type { Action, NumberEvent, CatchupInfo } from './types';
+
+const log = createLogger('App');
 
 type ViewName = 'channels' | 'player' | 'epg' | 'settings' | 'loading';
 
@@ -30,6 +33,8 @@ class App {
   private menuFocusIdx = 0;
 
   async init(): Promise<void> {
+    const done = log.time('init');
+    log.info('Initializing app');
     this.views = {
       channels: $('#view-channels')!,
       player: $('#view-player')!,
@@ -51,34 +56,44 @@ class App {
 
     this.initSidebarTrigger();
 
+    done();
     await this.loadData();
   }
 
   private async loadData(): Promise<void> {
+    const done = log.time('loadData');
     show(this.views.loading);
 
-    const playlists = StorageService.getPlaylists();
-    if (!playlists.length) {
-      hide(this.views.loading);
-      this.showView('settings');
-      this.settings.render();
-      showToast('Welcome! Add a playlist URL to get started.');
-      return;
-    }
-
     try {
+      const playlists = StorageService.getPlaylists();
+      log.info('Configured playlists:', playlists.length);
+      if (!playlists.length) {
+        log.info('No playlists configured — opening settings');
+        this.showView('settings');
+        this.settings.render();
+        showToast('Welcome! Add a playlist URL to get started.');
+        return;
+      }
+
       const loadingText = $('#loading-text');
       if (loadingText) loadingText.textContent = 'Loading channels...';
       await PlaylistService.load();
+      log.info('Channels loaded:', PlaylistService.channels.length,
+        '| groups:', PlaylistService.groups.length,
+        '| epgUrls:', PlaylistService.epgUrls);
 
       // Use manually configured EPG URL, or fall back to embedded url-tvg from M3U
       let epgUrl = StorageService.getEpgUrl();
       if (!epgUrl && PlaylistService.epgUrls.length) {
         epgUrl = PlaylistService.epgUrls[0];
         StorageService.setEpgUrl(epgUrl);
+        log.info('Using embedded EPG URL from M3U:', epgUrl);
+      } else if (epgUrl) {
+        log.info('Using configured EPG URL:', epgUrl);
+      } else {
+        log.warn('No EPG URL configured');
       }
 
-      hide(this.views.loading);
       this.showView('channels');
       this.channelList.render();
 
@@ -87,20 +102,23 @@ class App {
       if (StorageService.getAutoPlay()) {
         const lastCh = StorageService.getLastChannel();
         if (lastCh >= 0 && lastCh < PlaylistService.channels.length) {
+          log.info('Auto-play resuming last channel index', lastCh);
           this.playChannel(lastCh);
         }
       }
 
       if (epgUrl) {
-        EpgService.load().catch(err => console.error('Failed to load EPG:', err));
+        EpgService.load().catch(err => log.error('EPG load failed:', err));
         setInterval(() => EpgService.refresh(), CONFIG.EPG_REFRESH_INTERVAL);
       }
     } catch (err) {
-      console.error('Failed to load data:', err);
-      hide(this.views.loading);
+      log.error('loadData failed:', err);
       this.showView('settings');
       this.settings.render();
       showToast('Failed to load playlist. Check your URL.');
+    } finally {
+      hide(this.views.loading);
+      done();
     }
   }
 
@@ -620,19 +638,26 @@ class App {
     // This is the only reliable way on webOS — visibilitychange/blur don't fire.
     const webOS = (window as unknown as Record<string, unknown>).webOS as
       { service?: { request(uri: string, params: Record<string, unknown>): void } } | undefined;
-    if (!webOS?.service?.request) return;
+    if (!webOS?.service?.request) {
+      log.warn('webOS.service.request unavailable — background-suspend Luna subscription skipped');
+      return;
+    }
 
+    log.info('Subscribing to getForegroundAppInfo');
     webOS.service.request('luna://com.webos.applicationManager', {
       method: 'getForegroundAppInfo',
       parameters: { subscribe: true },
       onSuccess: (res: { appId?: string }) => {
+        log.debug('Foreground app:', res.appId);
         if (res.appId && res.appId !== CONFIG.APP_ID) {
           this.player.suspend();
         } else if (res.appId === CONFIG.APP_ID) {
           this.player.resume();
         }
       },
-      onFailure: () => { /* fallback to visibility/blur events in player */ },
+      onFailure: (err: unknown) => {
+        log.warn('getForegroundAppInfo failed; falling back to visibility/blur events:', err);
+      },
     });
   }
 
@@ -650,6 +675,8 @@ class App {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  installGlobalErrorHandlers();
+  logEnvironment(CONFIG.VERSION);
   const app = new App();
-  app.init().catch(err => console.error('App init failed:', err));
+  app.init().catch(err => log.error('App init failed:', err));
 });
