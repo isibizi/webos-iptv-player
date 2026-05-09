@@ -15,8 +15,9 @@ class PlaylistServiceImpl {
   async load(): Promise<Channel[]> {
     const cached = StorageService.getCachedPlaylist();
     if (cached) {
-      log.info('Cache hit:', cached.length, 'channels');
-      this.channels = cached;
+      this.channels = cached.channels;
+      this.epgUrls = cached.epgUrls ?? [];
+      log.info('Cache hit:', this.channels.length, 'channels,', this.epgUrls.length, 'epg urls');
       this.buildGroups();
       this.buildPlaylistNames();
       return this.channels;
@@ -82,8 +83,8 @@ class PlaylistServiceImpl {
     this.epgUrls = epgUrls;
     this.buildGroups();
     this.buildPlaylistNames();
-    StorageService.setCachedPlaylist(allChannels);
-    log.info('Refresh complete:', allChannels.length, 'total channels');
+    StorageService.setCachedPlaylist(allChannels, epgUrls);
+    log.info('Refresh complete:', allChannels.length, 'total channels,', epgUrls.length, 'epg urls');
     done();
     return allChannels;
   }

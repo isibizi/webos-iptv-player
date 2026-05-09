@@ -16,6 +16,7 @@ if (appinfo.version !== version) {
 cpSync('index.html', 'dist/index.html');
 cpSync('appinfo.json', 'dist/appinfo.json');
 cpSync('css', 'dist/css', { recursive: true });
+cpSync('webOSjs', 'dist/webOSjs', { recursive: true });
 cpSync('assets/icon80.png', 'dist/icon.png');
 cpSync('assets/icon130.png', 'dist/largeIcon.png');
 
@@ -24,12 +25,17 @@ const define = {
   '__APP_VERSION__': JSON.stringify(version),
   '__APP_ID__': JSON.stringify(appinfo.id),
 };
+// Target Chromium 68 — the engine on webOS 5. This down-levels ES2020+
+// syntax (`?.`, `??`, etc.) which would otherwise fail to parse on
+// webOS 5/6 and leave the app stuck on the loading screen.
+const TARGET = ['chrome68'];
+
 await esbuild.build({
   entryPoints: ['src/app.ts'],
   bundle: true,
   outfile: 'dist/js/app.js',
   format: 'iife',
-  target: 'es2020',
+  target: TARGET,
   minify: !isWatch,
   sourcemap: isWatch,
   external: ['hls.js', 'mpegts.js'],
@@ -42,7 +48,7 @@ await esbuild.build({
   bundle: true,
   outfile: 'dist/js/preview-libs.js',
   format: 'iife',
-  target: 'es2020',
+  target: TARGET,
   minify: true,
 });
 
@@ -52,7 +58,7 @@ if (isWatch) {
     bundle: true,
     outfile: 'dist/js/app.js',
     format: 'iife',
-    target: 'es2020',
+    target: TARGET,
     minify: false,
     sourcemap: true,
     external: ['hls.js', 'mpegts.js'],
