@@ -625,12 +625,12 @@ class App {
     const idx = this.player.getCurrentIndex();
     if (idx < 0) return;
     const ch = PlaylistService.getByIndex(idx);
-    if (ch) {
-      StorageService.toggleFavorite(ch.id || ch.name);
-      showToast(StorageService.getFavorites().includes(ch.id || ch.name)
-        ? `Added "${ch.name}" to favorites`
-        : `Removed "${ch.name}" from favorites`);
-    }
+    if (!ch) return;
+    StorageService.toggleFavorite(ch.id || ch.name);
+    showToast(StorageService.getFavorites().includes(ch.id || ch.name)
+      ? `Added "${ch.name}" to favorites`
+      : `Removed "${ch.name}" from favorites`);
+    this.channelList.render();
   }
 
   private subscribeToForegroundState(): void {
