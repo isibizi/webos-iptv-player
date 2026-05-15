@@ -2,7 +2,9 @@ import type { Channel, EpgChannel, Programme } from '../types';
 import { parseXMLTV } from '../parsers/xmltv-parser';
 import { fetchText } from '../utils/fetch-helper';
 import { createLogger } from '../utils/logger';
+import { CONFIG } from '../config';
 import { StorageService } from './storage-service';
+import { getCachedEpg, setCachedEpg } from './idb-cache';
 
 const log = createLogger('EPG');
 
@@ -10,8 +12,36 @@ class EpgServiceImpl {
   channels: Record<string, EpgChannel> = {};
   programmes: Record<string, Programme[]> = {};
   loaded = false;
+  private lastFetchTime = 0;
 
   async load(): Promise<void> {
+    const url = StorageService.getEpgUrl();
+    if (!url) {
+      log.warn('No EPG URL — skipping load');
+      return;
+    }
+
+    try {
+      const cached = await getCachedEpg(url);
+      if (cached) {
+        const age = Date.now() - cached.timestamp;
+        if (age < CONFIG.EPG_REFRESH_INTERVAL) {
+          this.channels = cached.data.channels;
+          this.programmes = cached.data.programmes;
+          this.loaded = true;
+          this.lastFetchTime = cached.timestamp;
+          log.info('Loaded from IDB cache:',
+            Object.keys(cached.data.channels).length, 'channels,',
+            Object.keys(cached.data.programmes).length, 'with programmes, age',
+            Math.round(age / 60000), 'min');
+          return;
+        }
+        log.info('Cache stale (age', Math.round(age / 60000), 'min) — refreshing');
+      }
+    } catch (err) {
+      log.warn('Cache read failed:', err);
+    }
+
     return this.refresh();
   }
 
@@ -19,6 +49,11 @@ class EpgServiceImpl {
     const url = StorageService.getEpgUrl();
     if (!url) {
       log.warn('No EPG URL — skipping refresh');
+      return;
+    }
+
+    if (this.loaded && Date.now() - this.lastFetchTime < CONFIG.EPG_REFRESH_INTERVAL) {
+      log.info('Skipping refresh — data is fresh');
       return;
     }
 
@@ -33,8 +68,11 @@ class EpgServiceImpl {
       this.channels = result.channels;
       this.programmes = result.programmes;
       this.loaded = true;
+      this.lastFetchTime = Date.now();
       log.info('Loaded', Object.keys(result.channels).length, 'channels,',
         Object.keys(result.programmes).length, 'channels with programmes');
+
+      setCachedEpg(url, result).catch(err => log.warn('Cache write failed:', err));
     } catch (err) {
       log.error('Failed to load EPG:', err);
     }

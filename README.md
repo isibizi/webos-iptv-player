@@ -11,7 +11,7 @@ An IPTV player for LG webOS TVs. Supports M3U playlists, XMLTV programme guides,
 ## Features
 
 - **M3U Playlist Support** — Load multiple M3U/M3U8 playlists with auto-deduplication
-- **Electronic Programme Guide (EPG)** — Full-screen grid with 7-day navigation, programme details, and day selector
+- **Electronic Programme Guide (EPG)** — Three-pane layout (channels / date bar / programmes), date range auto-derived from EPG data, with IndexedDB caching for instant reopen
 - **Catch-up / Timeshift** — Play past programmes using `catchup-source` URL templates from M3U
 - **Channel Sidebar** — Quick channel switching overlay with current programme info and auto-scrolling text
 - **Magic Remote Support** — Pointer-driven navigation for sidebar, menu, and channel selection
@@ -58,14 +58,14 @@ Opens at http://localhost:3000. Video playback uses HLS.js/mpegts.js on desktop 
 
 | Key | Player | Channel List | EPG |
 |-----|--------|-------------|-----|
-| Up/Down | Channel +/- | Navigate | Navigate |
-| Left | Open sidebar | — | Previous day |
-| Right | Open menu | — | Next day |
-| OK/Enter | Toggle OSD | Select channel | Play programme |
+| Up/Down | Channel +/- | Navigate | Navigate within pane |
+| Left | Open sidebar | — | Back to channels / previous day |
+| Right | Open menu | — | To programmes / next day |
+| OK/Enter | Toggle OSD | Select channel | Play channel / programme |
 | Back | Stop & return | Exit app | Close guide |
 | Red | Open EPG | Open EPG | — |
 | Blue | Open settings | Open settings | Close guide |
 | Yellow | Show OSD | — | — |
-| Green | Toggle favorite | — | — |
+| Green | Toggle favorite | — | Jump to today |
 | Ch +/- | Channel +/- | Page up/down | Jump 10 channels |
 | 0-9 | Direct channel entry | Direct channel entry | — |

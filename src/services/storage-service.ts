@@ -1,5 +1,5 @@
 import { CONFIG } from '../config';
-import type { Channel, PlaylistEntry, ParsedEpg } from '../types';
+import type { Channel, PlaylistEntry } from '../types';
 
 const PREFIX = CONFIG.STORAGE_PREFIX;
 
@@ -33,7 +33,6 @@ function remove(key: string): void {
 }
 
 function evictCache(): void {
-  remove('cached_epg');
   remove('cached_playlist');
 }
 
@@ -100,11 +99,4 @@ export const StorageService = {
     set('cached_playlist', { channels, epgUrls, timestamp: Date.now() });
   },
 
-  getCachedEpg(): ParsedEpg | null {
-    // EPG is no longer cached in localStorage (too large, evicts playlist cache)
-    return null;
-  },
-  setCachedEpg(_epg: ParsedEpg): void {
-    // no-op: EPG is fetched fresh each time
-  },
 };

@@ -75,7 +75,7 @@ export const KeyHandler = {
     // First scroll after pointer was hidden just reactivates the cursor
     document.addEventListener('wheel', (e: WheelEvent) => {
       const target = e.target as HTMLElement;
-      if (target.closest('.player-sidebar')) return;
+      if (target.closest('.player-sidebar, .epg-channels-pane, .epg-programmes-pane')) return;
       e.preventDefault();
 
       // Reset idle timer — if no scroll for 5s, next scroll is swallowed

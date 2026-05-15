@@ -8,7 +8,9 @@ export function parseXmltvDate(str: string | null): Date | null {
 }
 
 export function formatTime(date: Date): string {
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+  const h = String(date.getHours()).padStart(2, '0');
+  const m = String(date.getMinutes()).padStart(2, '0');
+  return `${h}:${m}`;
 }
 
 export function formatDate(date: Date): string {
