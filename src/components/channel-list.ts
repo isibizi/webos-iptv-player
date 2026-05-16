@@ -90,9 +90,17 @@ export class ChannelList {
     `;
 
     this.nav = new SpatialNav(this.container);
-    const firstChannel = this.container.querySelector<HTMLElement>('.channel-main [data-focusable]');
-    if (firstChannel) this.nav.focus(firstChannel);
-    else this.nav.focusFirst();
+    const playingChannel = this.playingIndex >= 0
+      ? this.container.querySelector<HTMLElement>(`.channel-main [data-channel-index="${this.playingIndex}"]`)
+      : null;
+    const target = playingChannel
+      ?? this.container.querySelector<HTMLElement>('.channel-main [data-focusable]');
+    if (target) {
+      this.nav.focus(target);
+      if (playingChannel) playingChannel.scrollIntoView({ block: 'center' });
+    } else {
+      this.nav.focusFirst();
+    }
   }
 
   handleAction(action: Action, event?: NumberEvent): void {

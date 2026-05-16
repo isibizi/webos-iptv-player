@@ -44,7 +44,11 @@ class App {
     };
 
     this.channelList = new ChannelList(this.views.channels, (idx) => this.playChannel(idx));
-    this.player = new Player(this.views.player, () => this.showView('channels'));
+    this.player = new Player(this.views.player, () => {
+      this.channelList.setPlayingIndex(this.player.getCurrentIndex());
+      this.channelList.render();
+      this.showView('channels');
+    });
     this.epgGrid = new EpgGrid(this.views.epg, (idx, catchup) => this.playChannel(idx, catchup));
     this.settings = new Settings(this.views.settings, (reload) => this.onSettingsSaved(reload));
 
