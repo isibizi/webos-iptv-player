@@ -30,6 +30,15 @@ let numberTimer: ReturnType<typeof setTimeout> | null = null;
 let wheelWarmedUp = true;
 let wheelIdleTimer: ReturnType<typeof setTimeout> | null = null;
 
+function hasScrollableAncestor(el: HTMLElement | null): boolean {
+  for (let node: HTMLElement | null = el; node && node !== document.body; node = node.parentElement) {
+    if (node.scrollHeight <= node.clientHeight) continue;
+    const overflow = getComputedStyle(node).overflowY;
+    if (overflow === 'auto' || overflow === 'scroll') return true;
+  }
+  return false;
+}
+
 function handleNumber(digit: number): void {
   numberBuffer += digit;
   if (numberTimer) clearTimeout(numberTimer);
@@ -71,11 +80,11 @@ export const KeyHandler = {
     });
 
     // Magic Remote scroll wheel / desktop mouse wheel
-    // Let scrollable containers (like the player sidebar) scroll natively
-    // First scroll after pointer was hidden just reactivates the cursor
+    // Let any scrollable ancestor scroll natively — otherwise mouseover-driven
+    // focus would snap back to the cursor as content scrolls underneath it.
+    // First scroll after pointer was hidden just reactivates the cursor.
     document.addEventListener('wheel', (e: WheelEvent) => {
-      const target = e.target as HTMLElement;
-      if (target.closest('.player-sidebar, .epg-channels-pane, .epg-programmes-pane')) return;
+      if (hasScrollableAncestor(e.target as HTMLElement)) return;
       e.preventDefault();
 
       // Reset idle timer — if no scroll for 5s, next scroll is swallowed
