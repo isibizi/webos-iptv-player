@@ -43,7 +43,14 @@ class App {
       loading: $('#view-loading')!,
     };
 
-    this.channelList = new ChannelList(this.views.channels, (idx) => this.playChannel(idx));
+    this.channelList = new ChannelList(
+      this.views.channels,
+      (idx) => this.playChannel(idx),
+      () => {
+        this.settings.render();
+        this.showView('settings');
+      },
+    );
     this.player = new Player(this.views.player, () => {
       this.channelList.setPlayingIndex(this.player.getCurrentIndex());
       this.channelList.render();

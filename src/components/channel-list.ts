@@ -7,14 +7,20 @@ import { StorageService } from '../services/storage-service';
 export class ChannelList {
   private container: HTMLElement;
   private onChannelSelect: (index: number) => void;
+  private onOpenSettings: () => void;
   private nav: SpatialNav;
   private currentGroup = 'All';
   private currentPlaylist = '';  // '' = All playlists
   private playingIndex = -1;
 
-  constructor(container: HTMLElement, onChannelSelect: (index: number) => void) {
+  constructor(
+    container: HTMLElement,
+    onChannelSelect: (index: number) => void,
+    onOpenSettings: () => void,
+  ) {
     this.container = container;
     this.onChannelSelect = onChannelSelect;
+    this.onOpenSettings = onOpenSettings;
     this.nav = new SpatialNav(container);
   }
 
@@ -32,8 +38,12 @@ export class ChannelList {
       <div class="channel-view">
         <div class="sidebar" data-nav-container>
           <div class="sidebar-header">
-            <h2>webOS IPTV Player</h2>
-            <div class="channel-count">${totalChannels} channels</div>
+            <div class="sidebar-title">
+              <h2>webOS IPTV Player</h2>
+              <div class="channel-count">${totalChannels} channels</div>
+            </div>
+            <div class="settings-btn" data-focusable data-action="settings"
+                 title="Settings">&#9881;</div>
           </div>
           ${showTabs ? `
             <div class="playlist-tabs">
@@ -90,16 +100,21 @@ export class ChannelList {
     `;
 
     this.nav = new SpatialNav(this.container);
+    const settingsBtn = this.container.querySelector<HTMLElement>('.settings-btn');
+    if (settingsBtn) {
+      settingsBtn.addEventListener('click', () => this.onOpenSettings());
+    }
     const playingChannel = this.playingIndex >= 0
       ? this.container.querySelector<HTMLElement>(`.channel-main [data-channel-index="${this.playingIndex}"]`)
       : null;
+    // Initial focus should land on content, never on the settings gear.
     const target = playingChannel
-      ?? this.container.querySelector<HTMLElement>('.channel-main [data-focusable]');
+      ?? this.container.querySelector<HTMLElement>('.channel-main [data-focusable]')
+      ?? this.container.querySelector<HTMLElement>('.group-list [data-focusable]')
+      ?? this.container.querySelector<HTMLElement>('[data-focusable]:not(.settings-btn)');
     if (target) {
       this.nav.focus(target);
       if (playingChannel) playingChannel.scrollIntoView({ block: 'center' });
-    } else {
-      this.nav.focusFirst();
     }
   }
 
@@ -124,7 +139,9 @@ export class ChannelList {
         const focused = this.nav.focused;
         if (!focused) break;
 
-        if (focused.dataset.playlist !== undefined) {
+        if (focused.dataset.action === 'settings') {
+          this.onOpenSettings();
+        } else if (focused.dataset.playlist !== undefined) {
           this.currentPlaylist = focused.dataset.playlist;
           this.currentGroup = 'All';
           this.render();

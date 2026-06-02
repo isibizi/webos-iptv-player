@@ -14,6 +14,15 @@ export class Settings {
     this.container = container;
     this.onSave = onSave;
     this.nav = new SpatialNav(container);
+
+    // Mouse/pointer support: clicking a focusable element behaves like remote OK.
+    // Attached once on the persistent container (render() replaces innerHTML).
+    this.container.addEventListener('click', (e: MouseEvent) => {
+      const el = (e.target as HTMLElement).closest<HTMLElement>('[data-focusable]');
+      if (!el) return;
+      this.nav.focus(el);
+      this.activate(el);
+    });
   }
 
   render(): void {
@@ -120,29 +129,32 @@ export class Settings {
       case 'select': {
         const focused = this.nav.focused;
         if (!focused) break;
-
-        if (focused.id === 'add-playlist') {
-          this.addPlaylistEntry();
-        } else if (focused.classList.contains('remove-playlist')) {
-          this.removePlaylistEntry(parseInt(focused.dataset.index!, 10));
-        } else if (focused.id === 'auto-play-toggle') {
-          focused.classList.toggle('active');
-          focused.textContent = focused.classList.contains('active') ? 'ON' : 'OFF';
-        } else if (focused.id === 'save-settings') {
-          this.save();
-        } else if (focused.id === 'cancel-settings') {
-          this.onSave(false);
-        } else if (focused.id === 'refresh-data') {
-          this.onSave(true);
-        } else if (focused.id === 'clear-cache') {
-          StorageService.remove('cached_playlist');
-          StorageService.remove('cached_epg');
-          showToast('Cache cleared');
-        } else if (focused.tagName === 'INPUT') {
-          (focused as HTMLInputElement).focus();
-        }
+        this.activate(focused);
         break;
       }
+    }
+  }
+
+  private activate(el: HTMLElement): void {
+    if (el.id === 'add-playlist') {
+      this.addPlaylistEntry();
+    } else if (el.classList.contains('remove-playlist')) {
+      this.removePlaylistEntry(parseInt(el.dataset.index!, 10));
+    } else if (el.id === 'auto-play-toggle') {
+      el.classList.toggle('active');
+      el.textContent = el.classList.contains('active') ? 'ON' : 'OFF';
+    } else if (el.id === 'save-settings') {
+      this.save();
+    } else if (el.id === 'cancel-settings') {
+      this.onSave(false);
+    } else if (el.id === 'refresh-data') {
+      this.onSave(true);
+    } else if (el.id === 'clear-cache') {
+      StorageService.remove('cached_playlist');
+      StorageService.remove('cached_epg');
+      showToast('Cache cleared');
+    } else if (el.tagName === 'INPUT') {
+      (el as HTMLInputElement).focus();
     }
   }
 
