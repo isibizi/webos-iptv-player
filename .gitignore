@@ -1,3 +1,7 @@
 node_modules/
 dist/
 *.ipk
+.DS_Store
+
+# Test artifacts
+test-output/

@@ -32,7 +32,7 @@ node esbuild.config.mjs
 
 # Package IPK (--no-minify since esbuild already minifies)
 info "Packaging IPK..."
-ares-package --no-minify -e "js/preview-libs.js" dist -o .
+ares-package --no-minify -e "*preview-libs.js" dist -o .
 
 IPK=$(ls -t *.ipk 2>/dev/null | head -1)
 info "Built: $IPK ($(du -h "$IPK" | cut -f1))"

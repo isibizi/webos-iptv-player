@@ -2,20 +2,26 @@
   "name": "webos-iptv-player",
   "version": "1.0.0",
   "private": true,
+  "license": "Apache-2.0",
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit && node esbuild.config.mjs",
     "watch": "node esbuild.config.mjs --watch",
     "package": "bash build.sh",
     "clean": "rm -rf dist *.ipk",
-    "preview": "npm run build && node serve.mjs"
+    "preview": "npm run build && node serve.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:all": "vitest run && playwright test"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "esbuild": "^0.27.4",
-    "typescript": "^5.7.0"
-  },
-  "dependencies": {
     "hls.js": "^1.6.15",
-    "mpegts.js": "^1.8.0"
+    "jsdom": "^29.1.1",
+    "mpegts.js": "^1.8.0",
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.8"
   }
 }
