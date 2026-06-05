@@ -151,3 +151,34 @@ test('saving a playlist in settings reloads and shows its channels', async ({ pa
   await expect(page.getByText('Channel One')).toBeVisible();
   await expect(page.getByText('Channel Two')).toBeVisible();
 });
+
+test('removing the last playlist clears in-memory channels so back returns an empty list', async ({ page }) => {
+  await routePlaylist(page);
+  await seedPlaylist(page);
+  await page.goto('/');
+
+  // Channels render from the configured playlist.
+  await expect(page.locator('#view-channels')).toBeVisible();
+  await expect(page.locator('.channel-main .channel-item')).toHaveCount(2);
+
+  // Open settings, remove the only playlist, and save.
+  await page.locator('.settings-btn').click();
+  await expect(page.locator('#view-settings')).toBeVisible();
+  await page.locator('.remove-playlist').first().click();
+  await expect(page.locator('#playlist-entries .settings-row')).toHaveCount(0);
+  // Save via the keyboard path so the deferred-select skip-list does not
+  // matter here (this test is about stale in-memory state, not click wiring).
+  await page.locator('#save-settings').dispatchEvent('nav:hover');
+  await page.keyboard.press('Enter');
+
+  // loadData re-opens settings because there are no playlists now.
+  await expect(page.locator('.toast')).toContainText('playlist');
+  await expect(page.locator('#view-settings')).toBeVisible();
+
+  // Press Back to return to the channel list — it must NOT show the previous
+  // playlist's channels (the bug: PlaylistService kept stale in-memory state).
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#view-channels')).toBeVisible();
+  await expect(page.locator('.channel-main .channel-item')).toHaveCount(0);
+  await expect(page.locator('.empty-state')).toContainText('No channels found');
+});

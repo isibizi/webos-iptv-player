@@ -14,6 +14,17 @@ class EpgServiceImpl {
   loaded = false;
   private lastFetchTime = 0;
 
+  /**
+   * Clear all in-memory state. Called when the user removes every configured
+   * playlist so stale programme data does not survive a reload.
+   */
+  reset(): void {
+    this.channels = {};
+    this.programmes = {};
+    this.loaded = false;
+    this.lastFetchTime = 0;
+  }
+
   async load(): Promise<void> {
     const url = StorageService.getEpgUrl();
     if (!url) {

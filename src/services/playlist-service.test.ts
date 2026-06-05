@@ -166,3 +166,24 @@ describe('PlaylistService.getGroupsForPlaylist', () => {
     expect(PlaylistService.getGroupsForPlaylist()).toEqual(['News', 'Sports', 'Movies']);
   });
 });
+
+describe('PlaylistService.reset', () => {
+  it('clears channels, groups, playlistNames and epgUrls', async () => {
+    storageMock.getPlaylists.mockReturnValue([
+      { name: 'P1', url: 'http://host/1.m3u' },
+    ]);
+    fetchTextMock.mockResolvedValueOnce(P1);
+    await PlaylistService.refresh();
+    expect(PlaylistService.channels.length).toBeGreaterThan(0);
+    expect(PlaylistService.groups.length).toBeGreaterThan(0);
+    expect(PlaylistService.playlistNames).toEqual(['P1']);
+    expect(PlaylistService.epgUrls.length).toBeGreaterThan(0);
+
+    PlaylistService.reset();
+
+    expect(PlaylistService.channels).toEqual([]);
+    expect(PlaylistService.groups).toEqual([]);
+    expect(PlaylistService.playlistNames).toEqual([]);
+    expect(PlaylistService.epgUrls).toEqual([]);
+  });
+});

@@ -88,6 +88,11 @@ class App {
       log.info('Configured playlists:', playlists.length);
       if (!playlists.length) {
         log.info('No playlists configured — opening settings');
+        // Clear in-memory state so the channel list does not show stale
+        // channels if the user navigates back from settings (e.g. with BACK).
+        PlaylistService.reset();
+        EpgService.reset();
+        this.channelList.render();
         this.showView('settings');
         this.settings.render();
         showToast('Welcome! Add a playlist URL to get started.');

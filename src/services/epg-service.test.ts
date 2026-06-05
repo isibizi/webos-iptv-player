@@ -97,3 +97,17 @@ describe('EpgService.findChannelId', () => {
     expect(EpgService.findChannelId(channel({ id: 'x', name: 'Alpha' }))).toBeNull();
   });
 });
+
+describe('EpgService.reset', () => {
+  it('clears channels, programmes, loaded flag and last fetch time', () => {
+    EpgService.channels = { 'epg.1': { name: 'Alpha', icon: '' } };
+    EpgService.programmes = { 'epg.1': [prog({ title: 'x' })] };
+    EpgService.loaded = true;
+
+    EpgService.reset();
+
+    expect(EpgService.channels).toEqual({});
+    expect(EpgService.programmes).toEqual({});
+    expect(EpgService.loaded).toBe(false);
+  });
+});

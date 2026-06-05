@@ -12,6 +12,18 @@ class PlaylistServiceImpl {
   playlistNames: string[] = [];
   epgUrls: string[] = [];
 
+  /**
+   * Clear all in-memory state. Called when the user removes every configured
+   * playlist so stale channels do not survive navigation back to the channel
+   * list view.
+   */
+  reset(): void {
+    this.channels = [];
+    this.groups = [];
+    this.playlistNames = [];
+    this.epgUrls = [];
+  }
+
   async load(): Promise<Channel[]> {
     const cached = StorageService.getCachedPlaylist();
     if (cached) {
