@@ -1,6 +1,7 @@
 import type { Action, NumberEvent } from '../types';
 import { SpatialNav } from '../navigation/spatial-nav';
 import { html, raw } from '../utils/dom';
+import { morph } from '../utils/morph';
 import { PlaylistService } from '../services/playlist-service';
 import { EpgService } from '../services/epg-service';
 import { StorageService } from '../services/storage-service';
@@ -23,6 +24,13 @@ export class ChannelList {
     this.onChannelSelect = onChannelSelect;
     this.onOpenSettings = onOpenSettings;
     this.nav = new SpatialNav(container);
+
+    // Bind once: the settings gear lives inside morph's reused subtree, so a
+    // per-render addEventListener would stack up handlers.
+    this.container.addEventListener('click', (e: MouseEvent) => {
+      const btn = (e.target as HTMLElement).closest('.settings-btn');
+      if (btn) this.onOpenSettings();
+    });
   }
 
   render(): void {
@@ -35,7 +43,13 @@ export class ChannelList {
       : PlaylistService.channels.length;
     const favs = StorageService.getFavorites();
 
-    this.container.innerHTML = String(html`
+    // Capture the current focus key before morph so we can restore it on a
+    // reused node. morph treats `class` as authoritative — it will remove the
+    // imperative `.focused` class — and we re-apply nav.focus in the same
+    // synchronous tick to avoid any flicker.
+    const prevFocusedKey = this.nav.focused?.getAttribute('data-key') ?? null;
+
+    morph(this.container, html`
       <div class="channel-view">
         <div class="sidebar" data-nav-container>
           <div class="sidebar-header">
@@ -44,14 +58,17 @@ export class ChannelList {
               <div class="channel-count">${totalChannels} channels</div>
             </div>
             <div class="settings-btn" data-focusable data-action="settings"
+                 data-key="settings"
                  title="Settings">&#9881;</div>
           </div>
           ${showTabs ? html`
             <div class="playlist-tabs">
               <div class="playlist-tab ${!this.currentPlaylist ? 'active' : ''}"
+                   data-key="tab:"
                    data-focusable data-playlist="">All</div>
               ${plNames.map(name => html`
                 <div class="playlist-tab ${name === this.currentPlaylist ? 'active' : ''}"
+                     data-key="tab:${name}"
                      data-focusable data-playlist="${name}">${name}</div>
               `)}
             </div>
@@ -59,6 +76,7 @@ export class ChannelList {
           <div class="group-list">
             ${groups.map(g => html`
               <div class="group-item ${g === this.currentGroup ? 'active' : ''}"
+                   data-key="g:${g}"
                    data-focusable data-group="${g}">
                 <span class="group-icon">${raw(groupIcon(g))}</span>
                 <span class="group-name">${g}</span>
@@ -80,6 +98,7 @@ export class ChannelList {
 
                   return html`
                     <div class="channel-item ${isPlaying ? 'playing' : ''}"
+                         data-key="ch:${String(globalIdx)}"
                          data-focusable data-channel-index="${globalIdx}">
                       <div class="channel-number">${globalIdx + 1}</div>
                       <div class="channel-logo-wrap">
@@ -100,18 +119,24 @@ export class ChannelList {
       </div>
     `);
 
-    const settingsBtn = this.container.querySelector<HTMLElement>('.settings-btn');
-    if (settingsBtn) {
-      settingsBtn.addEventListener('click', () => this.onOpenSettings());
+    // Restore focus on the reused node (or fall back to a sensible default).
+    let target: HTMLElement | null = null;
+    if (prevFocusedKey) {
+      target = this.container.querySelector<HTMLElement>(
+        `[data-key="${attrSelectorEscape(prevFocusedKey)}"]`,
+      );
     }
-    const playingChannel = this.playingIndex >= 0
-      ? this.container.querySelector<HTMLElement>(`.channel-main [data-channel-index="${this.playingIndex}"]`)
-      : null;
-    // Initial focus should land on content, never on the settings gear.
-    const target = playingChannel
-      ?? this.container.querySelector<HTMLElement>('.channel-main [data-focusable]')
-      ?? this.container.querySelector<HTMLElement>('.group-list [data-focusable]')
-      ?? this.container.querySelector<HTMLElement>('[data-focusable]:not(.settings-btn)');
+    let playingChannel: HTMLElement | null = null;
+    if (!target) {
+      playingChannel = this.playingIndex >= 0
+        ? this.container.querySelector<HTMLElement>(`.channel-main [data-channel-index="${this.playingIndex}"]`)
+        : null;
+      // Initial focus should land on content, never on the settings gear.
+      target = playingChannel
+        ?? this.container.querySelector<HTMLElement>('.channel-main [data-focusable]')
+        ?? this.container.querySelector<HTMLElement>('.group-list [data-focusable]')
+        ?? this.container.querySelector<HTMLElement>('[data-focusable]:not(.settings-btn)');
+    }
     if (target) {
       this.nav.focus(target);
       if (playingChannel) playingChannel.scrollIntoView({ block: 'center' });
@@ -190,4 +215,10 @@ function groupIcon(group: string): string {
   if (group === 'All') return '<span class="icon-all"></span>';
   if (group === 'Favorites') return '&#9733;';
   return '&#9654;';
+}
+
+// Escape a value for use inside a `[attr="..."]` selector. Only `\` and `"`
+// matter. Avoids relying on `CSS.escape` which jsdom does not implement.
+function attrSelectorEscape(s: string): string {
+  return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }

@@ -169,4 +169,39 @@ describe('ChannelList listener lifecycle', () => {
     const navHover = spy.mock.calls.filter(([type]) => type === 'nav:hover');
     expect(navHover).toHaveLength(1);
   });
+
+  it('binds the settings-btn click handler once, not per render', () => {
+    const onSettings = vi.fn();
+    const c = document.createElement('div');
+    document.body.appendChild(c);
+    const l = new ChannelList(c, vi.fn(), onSettings);
+    l.render();
+    l.render();
+    l.render();
+    c.querySelector<HTMLElement>('.settings-btn')!
+      .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(onSettings).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ChannelList morph lifecycle', () => {
+  it('preserves channel-item node identity across re-renders', () => {
+    list.render();
+    const before = channelItems();
+    list.setPlayingIndex(1);
+    list.render();
+    const after = channelItems();
+    expect(after[0]).toBe(before[0]);
+    expect(after[1]).toBe(before[1]);
+    expect(after[2]).toBe(before[2]);
+  });
+
+  it('restores the SpatialNav focus class on the same node after a re-render', () => {
+    list.render();
+    hover(channelItems()[1]);
+    expect(channelItems()[1].classList.contains('focused')).toBe(true);
+    list.render();
+    // Same DOM node, .focused re-applied via prevFocusedKey lookup.
+    expect(channelItems()[1].classList.contains('focused')).toBe(true);
+  });
 });
