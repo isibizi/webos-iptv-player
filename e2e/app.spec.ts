@@ -49,15 +49,8 @@ test('loads and renders channels from a configured playlist', async ({ page }) =
 });
 
 test('gear button on the channel list opens settings', async ({ page }) => {
-  await page.route('**/playlist.m3u', route =>
-    route.fulfill({ status: 200, contentType: 'application/x-mpegurl', body: SAMPLE_M3U }),
-  );
-  await page.addInitScript(() => {
-    localStorage.setItem(
-      'iptv_playlists',
-      JSON.stringify([{ name: 'Test', url: 'http://host.example.com/playlist.m3u' }]),
-    );
-  });
+  await routePlaylist(page);
+  await seedPlaylist(page);
 
   await page.goto('/');
   await expect(page.locator('#view-channels')).toBeVisible();
@@ -66,9 +59,28 @@ test('gear button on the channel list opens settings', async ({ page }) => {
 
   await expect(page.locator('#view-settings')).toBeVisible();
   // The configured playlist URL is populated in the settings form.
-  await expect(page.locator('.playlist-url').first()).toHaveValue(
-    'http://host.example.com/playlist.m3u',
-  );
+  await expect(page.locator('.playlist-url').first()).toHaveValue(PLAYLIST_URL);
+});
+
+test('clicking Cancel in settings (opened via gear) returns to the channel list, not the player', async ({ page }) => {
+  await routePlaylist(page);
+  await seedPlaylist(page);
+  await page.goto('/');
+  await expect(page.locator('#view-channels')).toBeVisible();
+
+  // Open settings via the gear, then dismiss with Cancel.
+  await page.locator('.settings-btn').click();
+  await expect(page.locator('#view-settings')).toBeVisible();
+  await page.locator('#cancel-settings').click();
+
+  // Give the document-level deferred select (setTimeout 0) a chance to fire,
+  // then assert we still land on the channel list rather than the player.
+  // Before the fix, that second select fired on the channels view and played
+  // the focused channel.
+  await page.waitForTimeout(50);
+  await expect(page.locator('#view-channels')).toBeVisible();
+  await expect(page.locator('#view-player')).toBeHidden();
+  await expect(page.locator('#view-settings')).toBeHidden();
 });
 
 test('remote arrow keys move focus and Enter starts playback', async ({ page }) => {

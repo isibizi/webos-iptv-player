@@ -102,8 +102,11 @@ export const KeyHandler = {
     }, { passive: false });
 
     document.addEventListener('click', (e: MouseEvent) => {
-      // Player sidebar/menu handle their own clicks
-      if ((e.target as HTMLElement).closest('.player-sidebar, .player-menu')) return;
+      // Skip controls that self-handle clicks (their own click handler is the
+      // "OK" action). Without this, the deferred select fires a second time on
+      // whatever view we navigated to, e.g. Cancel in settings → channels view
+      // → plays the focused channel and ends up on the player.
+      if ((e.target as HTMLElement).closest('.player-sidebar, .player-menu, .settings-view')) return;
       const target = (e.target as HTMLElement).closest<HTMLElement>('[data-focusable]');
       if (target && activeHandler) {
         target.dispatchEvent(new CustomEvent('nav:hover', { bubbles: true }));
