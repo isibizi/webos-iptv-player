@@ -100,7 +100,6 @@ export class ChannelList {
       </div>
     `);
 
-    this.nav = new SpatialNav(this.container);
     const settingsBtn = this.container.querySelector<HTMLElement>('.settings-btn');
     if (settingsBtn) {
       settingsBtn.addEventListener('click', () => this.onOpenSettings());

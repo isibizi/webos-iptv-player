@@ -23,6 +23,19 @@ export class Settings {
       this.nav.focus(el);
       this.activate(el);
     });
+
+    // Enter on input: commit and move to next focusable element in DOM order.
+    // Attached once on the persistent container (render() replaces innerHTML).
+    this.container.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') {
+        e.preventDefault();
+        (e.target as HTMLInputElement).blur();
+        const all = Array.from(this.container.querySelectorAll<HTMLElement>('[data-focusable]'));
+        const idx = all.indexOf(e.target as HTMLElement);
+        const next = all[idx + 1];
+        if (next) this.nav.focus(next);
+      }
+    });
   }
 
   render(): void {
@@ -101,20 +114,7 @@ export class Settings {
       </div>
     `);
 
-    this.nav = new SpatialNav(this.container);
     this.nav.focusFirst();
-
-    // Enter on input: commit and move to next focusable element in DOM order
-    this.container.addEventListener('keydown', (e: KeyboardEvent) => {
-      if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') {
-        e.preventDefault();
-        (e.target as HTMLInputElement).blur();
-        const all = Array.from(this.container.querySelectorAll<HTMLElement>('[data-focusable]'));
-        const idx = all.indexOf(e.target as HTMLElement);
-        const next = all[idx + 1];
-        if (next) this.nav.focus(next);
-      }
-    });
   }
 
   handleAction(action: Action): void {
@@ -183,7 +183,6 @@ export class Settings {
     if (emptyHint) emptyHint.remove();
     entries.appendChild(row);
 
-    this.nav = new SpatialNav(this.container);
     const newInput = row.querySelector<HTMLElement>('input');
     if (newInput) {
       this.nav.focus(newInput);
@@ -196,7 +195,6 @@ export class Settings {
     if (!entries) return;
     const rows = entries.querySelectorAll('.settings-row');
     if (rows[index]) rows[index].remove();
-    this.nav = new SpatialNav(this.container);
     this.nav.focusFirst();
   }
 

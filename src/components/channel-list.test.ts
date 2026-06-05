@@ -156,3 +156,17 @@ describe('ChannelList interaction', () => {
     expect(channelItems()[2].classList.contains('playing')).toBe(true);
   });
 });
+
+describe('ChannelList listener lifecycle', () => {
+  it('binds the nav:hover listener once, not per render', () => {
+    const c = document.createElement('div');
+    document.body.appendChild(c);
+    const spy = vi.spyOn(c, 'addEventListener');
+    const l = new ChannelList(c, vi.fn(), vi.fn());
+    l.render();
+    l.render();
+    l.render();
+    const navHover = spy.mock.calls.filter(([type]) => type === 'nav:hover');
+    expect(navHover).toHaveLength(1);
+  });
+});

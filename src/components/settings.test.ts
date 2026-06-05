@@ -157,3 +157,20 @@ describe('Settings.handleAction', () => {
     expect(storageMock.setPlaylists).toHaveBeenCalled();
   });
 });
+
+describe('Settings listener lifecycle', () => {
+  it('binds persistent-container listeners once, not per render', () => {
+    const c = document.createElement('div');
+    document.body.appendChild(c);
+    const spy = vi.spyOn(c, 'addEventListener');
+    const s = new Settings(c, vi.fn());
+    s.render();
+    s.render();
+    s.render();
+    const count = (type: string) =>
+      spy.mock.calls.filter(([t]) => t === type).length;
+    expect(count('nav:hover')).toBe(1);
+    expect(count('keydown')).toBe(1);
+    expect(count('click')).toBe(1);
+  });
+});
