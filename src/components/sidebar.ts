@@ -2,6 +2,7 @@ import type { Action, Channel } from '../types';
 import { PlaylistService } from '../services/playlist-service';
 import { EpgService } from '../services/epg-service';
 import { $, html } from '../utils/dom';
+import { morph } from '../utils/morph';
 
 type SidebarEntry = { ch: Channel; globalIdx: number };
 
@@ -141,14 +142,16 @@ export class Sidebar {
     const entries = this.getChannels();
     const currentIdx = this.getCurrentIndex();
 
-    el.innerHTML = String(html`
+    morph(el, html`
       <div class="sidebar-title">Channels</div>
       ${showTabs ? html`
         <div class="sidebar-tabs">
           <div class="sidebar-tab ${!this.playlist ? 'active' : ''}"
+               data-key="tab:"
                data-sidebar-playlist="">All</div>
           ${plNames.map(name => html`
             <div class="sidebar-tab ${name === this.playlist ? 'active' : ''}"
+                 data-key="tab:${name}"
                  data-sidebar-playlist="${name}">${name}</div>
           `)}
         </div>
@@ -161,6 +164,7 @@ export class Sidebar {
           const isFocused = i === this.focusIdx;
           return html`
             <div class="sidebar-ch-item ${isPlaying ? 'playing' : ''} ${isFocused ? 'focused' : ''}"
+                 data-key="ch:${String(globalIdx)}"
                  data-focusable data-sidebar-index="${globalIdx}" data-sidebar-pos="${i}">
               <span class="ch-num">${globalIdx + 1}</span>
               ${ch.logo

@@ -1,6 +1,7 @@
 import type { Action } from '../types';
 import { PlaylistService } from '../services/playlist-service';
 import { $, html } from '../utils/dom';
+import { morph } from '../utils/morph';
 
 const AUTO_HIDE_MS = 5000;
 
@@ -115,7 +116,7 @@ export class PlayerMenu {
     const ch = PlaylistService.getByIndex(this.getCurrentIndex());
     const chName = ch?.name || '';
 
-    el.innerHTML = String(html`
+    morph(el, html`
       <div class="menu-header">
         <h2>Menu</h2>
         ${chName ? html`<div class="menu-subtitle">Playing: ${chName}</div>` : ''}
@@ -123,6 +124,7 @@ export class PlayerMenu {
       <div class="menu-items">
         ${MENU_ITEMS.map((item, i) => html`
           <div class="menu-item ${i === this.focusIdx ? 'focused' : ''}"
+               data-key="${item.action}"
                data-focusable data-menu-action="${item.action}">
             <span class="menu-dot ${item.color}"></span> ${item.label}
           </div>
