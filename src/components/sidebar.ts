@@ -1,7 +1,7 @@
 import type { Action, Channel } from '../types';
 import { PlaylistService } from '../services/playlist-service';
 import { EpgService } from '../services/epg-service';
-import { $ } from '../utils/dom';
+import { $, html } from '../utils/dom';
 
 type SidebarEntry = { ch: Channel; globalIdx: number };
 
@@ -141,16 +141,16 @@ export class Sidebar {
     const entries = this.getChannels();
     const currentIdx = this.getCurrentIndex();
 
-    el.innerHTML = `
+    el.innerHTML = String(html`
       <div class="sidebar-title">Channels</div>
-      ${showTabs ? `
+      ${showTabs ? html`
         <div class="sidebar-tabs">
           <div class="sidebar-tab ${!this.playlist ? 'active' : ''}"
                data-sidebar-playlist="">All</div>
-          ${plNames.map(name => `
+          ${plNames.map(name => html`
             <div class="sidebar-tab ${name === this.playlist ? 'active' : ''}"
                  data-sidebar-playlist="${name}">${name}</div>
-          `).join('')}
+          `)}
         </div>
       ` : ''}
       <div class="sidebar-channel-list">
@@ -159,22 +159,22 @@ export class Sidebar {
           const nowPlaying = epgId ? EpgService.getNowPlaying(epgId) : null;
           const isPlaying = globalIdx === currentIdx;
           const isFocused = i === this.focusIdx;
-          return `
+          return html`
             <div class="sidebar-ch-item ${isPlaying ? 'playing' : ''} ${isFocused ? 'focused' : ''}"
                  data-focusable data-sidebar-index="${globalIdx}" data-sidebar-pos="${i}">
               <span class="ch-num">${globalIdx + 1}</span>
               ${ch.logo
-                ? `<img class="ch-logo" src="${ch.logo}" alt="" loading="lazy" onerror="this.style.display='none'">`
-                : `<div class="ch-logo-placeholder">${ch.name.charAt(0)}</div>`}
+                ? html`<img class="ch-logo" src="${ch.logo}" alt="" loading="lazy" onerror="this.style.display='none'">`
+                : html`<div class="ch-logo-placeholder">${ch.name.charAt(0)}</div>`}
               <div class="ch-info">
                 <span class="ch-name">${ch.name}</span>
-                ${nowPlaying ? `<span class="ch-now"><span class="ch-now-text">${nowPlaying.title}</span></span>` : ''}
+                ${nowPlaying ? html`<span class="ch-now"><span class="ch-now-text">${nowPlaying.title}</span></span>` : ''}
               </div>
             </div>
           `;
-        }).join('')}
+        })}
       </div>
-    `;
+    `);
 
     // Scroll to the focused channel
     const focusedEl = el.querySelector('.sidebar-ch-item.focused');

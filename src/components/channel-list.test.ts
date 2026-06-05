@@ -97,6 +97,18 @@ describe('ChannelList.render', () => {
     list.handleAction('select');
     expect(container.querySelector('.empty-state')?.textContent).toBe('No channels found');
   });
+
+  it('escapes a malicious channel name instead of rendering live HTML (XSS)', () => {
+    playlistMock.channels[0].name = '<img src=x onerror="window.__xss=1">';
+    try {
+      list.render();
+      expect(container.querySelector('.channel-main img')).toBeNull();
+      expect(container.querySelector('.channel-name')?.textContent)
+        .toContain('<img src=x onerror=');
+    } finally {
+      playlistMock.channels[0].name = 'Alpha';
+    }
+  });
 });
 
 describe('ChannelList interaction', () => {

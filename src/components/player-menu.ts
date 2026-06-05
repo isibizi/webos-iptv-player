@@ -1,6 +1,6 @@
 import type { Action } from '../types';
 import { PlaylistService } from '../services/playlist-service';
-import { $ } from '../utils/dom';
+import { $, html } from '../utils/dom';
 
 const AUTO_HIDE_MS = 5000;
 
@@ -115,20 +115,20 @@ export class PlayerMenu {
     const ch = PlaylistService.getByIndex(this.getCurrentIndex());
     const chName = ch?.name || '';
 
-    el.innerHTML = `
+    el.innerHTML = String(html`
       <div class="menu-header">
         <h2>Menu</h2>
-        ${chName ? `<div class="menu-subtitle">Playing: ${chName}</div>` : ''}
+        ${chName ? html`<div class="menu-subtitle">Playing: ${chName}</div>` : ''}
       </div>
       <div class="menu-items">
-        ${MENU_ITEMS.map((item, i) => `
+        ${MENU_ITEMS.map((item, i) => html`
           <div class="menu-item ${i === this.focusIdx ? 'focused' : ''}"
                data-focusable data-menu-action="${item.action}">
             <span class="menu-dot ${item.color}"></span> ${item.label}
           </div>
-        `).join('')}
+        `)}
       </div>
-    `;
+    `);
   }
 
   private bindEvents(): void {

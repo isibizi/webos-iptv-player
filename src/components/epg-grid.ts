@@ -1,5 +1,5 @@
 import type { Action, NumberEvent, CatchupInfo, Programme } from '../types';
-import { $ } from '../utils/dom';
+import { $, html, raw } from '../utils/dom';
 import { PlaylistService } from '../services/playlist-service';
 import { EpgService } from '../services/epg-service';
 import { formatTime, isNow } from '../utils/time';
@@ -98,25 +98,25 @@ export class EpgGrid {
     const todayMs = todayMidnight().getTime();
     const programmes = this.getCurrentProgrammes();
 
-    this.container.innerHTML = `
+    this.container.innerHTML = String(html`
       <div class="epg-view">
         <div class="epg-header">
           <h2>Programme Guide</h2>
-          <span class="epg-page-info">${channel?.name ?? ''}${programmes.length ? ` · ${programmes.length} programmes` : ''}</span>
+          <span class="epg-page-info">${channel?.name ?? ''}${programmes.length ? html` · ${programmes.length} programmes` : ''}</span>
         </div>
         <div class="epg-main">
           <div class="epg-channels-pane ${this.focusCol === 'channels' ? 'pane-focused' : ''}" id="epg-channels">
             ${channels.map((ch, i) => {
               const sel = i === this.selectedChannelIdx;
               const foc = sel && this.focusCol === 'channels';
-              return `
+              return html`
                 <div class="epg-channel-item ${sel ? 'selected' : ''} ${foc ? 'focused' : ''}"
                      data-channel-idx="${i}">
                   <span class="epg-ch-num">${i + 1}</span>
                   <span class="epg-ch-name">${ch.name}</span>
                 </div>
               `;
-            }).join('')}
+            })}
           </div>
           <div class="epg-right-pane">
             <div class="epg-date-bar ${this.focusCol === 'dates' ? 'pane-focused' : ''}" id="epg-dates">
@@ -125,41 +125,41 @@ export class EpgGrid {
                 const foc = sel && this.focusCol === 'dates';
                 const isToday = d.getTime() === todayMs;
                 const lbl = formatDateLabel(d);
-                return `
+                return html`
                   <div class="epg-date-item ${sel ? 'selected' : ''} ${foc ? 'focused' : ''} ${isToday ? 'today' : ''}"
                        data-day-index="${i}">
                     <span class="epg-date-weekday">${lbl.weekday}</span>
                     <span class="epg-date-date">${lbl.date}</span>
                   </div>
                 `;
-              }).join('')}
+              })}
             </div>
             <div class="epg-programmes-pane ${this.focusCol === 'programmes' ? 'pane-focused' : ''}" id="epg-programmes">
               ${programmes.length === 0
-                ? `<div class="epg-no-data">No programme data</div>`
+                ? raw('<div class="epg-no-data">No programme data</div>')
                 : programmes.map((p, i) => {
                     const foc = i === this.focusProg && this.focusCol === 'programmes';
                     const current = isNow(p.start, p.stop);
-                    return `
+                    return html`
                       <div class="epg-programme-item ${foc ? 'focused' : ''} ${current ? 'current' : ''}"
                            data-prog-idx="${i}">
                         <span class="epg-prog-time">${formatTime(p.start)}</span>
                         <div class="epg-prog-body">
                           <div class="epg-prog-title">
-                            ${current ? '<span class="epg-now-badge">NOW</span>' : ''}
+                            ${current ? raw('<span class="epg-now-badge">NOW</span>') : ''}
                             ${p.title}
                           </div>
-                          ${p.description ? `<div class="epg-prog-desc">${p.description.slice(0, 200)}</div>` : ''}
+                          ${p.description ? html`<div class="epg-prog-desc">${p.description.slice(0, 200)}</div>` : ''}
                         </div>
                       </div>
                     `;
-                  }).join('')
+                  })
               }
             </div>
           </div>
         </div>
       </div>
-    `;
+    `);
 
     this.attachHandlers();
     this.scrollFocusedIntoView();

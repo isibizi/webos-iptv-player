@@ -1,5 +1,5 @@
 import type { Action } from '../types';
-import { $, $$ } from '../utils/dom';
+import { $, $$, html, raw } from '../utils/dom';
 import { SpatialNav } from '../navigation/spatial-nav';
 import { StorageService } from '../services/storage-service';
 import { CONFIG } from '../config';
@@ -30,7 +30,7 @@ export class Settings {
     const epgUrl = StorageService.getEpgUrl();
     const autoPlay = StorageService.getAutoPlay();
 
-    this.container.innerHTML = `
+    this.container.innerHTML = String(html`
       <div class="settings-view">
         <h2 class="settings-title">Settings</h2>
 
@@ -38,7 +38,7 @@ export class Settings {
           <h3>Playlists</h3>
           <div class="playlist-entries" id="playlist-entries">
             ${playlists.length
-              ? playlists.map((pl, i) => `
+              ? playlists.map((pl, i) => html`
                 <div class="settings-row">
                   <div class="settings-field">
                     <label>Name</label>
@@ -52,8 +52,8 @@ export class Settings {
                   </div>
                   <button class="btn btn-danger remove-playlist" data-focusable data-index="${i}">Remove</button>
                 </div>
-              `).join('')
-              : '<div class="empty-hint">No playlists added yet</div>'}
+              `)
+              : raw('<div class="empty-hint">No playlists added yet</div>')}
           </div>
           <button class="btn btn-primary" data-focusable id="add-playlist">+ Add Playlist</button>
         </div>
@@ -99,7 +99,7 @@ export class Settings {
           ${CONFIG.APP_NAME} v${CONFIG.VERSION}
         </div>
       </div>
-    `;
+    `);
 
     this.nav = new SpatialNav(this.container);
     this.nav.focusFirst();

@@ -1,5 +1,5 @@
 import type { Action, Channel, CatchupInfo } from '../types';
-import { $, show, hide } from '../utils/dom';
+import { $, show, hide, html, Safe } from '../utils/dom';
 import { PlaylistService } from '../services/playlist-service';
 import { EpgService } from '../services/epg-service';
 import { StorageService } from '../services/storage-service';
@@ -303,18 +303,18 @@ export class Player {
     const ch = this.currentChannel;
     const catchup = this.catchupInfo;
 
-    let programmeHtml = '';
+    let programmeHtml: string | Safe = '';
     if (catchup) {
       // Catch-up playback: show the selected programme's info
       const start = new Date(catchup.start * 1000);
       const end = new Date(catchup.end * 1000);
       const progress = getProgress(start, end);
       const duration = formatDuration(end.getTime() - start.getTime());
-      programmeHtml = `
+      programmeHtml = html`
         <div class="osd-programme">
           <div class="osd-now-label">CATCH-UP</div>
           <div class="osd-programme-detail">
-            ${catchup.icon ? `<img class="osd-programme-icon" src="${catchup.icon}" alt="" onerror="this.style.display='none'">` : ''}
+            ${catchup.icon ? html`<img class="osd-programme-icon" src="${catchup.icon}" alt="" onerror="this.style.display='none'">` : ''}
             <div class="osd-programme-info">
               <div class="osd-programme-title">${catchup.title}</div>
               <div class="osd-programme-time">
@@ -330,7 +330,7 @@ export class Player {
             </div>
             <span class="osd-time-end">${formatTime(end)}</span>
           </div>
-          ${catchup.description ? `<div class="osd-description">${catchup.description}</div>` : ''}
+          ${catchup.description ? html`<div class="osd-description">${catchup.description}</div>` : ''}
         </div>
       `;
     } else {
@@ -343,11 +343,17 @@ export class Player {
         const progress = getProgress(nowPlaying.start, nowPlaying.stop);
         const remaining = formatDuration(nowPlaying.stop.getTime() - Date.now());
         const nowTime = formatTime(new Date());
-        programmeHtml = `
+        const next = upcoming.length ? html`
+            <div class="osd-next">
+              <span class="osd-next-label">NEXT</span>
+              <span class="osd-next-title">${upcoming[0].title} <span class="osd-next-time">${formatTime(upcoming[0].start)}</span></span>
+            </div>
+          ` : '';
+        programmeHtml = html`
           <div class="osd-programme">
             <div class="osd-now-label">NOW</div>
             <div class="osd-programme-detail">
-              ${nowPlaying.icon ? `<img class="osd-programme-icon" src="${nowPlaying.icon}" alt="" onerror="this.style.display='none'">` : ''}
+              ${nowPlaying.icon ? html`<img class="osd-programme-icon" src="${nowPlaying.icon}" alt="" onerror="this.style.display='none'">` : ''}
               <div class="osd-programme-info">
                 <div class="osd-programme-title">${nowPlaying.title}</div>
                 <div class="osd-programme-time">
@@ -363,34 +369,27 @@ export class Player {
               </div>
               <span class="osd-time-end">${formatTime(nowPlaying.stop)}</span>
             </div>
-            ${nowPlaying.description ? `<div class="osd-description">${nowPlaying.description}</div>` : ''}
+            ${nowPlaying.description ? html`<div class="osd-description">${nowPlaying.description}</div>` : ''}
           </div>
+          ${next}
         `;
-        if (upcoming.length) {
-          programmeHtml += `
-            <div class="osd-next">
-              <span class="osd-next-label">NEXT</span>
-              <span class="osd-next-title">${upcoming[0].title} <span class="osd-next-time">${formatTime(upcoming[0].start)}</span></span>
-            </div>
-          `;
-        }
       }
     }
 
-    osd.innerHTML = `
+    osd.innerHTML = String(html`
       <div class="osd-channel">
         <div class="osd-channel-number">${this.currentIndex + 1}</div>
-        ${ch.logo ? `<img class="osd-channel-logo" src="${ch.logo}" alt="">` : ''}
+        ${ch.logo ? html`<img class="osd-channel-logo" src="${ch.logo}" alt="">` : ''}
         <div class="osd-channel-name">${ch.name}</div>
       </div>
       ${programmeHtml}
-    `;
+    `);
   }
 
   private updateOSDMessage(message: string): void {
     const osd = $('#player-osd', this.container);
     if (osd) {
-      osd.innerHTML = `<div class="osd-message">${message}</div>`;
+      osd.innerHTML = String(html`<div class="osd-message">${message}</div>`);
       show(osd);
     }
   }

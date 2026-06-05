@@ -1,5 +1,6 @@
 import type { Action, NumberEvent } from '../types';
 import { SpatialNav } from '../navigation/spatial-nav';
+import { html, raw } from '../utils/dom';
 import { PlaylistService } from '../services/playlist-service';
 import { EpgService } from '../services/epg-service';
 import { StorageService } from '../services/storage-service';
@@ -34,7 +35,7 @@ export class ChannelList {
       : PlaylistService.channels.length;
     const favs = StorageService.getFavorites();
 
-    this.container.innerHTML = `
+    this.container.innerHTML = String(html`
       <div class="channel-view">
         <div class="sidebar" data-nav-container>
           <div class="sidebar-header">
@@ -45,31 +46,31 @@ export class ChannelList {
             <div class="settings-btn" data-focusable data-action="settings"
                  title="Settings">&#9881;</div>
           </div>
-          ${showTabs ? `
+          ${showTabs ? html`
             <div class="playlist-tabs">
               <div class="playlist-tab ${!this.currentPlaylist ? 'active' : ''}"
                    data-focusable data-playlist="">All</div>
-              ${plNames.map(name => `
+              ${plNames.map(name => html`
                 <div class="playlist-tab ${name === this.currentPlaylist ? 'active' : ''}"
                      data-focusable data-playlist="${name}">${name}</div>
-              `).join('')}
+              `)}
             </div>
           ` : ''}
           <div class="group-list">
-            ${groups.map(g => `
+            ${groups.map(g => html`
               <div class="group-item ${g === this.currentGroup ? 'active' : ''}"
                    data-focusable data-group="${g}">
-                <span class="group-icon">${groupIcon(g)}</span>
+                <span class="group-icon">${raw(groupIcon(g))}</span>
                 <span class="group-name">${g}</span>
                 <span class="group-count">${PlaylistService.getByGroup(g, this.currentPlaylist || undefined).length}</span>
               </div>
-            `).join('')}
+            `)}
           </div>
         </div>
         <div class="channel-main" data-nav-container>
           <div class="channel-list-scroll">
             ${filteredChannels.length === 0
-              ? '<div class="empty-state">No channels found</div>'
+              ? raw('<div class="empty-state">No channels found</div>')
               : filteredChannels.map(ch => {
                   const globalIdx = PlaylistService.indexOf(ch);
                   const epgId = EpgService.findChannelId(ch);
@@ -77,27 +78,27 @@ export class ChannelList {
                   const isPlaying = globalIdx === this.playingIndex;
                   const isFav = favs.includes(ch.id || ch.name);
 
-                  return `
+                  return html`
                     <div class="channel-item ${isPlaying ? 'playing' : ''}"
                          data-focusable data-channel-index="${globalIdx}">
                       <div class="channel-number">${globalIdx + 1}</div>
                       <div class="channel-logo-wrap">
                         ${ch.logo
-                          ? `<img class="channel-logo" src="${ch.logo}" alt="" loading="lazy" onerror="this.style.display='none'">`
-                          : `<div class="channel-logo-placeholder">${ch.name.charAt(0)}</div>`}
+                          ? html`<img class="channel-logo" src="${ch.logo}" alt="" loading="lazy" onerror="this.style.display='none'">`
+                          : html`<div class="channel-logo-placeholder">${ch.name.charAt(0)}</div>`}
                       </div>
                       <div class="channel-info">
-                        <div class="channel-name">${isFav ? '&#9733; ' : ''}${ch.name}</div>
-                        ${nowPlaying ? `<div class="channel-now">${nowPlaying.title}</div>` : ''}
+                        <div class="channel-name">${isFav ? raw('&#9733; ') : ''}${ch.name}</div>
+                        ${nowPlaying ? html`<div class="channel-now">${nowPlaying.title}</div>` : ''}
                       </div>
-                      ${isPlaying ? '<div class="playing-indicator">&#9654;</div>' : ''}
+                      ${isPlaying ? raw('<div class="playing-indicator">&#9654;</div>') : ''}
                     </div>
                   `;
-                }).join('')}
+                })}
           </div>
         </div>
       </div>
-    `;
+    `);
 
     this.nav = new SpatialNav(this.container);
     const settingsBtn = this.container.querySelector<HTMLElement>('.settings-btn');
