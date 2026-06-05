@@ -176,3 +176,31 @@ describe('EpgGrid.handleAction', () => {
     expect(dateItems()[0].classList.contains('selected')).toBe(true);
   });
 });
+
+describe('EpgGrid morph lifecycle', () => {
+  it('preserves channel-item node identity across re-renders that only change focus', () => {
+    grid.render();
+    const beforeA = container.querySelector<HTMLElement>('[data-channel-idx="0"]')!;
+    const beforeB = container.querySelector<HTMLElement>('[data-channel-idx="1"]')!;
+    grid.handleAction('down');
+    expect(container.querySelector('[data-channel-idx="0"]')).toBe(beforeA);
+    expect(container.querySelector('[data-channel-idx="1"]')).toBe(beforeB);
+    // The new selection is reflected via class only.
+    expect(beforeB.classList.contains('selected')).toBe(true);
+  });
+
+  it('binds pane click handlers once (no accumulation across re-renders)', () => {
+    const c = document.createElement('div');
+    document.body.appendChild(c);
+    const spy = vi.spyOn(c, 'addEventListener');
+    const g = new EpgGrid(c, vi.fn());
+    g.render();
+    g.handleAction('down');
+    g.handleAction('right');
+    g.handleAction('down');
+    const clicks = spy.mock.calls.filter(([t]) => t === 'click').length;
+    const mouseovers = spy.mock.calls.filter(([t]) => t === 'mouseover').length;
+    expect(clicks).toBe(1);
+    expect(mouseovers).toBe(1);
+  });
+});

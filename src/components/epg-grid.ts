@@ -1,5 +1,6 @@
 import type { Action, NumberEvent, CatchupInfo, Programme } from '../types';
-import { $, html, raw } from '../utils/dom';
+import { html, raw } from '../utils/dom';
+import { morph } from '../utils/morph';
 import { PlaylistService } from '../services/playlist-service';
 import { EpgService } from '../services/epg-service';
 import { formatTime, isNow } from '../utils/time';
@@ -33,6 +34,7 @@ export class EpgGrid {
   constructor(container: HTMLElement, onChannelSelect: (index: number, catchup?: CatchupInfo) => void) {
     this.container = container;
     this.onChannelSelect = onChannelSelect;
+    this.bindEvents();
   }
 
   private getDateOptions(): Date[] {
@@ -98,7 +100,7 @@ export class EpgGrid {
     const todayMs = todayMidnight().getTime();
     const programmes = this.getCurrentProgrammes();
 
-    this.container.innerHTML = String(html`
+    morph(this.container, html`
       <div class="epg-view">
         <div class="epg-header">
           <h2>Programme Guide</h2>
@@ -111,6 +113,7 @@ export class EpgGrid {
               const foc = sel && this.focusCol === 'channels';
               return html`
                 <div class="epg-channel-item ${sel ? 'selected' : ''} ${foc ? 'focused' : ''}"
+                     data-key="${ch.id || ch.name || String(i)}"
                      data-channel-idx="${i}">
                   <span class="epg-ch-num">${i + 1}</span>
                   <span class="epg-ch-name">${ch.name}</span>
@@ -127,6 +130,7 @@ export class EpgGrid {
                 const lbl = formatDateLabel(d);
                 return html`
                   <div class="epg-date-item ${sel ? 'selected' : ''} ${foc ? 'focused' : ''} ${isToday ? 'today' : ''}"
+                       data-key="${d.toISOString().slice(0, 10)}"
                        data-day-index="${i}">
                     <span class="epg-date-weekday">${lbl.weekday}</span>
                     <span class="epg-date-date">${lbl.date}</span>
@@ -142,6 +146,7 @@ export class EpgGrid {
                     const current = isNow(p.start, p.stop);
                     return html`
                       <div class="epg-programme-item ${foc ? 'focused' : ''} ${current ? 'current' : ''}"
+                           data-key="${String(p.start.getTime())}"
                            data-prog-idx="${i}">
                         <span class="epg-prog-time">${formatTime(p.start)}</span>
                         <div class="epg-prog-body">
@@ -161,47 +166,45 @@ export class EpgGrid {
       </div>
     `);
 
-    this.attachHandlers();
     this.scrollFocusedIntoView();
   }
 
-  private attachHandlers(): void {
-    const channelsPane = $('#epg-channels', this.container);
-    channelsPane?.addEventListener('click', (e: MouseEvent) => {
-      const item = (e.target as HTMLElement).closest<HTMLElement>('[data-channel-idx]');
-      if (!item) return;
-      const idx = parseInt(item.dataset.channelIdx!, 10);
-      if (idx === this.selectedChannelIdx && this.focusCol === 'channels') {
-        this.onChannelSelect(idx);
-      } else {
-        this.selectedChannelIdx = idx;
-        this.focusCol = 'channels';
+  private bindEvents(): void {
+    // Delegated handlers attached once to the persistent container. With morph
+    // reusing nodes across renders, per-render addEventListener would stack up.
+    this.container.addEventListener('click', (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      const channelItem = target.closest<HTMLElement>('#epg-channels [data-channel-idx]');
+      if (channelItem) {
+        const idx = parseInt(channelItem.dataset.channelIdx!, 10);
+        if (idx === this.selectedChannelIdx && this.focusCol === 'channels') {
+          this.onChannelSelect(idx);
+        } else {
+          this.selectedChannelIdx = idx;
+          this.focusCol = 'channels';
+          this.focusProg = 0;
+          this.render();
+        }
+        return;
+      }
+      const dateItem = target.closest<HTMLElement>('#epg-dates [data-day-index]');
+      if (dateItem) {
+        this.selectedDay = parseInt(dateItem.dataset.dayIndex!, 10);
+        this.focusCol = 'dates';
         this.focusProg = 0;
         this.render();
+        return;
+      }
+      const progItem = target.closest<HTMLElement>('#epg-programmes [data-prog-idx]');
+      if (progItem) {
+        this.focusProg = parseInt(progItem.dataset.progIdx!, 10);
+        this.focusCol = 'programmes';
+        this.playSelectedProgramme();
       }
     });
 
-    const datesPane = $('#epg-dates', this.container);
-    datesPane?.addEventListener('click', (e: MouseEvent) => {
-      const item = (e.target as HTMLElement).closest<HTMLElement>('[data-day-index]');
-      if (!item) return;
-      this.selectedDay = parseInt(item.dataset.dayIndex!, 10);
-      this.focusCol = 'dates';
-      this.focusProg = 0;
-      this.render();
-    });
-
-    const progPane = $('#epg-programmes', this.container);
-    progPane?.addEventListener('click', (e: MouseEvent) => {
-      const item = (e.target as HTMLElement).closest<HTMLElement>('[data-prog-idx]');
-      if (!item) return;
-      this.focusProg = parseInt(item.dataset.progIdx!, 10);
-      this.focusCol = 'programmes';
-      this.playSelectedProgramme();
-    });
-
-    progPane?.addEventListener('mouseover', (e: MouseEvent) => {
-      const item = (e.target as HTMLElement).closest<HTMLElement>('[data-prog-idx]');
+    this.container.addEventListener('mouseover', (e: MouseEvent) => {
+      const item = (e.target as HTMLElement).closest<HTMLElement>('#epg-programmes [data-prog-idx]');
       if (!item) return;
       this.setProgFocusLight(parseInt(item.dataset.progIdx!, 10));
     });
