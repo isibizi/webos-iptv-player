@@ -26,13 +26,23 @@ jobs:
         run: npm install -g @webos-tools/cli@3.2.3
 
       - name: Type check
-        run: npx tsc --noEmit
+        run: npx tsc --noEmit && npx tsc -p upload-service/tsconfig.json
+
+      - name: Unit tests
+        run: npx vitest run
 
       - name: Bundle
         run: node esbuild.config.mjs
 
+      - name: Build upload service
+        run: |
+          rm -rf build/upload-service
+          npx tsc -p upload-service/tsconfig.json
+          cp upload-service/package.json build/upload-service/
+          cp upload-service/src/services.json upload-service/src/upload-page.html build/upload-service/
+
       - name: Package IPK
-        run: ares-package --no-minify -e "js/preview-libs.js" dist -o .
+        run: ares-package --no-minify -e "*preview-libs.js" dist build/upload-service -o .
 
       - name: Upload IPK
         uses: actions/upload-artifact@v7
