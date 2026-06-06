@@ -30,9 +30,16 @@ npx tsc --noEmit
 info "Bundling with esbuild..."
 node esbuild.config.mjs
 
+# Compile the upload service (TypeScript -> Node CommonJS)
+info "Building upload service..."
+rm -rf build/upload-service
+npx tsc -p upload-service/tsconfig.json
+cp upload-service/package.json build/upload-service/
+cp upload-service/src/services.json upload-service/src/upload-page.html build/upload-service/
+
 # Package IPK (--no-minify since esbuild already minifies)
 info "Packaging IPK..."
-ares-package --no-minify -e "*preview-libs.js" dist -o .
+ares-package --no-minify -e "*preview-libs.js" dist build/upload-service -o .
 
 IPK=$(ls -t *.ipk 2>/dev/null | head -1)
 info "Built: $IPK ($(du -h "$IPK" | cut -f1))"

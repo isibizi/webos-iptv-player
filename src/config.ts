@@ -5,6 +5,10 @@ export const CONFIG = {
 
   STORAGE_PREFIX: 'iptv_',
 
+  // Bundled webOS JS service (see upload-service/) for LAN playlist uploads.
+  SERVICE_ID: __SERVICE_ID__,
+  SERVICE_HOST: '127.0.0.1',
+
   PLAYLIST_REFRESH_INTERVAL: 6 * 60 * 60 * 1000,
   EPG_REFRESH_INTERVAL: 12 * 60 * 60 * 1000,
   PLAYER: {

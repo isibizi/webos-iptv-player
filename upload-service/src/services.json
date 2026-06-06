@@ -1,0 +1,9 @@
+{
+  "id": "com.lennylxx.iptv.upload",
+  "description": "M3U playlist upload service",
+  "services": [
+    {
+      "name": "com.lennylxx.iptv.upload"
+    }
+  ]
+}

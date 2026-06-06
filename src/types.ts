@@ -39,6 +39,10 @@ export interface ParsedEpg {
 export interface PlaylistEntry {
   name: string;
   url: string;
+  /** 'upload' entries are auto-managed by the local upload service; absent/'url' are user-entered. */
+  source?: 'upload' | 'url';
+  /** Channel count, populated for 'upload' entries by reconcile() from UploadMeta. */
+  count?: number;
 }
 
 export interface CachedData<T> {

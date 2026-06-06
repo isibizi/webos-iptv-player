@@ -3,6 +3,7 @@ import { KeyHandler } from './navigation/key-handler';
 import { PlaylistService } from './services/playlist-service';
 import { EpgService } from './services/epg-service';
 import { StorageService } from './services/storage-service';
+import { UploadClient, setServicePort } from './services/upload-client';
 import { ChannelList } from './components/channel-list';
 import { Player } from './components/player';
 import { EpgGrid } from './components/epg-grid';
@@ -57,7 +58,6 @@ class App {
     this.settings = new Settings(this.views.settings, (reload) => this.onSettingsSaved(reload));
 
     this.player.init($('#video-player') as HTMLVideoElement);
-    this.subscribeToForegroundState();
 
     this.sidebar = new Sidebar(
       this.views.player,
@@ -76,7 +76,160 @@ class App {
     this.initSidebarTrigger();
 
     done();
+    await this.startUploadService();
+    this.subscribeToUploadEvents();
+    this.bindUploadServiceLifecycle();
     await this.loadData();
+  }
+
+  /**
+   * Tie the upload service's lifetime to the app's foreground state. The
+   * service holds an open LAN HTTP port and a Luna keepAlive activity, so we
+   * stop it when the app is backgrounded (visibility → hidden) so neither
+   * the port nor the service process lingers across the rest of webOS. On
+   * visibility → visible we restart it and resubscribe.
+   *
+   * visibilitychange is reliable on this firmware (verified empirically; the
+   * Player module's suspend/resume listens to the same event).
+   */
+  private bindUploadServiceLifecycle(): void {
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') {
+        log.info('App backgrounded — stopping upload service');
+        this.stopUploadService();
+      } else if (document.visibilityState === 'visible') {
+        log.info('App foregrounded — restarting upload service');
+        void (async () => {
+          await this.startUploadService();
+          this.subscribeToUploadEvents();
+          // Settings may be the visible view; refresh the QR + upload list
+          // so they reflect the new port and current upload set.
+          void this.settings.refreshUploads();
+        })();
+      }
+    });
+  }
+
+  /**
+   * Fire-and-forget Luna call to gracefully shut down the upload service.
+   * The service closes its HTTP listener, releases its keepAlive activity,
+   * and lets the Node process exit so neither the port nor the process
+   * persists in the background.
+   */
+  private stopUploadService(): void {
+    type LunaService = { request: (uri: string, opts: unknown) => void };
+    const w = window as unknown as { webOS?: { service?: LunaService } };
+    const request = w.webOS?.service?.request;
+    if (!request) return;
+    try {
+      request(`luna://${CONFIG.SERVICE_ID}`, {
+        method: 'stop',
+        parameters: {},
+        onSuccess: (resp: unknown) => log.info('Upload service stop onSuccess:', JSON.stringify(resp)),
+        onFailure: (err: unknown) => log.warn('Upload service stop onFailure:', JSON.stringify(err)),
+      });
+    } catch (e) {
+      log.warn('stopUploadService threw:', e);
+    }
+    // Forget the runtime port — next start will set it again via setServicePort.
+    setServicePort(null);
+  }
+
+  /**
+   * Ask the webOS Luna service bus to start the bundled webOS JS service
+   * (see upload-service/). On non-webOS environments (desktop preview, e2e)
+   * this is a no-op — the upload service is only available on device.
+   *
+   * We log onSuccess/onFailure explicitly so device logs (ares-inspect or
+   * ares-monitor-log) show what happened, instead of guessing from silence.
+   */
+  private async startUploadService(): Promise<void> {
+    type LunaService = { request: (uri: string, opts: unknown) => void };
+    const w = window as unknown as { webOS?: { service?: LunaService } };
+    const request = w.webOS?.service?.request;
+    if (!request) {
+      log.debug('webOS Luna service bus not available — skipping upload service start');
+      return;
+    }
+    log.info('Calling luna://' + CONFIG.SERVICE_ID + '/start ...');
+    await new Promise<void>((resolve) => {
+      let settled = false;
+      const finish = (why: string): void => {
+        if (settled) return;
+        settled = true;
+        log.info('startUploadService settled:', why);
+        resolve();
+      };
+      const timer = setTimeout(() => finish('timeout after 3s'), 3000);
+      // NOTE: no trailing '/' on the URI — the shim appends '/' + method,
+      // so a trailing slash here produces 'luna://.../service//start' (double
+      // slash) which Luna treats as a missing method and returns onFailure.
+      try {
+        request(`luna://${CONFIG.SERVICE_ID}`, {
+          method: 'start',
+          parameters: {},
+          onSuccess: (resp: unknown) => {
+            clearTimeout(timer);
+            if (resp && typeof resp === 'object' && 'port' in resp) {
+              const p = (resp as { port?: unknown }).port;
+              if (typeof p === 'number') setServicePort(p);
+            }
+            log.info('Upload service start onSuccess:', JSON.stringify(resp));
+            finish('onSuccess');
+          },
+          onFailure: (err: unknown) => {
+            clearTimeout(timer);
+            log.error('Upload service start onFailure:', JSON.stringify(err));
+            finish('onFailure');
+          },
+        });
+      } catch (e) {
+        clearTimeout(timer);
+        log.error('Upload service start threw:', e);
+        finish('threw');
+      }
+    });
+  }
+
+  /**
+   * Subscribe to the upload service's `uploadEvents` push channel. Whenever
+   * the service writes/deletes an uploaded playlist (via the LAN /upload page
+   * or DELETE /uploads/:id), it pushes a notification on this subscription
+   * and we call Settings.refreshUploads() to re-sync storage + the upload
+   * list UI. No polling.
+   *
+   * Subscription is best-effort: if Luna isn't available (desktop/e2e) or
+   * the subscribe call fails, we silently fall back to the explicit
+   * refreshUploads() that Settings.render() already runs on open.
+   */
+  private subscribeToUploadEvents(): void {
+    type LunaService = { request: (uri: string, opts: unknown) => void };
+    const w = window as unknown as { webOS?: { service?: LunaService } };
+    const request = w.webOS?.service?.request;
+    if (!request) {
+      log.debug('Luna unavailable — upload event subscription skipped');
+      return;
+    }
+    log.info('Subscribing to luna://' + CONFIG.SERVICE_ID + '/uploadEvents ...');
+    try {
+      request(`luna://${CONFIG.SERVICE_ID}`, {
+        method: 'uploadEvents',
+        subscribe: true,
+        parameters: {},
+        onSuccess: (resp: unknown) => {
+          log.info('uploadEvents push:', JSON.stringify(resp));
+          // First response confirms the subscription (`{subscribed:true}`);
+          // subsequent responses are change notifications. Either way, a
+          // refresh is cheap and correct.
+          void this.settings.refreshUploads();
+        },
+        onFailure: (err: unknown) => {
+          log.warn('uploadEvents subscription failed:', JSON.stringify(err));
+        },
+      });
+    } catch (e) {
+      log.warn('uploadEvents subscribe threw:', e);
+    }
   }
 
   private async loadData(): Promise<void> {
@@ -84,6 +237,10 @@ class App {
     show(this.views.loading);
 
     try {
+      // Pull in uploaded playlists from the local upload service before we
+      // read the configured playlist list. Reconcile is a no-op if the
+      // service is unreachable, so this never blocks data load on device.
+      await UploadClient.reconcile();
       const playlists = StorageService.getPlaylists();
       log.info('Configured playlists:', playlists.length);
       if (!playlists.length) {
@@ -333,33 +490,6 @@ class App {
     this.channelList.render();
   }
 
-  private subscribeToForegroundState(): void {
-    // Use webOS Luna Service to detect when app goes to background/foreground.
-    // This is the only reliable way on webOS — visibilitychange/blur don't fire.
-    const webOS = (window as unknown as Record<string, unknown>).webOS as
-      { service?: { request(uri: string, params: Record<string, unknown>): void } } | undefined;
-    if (!webOS?.service?.request) {
-      log.warn('webOS.service.request unavailable — background-suspend Luna subscription skipped');
-      return;
-    }
-
-    log.info('Subscribing to getForegroundAppInfo');
-    webOS.service.request('luna://com.webos.applicationManager', {
-      method: 'getForegroundAppInfo',
-      parameters: { subscribe: true },
-      onSuccess: (res: { appId?: string }) => {
-        log.debug('Foreground app:', res.appId);
-        if (res.appId && res.appId !== CONFIG.APP_ID) {
-          this.player.suspend();
-        } else if (res.appId === CONFIG.APP_ID) {
-          this.player.resume();
-        }
-      },
-      onFailure: (err: unknown) => {
-        log.warn('getForegroundAppInfo failed; falling back to visibility/blur events:', err);
-      },
-    });
-  }
 
   private async onSettingsSaved(reload: boolean): Promise<void> {
     if (reload) {

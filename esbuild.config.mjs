@@ -16,14 +16,16 @@ if (appinfo.version !== version) {
 cpSync('index.html', 'dist/index.html');
 cpSync('appinfo.json', 'dist/appinfo.json');
 cpSync('css', 'dist/css', { recursive: true });
-cpSync('webOSjs', 'dist/webOSjs', { recursive: true });
+cpSync('webOSjs/webOS.js', 'dist/webOSjs/webOS.js');
 cpSync('assets/icon80.png', 'dist/icon.png');
 cpSync('assets/icon130.png', 'dist/largeIcon.png');
 
-// Main app bundle — excludes hls.js and mpegts.js (only needed on desktop)
+// Main app bundle — excludes hls.js and mpegts.js (only needed on desktop).
+const serviceId = JSON.parse(readFileSync('upload-service/src/services.json', 'utf8')).id;
 const define = {
   '__APP_VERSION__': JSON.stringify(version),
   '__APP_ID__': JSON.stringify(appinfo.id),
+  '__SERVICE_ID__': JSON.stringify(serviceId),
 };
 // Target Chromium 68 — the engine on webOS 5. This down-levels ES2020+
 // syntax (`?.`, `??`, etc.) which would otherwise fail to parse on

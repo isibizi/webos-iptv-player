@@ -1,9 +1,28 @@
-import type { Action } from '../types';
+import type { Action, PlaylistEntry } from '../types';
 import { $, $$, html, raw } from '../utils/dom';
+import { morph } from '../utils/morph';
 import { SpatialNav } from '../navigation/spatial-nav';
 import { StorageService } from '../services/storage-service';
+import { UploadClient, uploadIdFromUrl } from '../services/upload-client';
 import { CONFIG } from '../config';
 import { showToast } from './toast';
+import qrcode from 'qrcode-generator';
+
+/** Generate a PNG data URL containing a QR code for the given text. */
+function qrDataUrl(text: string): string {
+  const qr = qrcode(0, 'M');
+  qr.addData(text);
+  qr.make();
+  return qr.createDataURL(6, 4);
+}
+
+/** "MyList — 12 channels" when count is known, otherwise just the name. */
+function uploadLabel(pl: PlaylistEntry): string {
+  if (typeof pl.count === 'number') {
+    return `${pl.name} — ${pl.count} channel${pl.count === 1 ? '' : 's'}`;
+  }
+  return pl.name;
+}
 
 export class Settings {
   private container: HTMLElement;
@@ -39,7 +58,9 @@ export class Settings {
   }
 
   render(): void {
-    const playlists = StorageService.getPlaylists();
+    const allPlaylists = StorageService.getPlaylists();
+    const playlists = allPlaylists.filter(pl => pl.source !== 'upload');
+    const uploads = allPlaylists.filter(pl => pl.source === 'upload');
     const epgUrl = StorageService.getEpgUrl();
     const autoPlay = StorageService.getAutoPlay();
 
@@ -69,6 +90,24 @@ export class Settings {
               : raw('<div class="empty-hint">No playlists added yet</div>')}
           </div>
           <button class="btn btn-primary" data-focusable id="add-playlist">+ Add Playlist</button>
+        </div>
+
+        <div class="settings-section">
+          <h3>Upload Playlist</h3>
+          <div class="upload-info" id="upload-info">Checking upload service&hellip;</div>
+          <div class="upload-entries" id="upload-entries">
+            ${uploads.length
+              ? uploads.map((pl) => html`
+                <div class="settings-row" data-key="${pl.url}">
+                  <div class="settings-field wide">
+                    <label>${uploadLabel(pl)}</label>
+                  </div>
+                  <button class="btn btn-danger remove-upload" data-focusable
+                          data-url="${pl.url}">Remove</button>
+                </div>
+              `)
+              : raw('<div class="empty-hint">No uploaded playlists</div>')}
+          </div>
         </div>
 
         <div class="settings-section">
@@ -115,6 +154,11 @@ export class Settings {
     `);
 
     this.nav.focusFirst();
+    void this.loadUploadInfo();
+    // Sync uploads from the local service on every Settings open. Subsequent
+    // updates arrive via the Luna `uploadEvents` push channel (wired in
+    // app.ts → subscribeToUploadEvents) and call refreshUploads() directly.
+    void this.refreshUploads();
   }
 
   handleAction(action: Action): void {
@@ -140,6 +184,8 @@ export class Settings {
       this.addPlaylistEntry();
     } else if (el.classList.contains('remove-playlist')) {
       this.removePlaylistEntry(parseInt(el.dataset.index!, 10));
+    } else if (el.classList.contains('remove-upload')) {
+      void this.removeUpload(el.dataset.url!);
     } else if (el.id === 'auto-play-toggle') {
       el.classList.toggle('active');
       el.textContent = el.classList.contains('active') ? 'ON' : 'OFF';
@@ -201,7 +247,7 @@ export class Settings {
   private save(): void {
     const names = $$('.playlist-name', this.container) as HTMLInputElement[];
     const urls = $$('.playlist-url', this.container) as HTMLInputElement[];
-    const playlists: { name: string; url: string }[] = [];
+    const playlists: PlaylistEntry[] = [];
 
     for (let i = 0; i < urls.length; i++) {
       const url = urls[i].value.trim();
@@ -209,11 +255,14 @@ export class Settings {
         playlists.push({
           name: names[i]?.value.trim() || `Playlist ${i + 1}`,
           url,
+          source: 'url',
         });
       }
     }
 
-    StorageService.setPlaylists(playlists);
+    // Preserve auto-managed uploaded playlists (not shown in the URL editor).
+    const uploads = StorageService.getPlaylists().filter(pl => pl.source === 'upload');
+    StorageService.setPlaylists([...playlists, ...uploads]);
 
     const epgInput = $('#epg-url', this.container) as HTMLInputElement | null;
     if (epgInput) StorageService.setEpgUrl(epgInput.value.trim());
@@ -222,5 +271,78 @@ export class Settings {
     if (autoPlayBtn) StorageService.setAutoPlay(autoPlayBtn.classList.contains('active'));
 
     this.onSave(true);
+  }
+
+  /**
+   * Replace the placeholder text in #upload-info with QR + instructions (or
+   * an error when the service is unreachable). Built through `html` so the
+   * upload URL — which originates off-device — is escaped, then handed to
+   * `morph()` so the surrounding rendered content stays unaffected and we
+   * never touch innerHTML directly with an interpolated string.
+   */
+  private async loadUploadInfo(): Promise<void> {
+    const el = $('#upload-info', this.container);
+    if (!el) return;
+    const info = await UploadClient.getInfo();
+    // Re-resolve in case the user navigated away or settings re-rendered.
+    const target = $('#upload-info', this.container);
+    if (!target) return;
+    if (info) {
+      const url = info.uploadUrl;
+      morph(target, html`
+        <div class="upload-instructions">
+          On a phone or computer connected to the same network, scan this QR code
+          (or open <span class="upload-url">${url}</span>) and choose an .m3u file.
+          Uploaded playlists appear here automatically.
+        </div>
+        <img class="upload-qr" alt="QR code linking to ${url}" src="${qrDataUrl(url)}">
+      `);
+    } else {
+      morph(target, html`<span>Upload service is not running.</span>`);
+    }
+  }
+
+  private async removeUpload(url: string): Promise<void> {
+    const id = uploadIdFromUrl(url);
+    if (id) await UploadClient.remove(id);
+
+    const remaining = StorageService.getPlaylists().filter(pl => pl.url !== url);
+    StorageService.setPlaylists(remaining);
+    StorageService.remove('cached_playlist');
+    showToast('Uploaded playlist removed');
+
+    this.render();
+  }
+
+  /**
+   * Pull the latest uploads from the local service into storage, then patch
+   * just the #upload-entries section via morph() so the rest of the form
+   * keeps its focus and unsaved input.
+   *
+   * Called on render() (covers uploads that arrived before the user opened
+   * Settings) and on every Luna `uploadEvents` push from the upload service
+   * (covers uploads that arrive while Settings is open — see app.ts).
+   *
+   * Safe to call when the settings view is hidden: reconcile still updates
+   * storage, but the morph is a no-op against the off-screen container so
+   * there's no visible side effect.
+   */
+  async refreshUploads(): Promise<void> {
+    await UploadClient.reconcile();
+    const target = $('#upload-entries', this.container);
+    if (!target) return;
+
+    const uploads = StorageService.getPlaylists().filter(pl => pl.source === 'upload');
+    morph(target, uploads.length
+      ? html`${uploads.map((pl) => html`
+        <div class="settings-row" data-key="${pl.url}">
+          <div class="settings-field wide">
+            <label>${uploadLabel(pl)}</label>
+          </div>
+          <button class="btn btn-danger remove-upload" data-focusable
+                  data-url="${pl.url}">Remove</button>
+        </div>
+      `)}`
+      : html`<div class="empty-hint">No uploaded playlists</div>`);
   }
 }

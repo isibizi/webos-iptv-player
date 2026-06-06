@@ -74,3 +74,33 @@
   color: var(--text-muted);
   padding: 16px;
 }
+
+.upload-info {
+  font-size: 20px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.upload-instructions {
+  flex: 1;
+}
+
+.upload-qr {
+  flex-shrink: 0;
+  width: 200px;
+  height: 200px;
+  padding: 12px;
+  background: #fff;
+  border-radius: 8px;
+  image-rendering: pixelated;
+}
+
+.upload-url {
+  color: var(--accent);
+  font-weight: 600;
+  word-break: break-all;
+}

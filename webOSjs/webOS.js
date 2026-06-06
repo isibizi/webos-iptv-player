@@ -27,7 +27,12 @@
     var onComplete = params.onComplete || function () {};
     var subscribe = !!(params.subscribe || parameters.subscribe);
 
-    var url = uri + (method ? '/' + method : '');
+    // Normalize: strip a trailing '/' from the URI so callers don't have to
+    // worry about whether they wrote `luna://foo` or `luna://foo/`. Without
+    // this, `luna://foo/` + method `bar` produces `luna://foo//bar` (double
+    // slash) which Luna treats as an invalid method lookup and rejects.
+    var base = uri.charAt(uri.length - 1) === '/' ? uri.slice(0, -1) : uri;
+    var url = base + (method ? '/' + method : '');
     var bridge;
     try {
       bridge = new global.PalmServiceBridge();

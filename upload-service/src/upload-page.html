@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Upload M3U Playlist</title>
+<style>
+  body { font-family: system-ui, -apple-system, sans-serif; max-width: 640px; margin: 0 auto; padding: 24px; background: #14121f; color: #eee; }
+  h1 { color: #8b7fd6; font-size: 22px; }
+  .card { background: #201b35; border: 1px solid #34304d; border-radius: 12px; padding: 20px; margin-bottom: 20px; }
+  input[type=file] { width: 100%; padding: 12px; background: #14121f; border: 1px solid #34304d; border-radius: 8px; color: #eee; }
+  button { margin-top: 16px; width: 100%; padding: 14px; font-size: 16px; background: #6c5ce7; color: #fff; border: none; border-radius: 8px; cursor: pointer; }
+  button:disabled { opacity: 0.5; }
+  .status { margin-top: 14px; font-size: 15px; }
+  .ok { color: #5ad17a; }
+  .err { color: #ff6b6b; }
+  ul { list-style: none; padding: 0; }
+  li { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #34304d; }
+  .del { width: auto; margin: 0; padding: 8px 14px; background: #c0392b; font-size: 14px; }
+  .muted { color: #888; font-size: 14px; }
+</style>
+</head>
+<body>
+  <h1>Upload M3U Playlist</h1>
+  <div class="card">
+    <input type="file" id="file" accept=".m3u,.m3u8,audio/x-mpegurl,application/vnd.apple.mpegurl">
+    <button id="upload" disabled>Upload</button>
+    <div class="status" id="status"></div>
+  </div>
+  <div class="card">
+    <h1>Uploaded</h1>
+    <ul id="list"><li class="muted">Loading...</li></ul>
+  </div>
+<script>
+  var fileEl = document.getElementById("file");
+  var btn = document.getElementById("upload");
+  var status = document.getElementById("status");
+  var list = document.getElementById("list");
+  fileEl.addEventListener("change", function () { btn.disabled = !fileEl.files.length; });
+  function refresh() {
+    fetch("/uploads").then(function (r) { return r.json(); }).then(function (items) {
+      if (!items.length) { list.innerHTML = "<li class=\"muted\">No playlists yet</li>"; return; }
+      list.innerHTML = "";
+      items.forEach(function (it) {
+        var li = document.createElement("li");
+        var span = document.createElement("span");
+        span.textContent = it.name + " (" + it.count + " channels)";
+        var del = document.createElement("button");
+        del.className = "del"; del.textContent = "Delete";
+        del.onclick = function () { fetch("/uploads/" + encodeURIComponent(it.id), { method: "DELETE" }).then(refresh); };
+        li.appendChild(span); li.appendChild(del); list.appendChild(li);
+      });
+    }).catch(function () { list.innerHTML = "<li class=\"err\">Failed to load list</li>"; });
+  }
+  btn.addEventListener("click", function () {
+    var file = fileEl.files[0];
+    if (!file) return;
+    btn.disabled = true; status.textContent = "Uploading..."; status.className = "status";
+    file.text().then(function (text) {
+      return fetch("/uploads?name=" + encodeURIComponent(file.name), { method: "POST", headers: { "Content-Type": "text/plain; charset=utf-8" }, body: text });
+    }).then(function (r) {
+      return r.json().then(function (data) {
+        if (!r.ok) throw new Error(data.error || "Upload failed");
+        status.textContent = "Uploaded \"" + data.name + "\" (" + data.count + " channels). It will appear on your TV.";
+        status.className = "status ok";
+        fileEl.value = ""; refresh();
+      });
+    }).catch(function (e) {
+      status.textContent = e.message || "Upload failed";
+      status.className = "status err";
+    }).then(function () { btn.disabled = false; });
+  });
+  refresh();
+</script>
+</body>
+</html>
