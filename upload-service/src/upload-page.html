@@ -5,71 +5,320 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Upload M3U Playlist</title>
 <style>
-  body { font-family: system-ui, -apple-system, sans-serif; max-width: 640px; margin: 0 auto; padding: 24px; background: #14121f; color: #eee; }
-  h1 { color: #8b7fd6; font-size: 22px; }
-  .card { background: #201b35; border: 1px solid #34304d; border-radius: 12px; padding: 20px; margin-bottom: 20px; }
-  input[type=file] { width: 100%; padding: 12px; background: #14121f; border: 1px solid #34304d; border-radius: 8px; color: #eee; }
-  button { margin-top: 16px; width: 100%; padding: 14px; font-size: 16px; background: #6c5ce7; color: #fff; border: none; border-radius: 8px; cursor: pointer; }
-  button:disabled { opacity: 0.5; }
-  .status { margin-top: 14px; font-size: 15px; }
-  .ok { color: #5ad17a; }
-  .err { color: #ff6b6b; }
-  ul { list-style: none; padding: 0; }
-  li { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #34304d; }
-  .del { width: auto; margin: 0; padding: 8px 14px; background: #c0392b; font-size: 14px; }
-  .muted { color: #888; font-size: 14px; }
+  *, *::before, *::after { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: linear-gradient(180deg, #f6f7fb 0%, #eef0f7 100%);
+    color: #1a2138;
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 32px 16px;
+  }
+  .card {
+    background: #ffffff;
+    width: 100%;
+    max-width: 480px;
+    border-radius: 20px;
+    padding: 32px 28px;
+    box-shadow: 0 12px 36px rgba(20, 28, 60, 0.06);
+  }
+  .title { font-size: 22px; font-weight: 600; text-align: center; margin: 0 0 6px; color: #1a2138; }
+  .subtitle { font-size: 13px; text-align: center; color: #8a93a8; margin: 0 0 24px; }
+
+  .drop {
+    display: block;
+    border: 2px dashed #c1cce0;
+    border-radius: 16px;
+    background: #fafcff;
+    padding: 36px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .drop.drag { background: #eef4ff; border-color: #4c7eff; }
+  .drop svg { width: 56px; height: 56px; color: #4c7eff; display: block; margin: 0 auto 10px; }
+  .drop .primary { font-size: 15px; color: #1a2138; margin: 0 0 8px; }
+  .drop .or { font-size: 13px; color: #8a93a8; margin: 0 0 12px; }
+  .browse {
+    display: inline-block;
+    background: #e8efff;
+    color: #4c7eff;
+    border-radius: 8px;
+    padding: 8px 18px;
+    font-size: 14px;
+    font-weight: 500;
+  }
+  #file { display: none; }
+
+  .section { font-size: 14px; font-weight: 600; color: #1a2138; margin: 28px 0 8px; }
+  ul { list-style: none; padding: 0; margin: 0; }
+  .empty { color: #8a93a8; font-size: 14px; padding: 16px; text-align: center; }
+
+  .item {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid #f0f2f7;
+  }
+  .item:last-child { border-bottom: none; }
+  .item .icon {
+    flex: 0 0 34px;
+    height: 40px;
+    border-radius: 4px;
+    background: #4c7eff;
+    color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.4px;
+    clip-path: polygon(0 0, 80% 0, 100% 20%, 100% 100%, 0 100%);
+  }
+  .item .content { flex: 1 1 auto; min-width: 0; }
+  .item .row1 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .item .name {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 14px;
+    color: #1a2138;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .item .size { color: #8a93a8; font-weight: normal; font-size: 13px; margin-left: 4px; }
+  /* Row 2 shows the progress bar while uploading, or the status message once
+     done/failed. Exactly one is visible at a time. */
+  .item .row2 { margin-top: 6px; }
+  .item .bar {
+    height: 4px;
+    background: #eef0f5;
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .item .bar > i {
+    display: block;
+    height: 100%;
+    width: 0%;
+    background: #ff8a3d;
+    transition: width 0.2s;
+  }
+  .item .msg {
+    font-size: 13px;
+    line-height: 1.4;
+    color: #8a93a8;
+    word-break: break-word;
+  }
+  .item .msg.ok { color: #34c759; font-weight: 500; }
+  .item .msg.err { color: #ff4757; font-weight: 500; }
+  /* While uploading: show bar, hide msg. Once done/err/persisted: hide bar,
+     show msg. */
+  .item .row2 .msg { display: none; }
+  .item.done .row2 .bar, .item.err .row2 .bar, .item.persisted .row2 .bar { display: none; }
+  .item.done .row2 .msg, .item.err .row2 .msg, .item.persisted .row2 .msg { display: block; }
+
+  .item .x {
+    flex: 0 0 28px;
+    background: transparent;
+    border: none;
+    color: #b0b8c8;
+    cursor: pointer;
+    font-size: 16px;
+    width: 28px; height: 28px;
+    padding: 0;
+    border-radius: 4px;
+  }
+  .item .x:hover { background: #f0f2f7; color: #6c7488; }
 </style>
 </head>
 <body>
-  <h1>Upload M3U Playlist</h1>
   <div class="card">
-    <input type="file" id="file" accept=".m3u,.m3u8,audio/x-mpegurl,application/vnd.apple.mpegurl">
-    <button id="upload" disabled>Upload</button>
-    <div class="status" id="status"></div>
+    <h1 class="title">Upload M3U Playlist</h1>
+    <p class="subtitle">Drop .m3u files here to add them to the TV</p>
+
+    <label class="drop" id="drop">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M20.39 18.39A5 5 0 0018 9h-1.26A5.5 5.5 0 006 11A4 4 0 003 16.3"/>
+        <path d="M16 16l-4-4-4 4"/>
+        <path d="M12 12v9"/>
+      </svg>
+      <p class="primary">Drag &amp; drop your .m3u files here</p>
+      <p class="or">or</p>
+      <span class="browse">Browse Files</span>
+      <input type="file" id="file" multiple accept=".m3u,.m3u8,audio/x-mpegurl,application/vnd.apple.mpegurl">
+    </label>
+
+    <div class="section">Playlists</div>
+    <ul id="list"><li class="empty">No playlists yet</li></ul>
   </div>
-  <div class="card">
-    <h1>Uploaded</h1>
-    <ul id="list"><li class="muted">Loading...</li></ul>
-  </div>
+
 <script>
+  var drop = document.getElementById("drop");
   var fileEl = document.getElementById("file");
-  var btn = document.getElementById("upload");
-  var status = document.getElementById("status");
   var list = document.getElementById("list");
-  fileEl.addEventListener("change", function () { btn.disabled = !fileEl.files.length; });
+
+  // Drag-over highlight + drop handling. We listen on the whole document for
+  // dragover/dragleave so the highlight feels reactive across the page, but
+  // only the drop zone accepts the drop.
+  ["dragenter","dragover"].forEach(function (ev) {
+    document.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add("drag"); });
+  });
+  document.addEventListener("dragleave", function (e) {
+    if (e.target === document || e.relatedTarget == null) drop.classList.remove("drag");
+  });
+  document.addEventListener("drop", function (e) {
+    e.preventDefault();
+    drop.classList.remove("drag");
+    var files = e.dataTransfer && e.dataTransfer.files;
+    if (files) Array.from(files).forEach(upload);
+  });
+  fileEl.addEventListener("change", function () {
+    Array.from(fileEl.files).forEach(upload);
+    fileEl.value = "";
+  });
+
+  function fmtSize(b) {
+    if (b < 1024) return b + " B";
+    if (b < 1024 * 1024) return (b / 1024).toFixed(1) + " KB";
+    return (b / 1024 / 1024).toFixed(1) + " MB";
+  }
+
+  // Build a single row. Returns the <li>. Layout:
+  //   [icon] [content: row1=name+size, row2=bar OR msg] [x]
+  function makeRow(opts) {
+    var li = document.createElement("li");
+    li.className = "item";
+    if (opts.cls) li.classList.add(opts.cls);
+
+    var icon = document.createElement("div");
+    icon.className = "icon"; icon.textContent = "M3U";
+
+    var content = document.createElement("div"); content.className = "content";
+
+    var row1 = document.createElement("div"); row1.className = "row1";
+    var name = document.createElement("div"); name.className = "name";
+    name.appendChild(document.createTextNode(opts.name));
+    if (opts.sub) {
+      var s = document.createElement("span"); s.className = "size";
+      s.textContent = "(" + opts.sub + ")";
+      name.appendChild(s);
+    }
+    row1.appendChild(name);
+
+    var row2 = document.createElement("div"); row2.className = "row2";
+    var bar = document.createElement("div"); bar.className = "bar";
+    bar.appendChild(document.createElement("i"));
+    var msg = document.createElement("div"); msg.className = "msg";
+    if (opts.msg) msg.textContent = opts.msg;
+    if (opts.msgClass) msg.classList.add(opts.msgClass);
+    row2.appendChild(bar); row2.appendChild(msg);
+
+    content.appendChild(row1); content.appendChild(row2);
+
+    var x = document.createElement("button");
+    x.type = "button"; x.className = "x"; x.textContent = "✕";
+    if (opts.onCancel) x.onclick = opts.onCancel;
+
+    li.appendChild(icon); li.appendChild(content); li.appendChild(x);
+    return li;
+  }
+
+  // Refresh persisted rows from /uploads. Leaves in-progress and just-finished
+  // rows (data-id set after success) alone so a stale fetch doesn't wipe them.
   function refresh() {
     fetch("/uploads").then(function (r) { return r.json(); }).then(function (items) {
-      if (!items.length) { list.innerHTML = "<li class=\"muted\">No playlists yet</li>"; return; }
-      list.innerHTML = "";
+      var existingIds = {};
+      Array.from(list.querySelectorAll("li[data-id]")).forEach(function (n) { existingIds[n.dataset.id] = n; });
+      var seen = {};
       items.forEach(function (it) {
-        var li = document.createElement("li");
-        var span = document.createElement("span");
-        span.textContent = it.name + " (" + it.count + " channels)";
-        var del = document.createElement("button");
-        del.className = "del"; del.textContent = "Delete";
-        del.onclick = function () { fetch("/uploads/" + encodeURIComponent(it.id), { method: "DELETE" }).then(refresh); };
-        li.appendChild(span); li.appendChild(del); list.appendChild(li);
+        seen[it.id] = true;
+        if (existingIds[it.id]) return; // already rendered (in-progress just finished, or already persisted)
+        var li = makeRow({
+          name: it.name,
+          sub: it.count + " channel" + (it.count === 1 ? "" : "s"),
+          msg: "✓",
+          msgClass: "ok",
+          cls: "persisted",
+          onCancel: function () {
+            fetch("/uploads/" + encodeURIComponent(it.id), { method: "DELETE" }).then(refresh);
+          },
+        });
+        li.dataset.id = it.id;
+        list.appendChild(li);
       });
-    }).catch(function () { list.innerHTML = "<li class=\"err\">Failed to load list</li>"; });
+      // Drop persisted rows whose ids no longer exist on the server.
+      Object.keys(existingIds).forEach(function (id) {
+        if (!seen[id]) existingIds[id].remove();
+      });
+      maybeShowEmpty();
+    }).catch(function () { /* keep stale list on network failure */ });
   }
-  btn.addEventListener("click", function () {
-    var file = fileEl.files[0];
-    if (!file) return;
-    btn.disabled = true; status.textContent = "Uploading..."; status.className = "status";
-    file.text().then(function (text) {
-      return fetch("/uploads?name=" + encodeURIComponent(file.name), { method: "POST", headers: { "Content-Type": "text/plain; charset=utf-8" }, body: text });
-    }).then(function (r) {
-      return r.json().then(function (data) {
-        if (!r.ok) throw new Error(data.error || "Upload failed");
-        status.textContent = "Uploaded \"" + data.name + "\" (" + data.count + " channels). It will appear on your TV.";
-        status.className = "status ok";
-        fileEl.value = ""; refresh();
-      });
-    }).catch(function (e) {
-      status.textContent = e.message || "Upload failed";
-      status.className = "status err";
-    }).then(function () { btn.disabled = false; });
-  });
+
+  function maybeShowEmpty() {
+    var rows = list.querySelectorAll(".item");
+    var empty = list.querySelector(".empty");
+    if (rows.length === 0 && !empty) {
+      var e = document.createElement("li");
+      e.className = "empty";
+      e.textContent = "No playlists yet";
+      list.appendChild(e);
+    } else if (rows.length > 0 && empty) {
+      empty.remove();
+    }
+  }
+
+  function upload(file) {
+    var empty = list.querySelector(".empty");
+    if (empty) empty.remove();
+
+    var xhr = new XMLHttpRequest();
+    var li = makeRow({
+      name: file.name,
+      sub: fmtSize(file.size),
+      onCancel: function () { xhr.abort(); li.remove(); maybeShowEmpty(); },
+    });
+    list.insertBefore(li, list.firstChild);
+    var bar = li.querySelector(".bar > i");
+    var msg = li.querySelector(".msg");
+    var xBtn = li.querySelector(".x");
+
+    xhr.upload.onprogress = function (e) {
+      if (!e.lengthComputable) return;
+      bar.style.width = Math.round(e.loaded / e.total * 100) + "%";
+    };
+    xhr.onload = function () {
+      var data = null;
+      try { data = JSON.parse(xhr.responseText); } catch (e) {}
+      if (xhr.status >= 200 && xhr.status < 300 && data) {
+        li.classList.add("done");
+        msg.textContent = "Successfully uploaded";
+        msg.classList.add("ok");
+        li.dataset.id = data.id;
+        xBtn.onclick = function () {
+          fetch("/uploads/" + encodeURIComponent(data.id), { method: "DELETE" }).then(refresh);
+        };
+        setTimeout(refresh, 300);
+      } else {
+        li.classList.add("err");
+        msg.textContent = "Failed: " + ((data && data.error) || ("HTTP " + xhr.status));
+        msg.classList.add("err");
+      }
+    };
+    xhr.onerror = function () {
+      li.classList.add("err");
+      msg.textContent = "Failed: network error";
+      msg.classList.add("err");
+    };
+
+    xhr.open("POST", "/uploads?name=" + encodeURIComponent(file.name));
+    xhr.setRequestHeader("Content-Type", "text/plain; charset=utf-8");
+    xhr.send(file);
+  }
+
   refresh();
 </script>
 </body>
