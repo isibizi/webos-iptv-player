@@ -95,16 +95,50 @@ describe('Settings editing', () => {
 
   it('adds a playlist row and removes the empty hint', () => {
     click('#add-playlist');
-    expect(container.querySelectorAll('#playlist-entries .settings-row')).toHaveLength(1);
+    expect(container.querySelectorAll('#playlist-entries .settings-row:not(.playlist-header-row)')).toHaveLength(1);
     expect(container.querySelector('#playlist-entries .empty-hint')).toBeNull();
   });
 
   it('removes a playlist row', () => {
     state.playlists = [{ name: 'P1', url: 'http://a' }];
     settings.render();
-    expect(container.querySelectorAll('#playlist-entries .settings-row')).toHaveLength(1);
+    expect(container.querySelectorAll('#playlist-entries .settings-row:not(.playlist-header-row)')).toHaveLength(1);
     click('.remove-playlist');
-    expect(container.querySelectorAll('#playlist-entries .settings-row')).toHaveLength(0);
+    expect(container.querySelectorAll('#playlist-entries .settings-row:not(.playlist-header-row)')).toHaveLength(0);
+  });
+
+  it('shows Name/URL labels only once as column headers, not on every row', () => {
+    state.playlists = [
+      { name: 'P1', url: 'http://a' },
+      { name: 'P2', url: 'http://b' },
+      { name: 'P3', url: 'http://c' },
+    ];
+    settings.render();
+    // Exactly two labels in #playlist-entries: one "Name", one "URL".
+    const labels = Array.from(container.querySelectorAll<HTMLLabelElement>('#playlist-entries label'))
+      .map((l) => l.textContent?.trim());
+    expect(labels).toEqual(['Name', 'URL']);
+    // The data rows themselves contain no labels (just inputs + Remove button).
+    const dataRows = container.querySelectorAll('#playlist-entries .settings-row:not(.playlist-header-row)');
+    for (const row of dataRows) {
+      expect(row.querySelectorAll('label')).toHaveLength(0);
+    }
+  });
+
+  it('removing the last playlist row also removes the column-header row', () => {
+    state.playlists = [{ name: 'P1', url: 'http://a' }];
+    settings.render();
+    expect(container.querySelector('#playlist-entries .playlist-header-row')).not.toBeNull();
+    click('.remove-playlist');
+    expect(container.querySelector('#playlist-entries .playlist-header-row')).toBeNull();
+    expect(container.querySelector('#playlist-entries .empty-hint')?.textContent).toBe('No playlists added yet');
+  });
+
+  it('add-playlist on an empty list inserts the header row first', () => {
+    expect(container.querySelector('#playlist-entries .playlist-header-row')).toBeNull();
+    click('#add-playlist');
+    expect(container.querySelector('#playlist-entries .playlist-header-row')).not.toBeNull();
+    expect(container.querySelectorAll('#playlist-entries .settings-row:not(.playlist-header-row)')).toHaveLength(1);
   });
 
   it('toggles auto-play off to on', () => {
@@ -183,7 +217,7 @@ describe('Settings uploads section', () => {
 
   it('renders uploaded playlists in the upload section, not the URL editor', () => {
     settings.render();
-    expect(container.querySelectorAll('#playlist-entries .settings-row')).toHaveLength(1);
+    expect(container.querySelectorAll('#playlist-entries .settings-row:not(.playlist-header-row)')).toHaveLength(1);
     expect(container.querySelector('#playlist-entries input.playlist-name')!).toHaveProperty('value', 'Manual');
     const uploadRows = container.querySelectorAll('#upload-entries .settings-row');
     expect(uploadRows).toHaveLength(1);

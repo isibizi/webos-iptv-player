@@ -1,7 +1,7 @@
 .settings-view {
   padding: 40px 60px;
   overflow-y: auto;
-  height: 1032px;
+  height: 1080px;
   background: var(--bg-primary);
 }
 
@@ -75,22 +75,47 @@
   padding: 16px;
 }
 
-.upload-info {
-  font-size: 20px;
-  color: var(--text-secondary);
-  line-height: 1.5;
-  margin-bottom: 16px;
+.upload-section {
   display: flex;
-  align-items: center;
-  gap: 24px;
+  gap: 16px;
+  align-items: stretch;
 }
 
-.upload-instructions {
+.upload-box {
+  flex: 1;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  min-width: 0;
+}
+
+.upload-box-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  text-align: center;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.upload-box-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.upload-box-list .upload-entries {
   flex: 1;
 }
 
+.upload-entries .settings-field label {
+  font-size: inherit;
+  color: var(--text-primary);
+}
+
 .upload-qr {
-  flex-shrink: 0;
   width: 200px;
   height: 200px;
   padding: 12px;
@@ -103,4 +128,37 @@
   color: var(--accent);
   font-weight: 600;
   word-break: break-all;
+}
+
+.playlist-header-row {
+  margin-bottom: 4px;
+}
+
+.playlist-header-row .settings-field label {
+  margin: 0;
+}
+
+.playlist-header-spacer {
+  flex: 0 0 auto;
+  width: 120px;
+}
+
+#playlist-entries .settings-row > .settings-field:nth-child(1) { flex: 3; }
+#playlist-entries .settings-row > .settings-field:nth-child(2) { flex: 7; }
+
+.settings-toggle-row {
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.settings-toggle-row > label {
+  flex: 1;
+  font-size: 22px;
+  color: var(--text-secondary);
+}
+
+.settings-toggle-row > .toggle-btn {
+  flex: 0 0 auto;
+  min-width: 120px;
 }

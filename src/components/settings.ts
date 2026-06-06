@@ -72,21 +72,27 @@ export class Settings {
           <h3>Playlists</h3>
           <div class="playlist-entries" id="playlist-entries">
             ${playlists.length
-              ? playlists.map((pl, i) => html`
+              ? html`
+                <div class="settings-row playlist-header-row">
+                  <div class="settings-field"><label>Name</label></div>
+                  <div class="settings-field"><label>URL</label></div>
+                  <div class="playlist-header-spacer"></div>
+                </div>
+                ${playlists.map((pl, i) => html`
                 <div class="settings-row">
                   <div class="settings-field">
-                    <label>Name</label>
                     <input type="text" class="settings-input playlist-name"
+                           aria-label="Playlist name" placeholder="My Playlist"
                            data-focusable data-index="${i}" value="${pl.name || ''}">
                   </div>
                   <div class="settings-field">
-                    <label>URL</label>
                     <input type="text" class="settings-input playlist-url"
+                           aria-label="Playlist URL" placeholder="https://...m3u"
                            data-focusable data-index="${i}" value="${pl.url || ''}">
                   </div>
                   <button class="btn btn-danger remove-playlist" data-focusable data-index="${i}">Remove</button>
                 </div>
-              `)
+              `)}`
               : raw('<div class="empty-hint">No playlists added yet</div>')}
           </div>
           <button class="btn btn-primary" data-focusable id="add-playlist">+ Add Playlist</button>
@@ -94,19 +100,23 @@ export class Settings {
 
         <div class="settings-section">
           <h3>Upload Playlist</h3>
-          <div class="upload-info" id="upload-info">Checking upload service&hellip;</div>
-          <div class="upload-entries" id="upload-entries">
-            ${uploads.length
-              ? uploads.map((pl) => html`
-                <div class="settings-row" data-key="${pl.url}">
-                  <div class="settings-field wide">
-                    <label>${uploadLabel(pl)}</label>
-                  </div>
-                  <button class="btn btn-danger remove-upload" data-focusable
-                          data-url="${pl.url}">Remove</button>
-                </div>
-              `)
-              : raw('<div class="empty-hint">No uploaded playlists</div>')}
+          <div class="upload-section">
+            <div class="upload-box upload-box-info" id="upload-info">Checking upload service&hellip;</div>
+            <div class="upload-box upload-box-list">
+              <div class="upload-entries" id="upload-entries">
+                ${uploads.length
+                  ? uploads.map((pl) => html`
+                    <div class="settings-row" data-key="${pl.url}">
+                      <div class="settings-field wide">
+                        <label>${uploadLabel(pl)}</label>
+                      </div>
+                      <button class="btn btn-danger remove-upload" data-focusable
+                              data-url="${pl.url}">Remove</button>
+                    </div>
+                  `)
+                  : raw('<div class="empty-hint">No uploaded playlists</div>')}
+              </div>
+            </div>
           </div>
         </div>
 
@@ -123,14 +133,12 @@ export class Settings {
 
         <div class="settings-section">
           <h3>Playback</h3>
-          <div class="settings-row">
-            <div class="settings-field">
-              <label>Auto-play last channel on startup</label>
-              <button class="btn toggle-btn ${autoPlay ? 'active' : ''}"
-                      data-focusable id="auto-play-toggle">
-                ${autoPlay ? 'ON' : 'OFF'}
-              </button>
-            </div>
+          <div class="settings-row settings-toggle-row">
+            <label for="auto-play-toggle">Auto-play last channel on startup</label>
+            <button class="btn toggle-btn ${autoPlay ? 'active' : ''}"
+                    data-focusable id="auto-play-toggle">
+              ${autoPlay ? 'ON' : 'OFF'}
+            </button>
           </div>
         </div>
 
@@ -208,25 +216,36 @@ export class Settings {
     const entries = $('#playlist-entries', this.container);
     if (!entries) return;
 
-    const idx = entries.querySelectorAll('.settings-row').length;
+    // First add: replace the empty-hint with the column header row.
+    const emptyHint = entries.querySelector('.empty-hint');
+    if (emptyHint) {
+      emptyHint.remove();
+      const header = document.createElement('div');
+      header.className = 'settings-row playlist-header-row';
+      header.innerHTML = `
+        <div class="settings-field"><label>Name</label></div>
+        <div class="settings-field"><label>URL</label></div>
+        <div class="playlist-header-spacer"></div>
+      `;
+      entries.appendChild(header);
+    }
+
+    const idx = entries.querySelectorAll('.settings-row:not(.playlist-header-row)').length;
     const row = document.createElement('div');
     row.className = 'settings-row';
     row.innerHTML = `
       <div class="settings-field">
-        <label>Name</label>
         <input type="text" class="settings-input playlist-name"
-               data-focusable data-index="${idx}" value="" placeholder="My Playlist">
+               aria-label="Playlist name" placeholder="My Playlist"
+               data-focusable data-index="${idx}" value="">
       </div>
       <div class="settings-field">
-        <label>URL</label>
         <input type="text" class="settings-input playlist-url"
-               data-focusable data-index="${idx}" value="" placeholder="https://...m3u">
+               aria-label="Playlist URL" placeholder="https://...m3u"
+               data-focusable data-index="${idx}" value="">
       </div>
       <button class="btn btn-danger remove-playlist" data-focusable data-index="${idx}">Remove</button>
     `;
-
-    const emptyHint = entries.querySelector('.empty-hint');
-    if (emptyHint) emptyHint.remove();
     entries.appendChild(row);
 
     const newInput = row.querySelector<HTMLElement>('input');
@@ -239,8 +258,17 @@ export class Settings {
   private removePlaylistEntry(index: number): void {
     const entries = $('#playlist-entries', this.container);
     if (!entries) return;
-    const rows = entries.querySelectorAll('.settings-row');
-    if (rows[index]) rows[index].remove();
+    const dataRows = entries.querySelectorAll('.settings-row:not(.playlist-header-row)');
+    if (dataRows[index]) dataRows[index].remove();
+    // Drop the header row too if no data rows remain (lone header would look orphaned).
+    if (entries.querySelectorAll('.settings-row:not(.playlist-header-row)').length === 0) {
+      const header = entries.querySelector('.playlist-header-row');
+      if (header) header.remove();
+      const e = document.createElement('div');
+      e.className = 'empty-hint';
+      e.textContent = 'No playlists added yet';
+      entries.appendChild(e);
+    }
     this.nav.focusFirst();
   }
 
@@ -290,12 +318,10 @@ export class Settings {
     if (info) {
       const url = info.uploadUrl;
       morph(target, html`
-        <div class="upload-instructions">
-          On a phone or computer connected to the same network, scan this QR code
-          (or open <span class="upload-url">${url}</span>) and choose an .m3u file.
-          Uploaded playlists appear here automatically.
-        </div>
         <img class="upload-qr" alt="QR code linking to ${url}" src="${qrDataUrl(url)}">
+        <div class="upload-instructions">
+          Scan QR code or open <span class="upload-url">${url}</span> to upload m3u files.
+        </div>
       `);
     } else {
       morph(target, html`<span>Upload service is not running.</span>`);
@@ -311,7 +337,7 @@ export class Settings {
     StorageService.remove('cached_playlist');
     showToast('Uploaded playlist removed');
 
-    this.render();
+    await this.refreshUploads();
   }
 
   /**
