@@ -96,3 +96,29 @@ the HTTP server is torn down. Luna respawns the process on cold start
   keepAlive activity while the app is invisible is wasteful and a small
   attack surface. Closing it on hidden costs only a fresh `listen(0)`
   when the app returns.
+- **Why M3U only — why not EPG upload too?** The upload plumbing is
+  content-agnostic and could carry an XMLTV file just as easily, but it
+  would be the wrong model for EPG:
+  - **EPG is time-sensitive; an upload is a frozen snapshot.** The app
+    refreshes EPG every 12h and keeps only a ±7-day programme window
+    (`src/services/epg-service.ts`, `src/parsers/xmltv-parser.ts`). An
+    uploaded XMLTV file is stale within a day or two and effectively
+    empty within a week — so the user would have to re-upload every
+    couple of days, forever. A playlist, by contrast, is static: upload
+    once and it stays valid. Upload fits M3U precisely because M3U
+    doesn't expire.
+  - **EPG almost always travels as a URL.** It's embedded in the M3U
+    header (`x-tvg-url` / `url-tvg`, auto-detected) or fetched from a
+    public aggregator. The "I have a file but no hosted URL" gap that
+    justifies M3U upload barely exists for EPG.
+  - **The local-source case is already covered — and stays fresh.** The
+    manual EPG URL field in **Settings → EPG**, plus the
+    localhost→playlist-host rewrite in `src/services/playlist-service.ts`
+    (for users running a local proxy like xTeVe/Threadfin that serves
+    M3U and XMLTV from the same box), let the TV *pull* fresh EPG by URL.
+    Pull stays current automatically; a push upload does not. For EPG,
+    pull strictly dominates.
+
+  If genuine demand for fully offline, file-based EPG ever shows up, the
+  better shape is a per-playlist EPG URL the TV can re-pull, not a
+  one-shot upload that throws away the freshness guarantee.
