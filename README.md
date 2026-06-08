@@ -22,6 +22,43 @@ An IPTV player for LG webOS TVs. Supports M3U playlists, XMLTV programme guides,
 - **Auto-play** — Resume last watched channel on startup
 - **Desktop Preview** — Browser-based preview with HLS.js and mpegts.js fallbacks
 
+## Install on your TV
+
+1. **Download the app.** On your computer, open the
+   [Releases page](https://github.com/lennylxx/webos-iptv-player/releases/latest)
+   and download the latest `.ipk` file.
+
+2. **Install the webOS CLI tools.** Install [Node.js](https://nodejs.org/) (v18+), then run:
+
+   ```bash
+   npm install -g @webos-tools/cli
+   ```
+
+3. **Turn on Developer Mode on the TV.**
+   - Create a free account at the [LG webOS Developer site](https://webostv.developer.lge.com/).
+   - On the TV, open the **LG Content Store**, search for **Developer Mode**, then
+     install and open it.
+   - Sign in with your LG developer account and switch **Dev Mode Status** to **ON**.
+     The TV restarts. Note the **IP address** and **passphrase** the app shows.
+
+4. **Register your TV.** Add it as a device named `tv` (replace the IP with your TV's):
+
+   ```bash
+   ares-setup-device --add tv -i "username=prisoner" -i "host=127.0.0.1" -i "port=9922"
+   ```
+
+   Then fetch the device key, entering the **passphrase** from the Developer Mode app when prompted:
+
+   ```bash
+   ares-novacom --device tv --getkey
+   ```
+
+5. **Install the app.**
+
+   ```bash
+   ares-install --device tv ./com.lennylxx.iptv_<version>_all.ipk
+   ```
+
 ## Requirements
 
 - [Node.js](https://nodejs.org/) (v18+)
