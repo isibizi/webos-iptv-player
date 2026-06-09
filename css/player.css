@@ -256,7 +256,8 @@
   cursor: pointer;
   transition: var(--transition);
   gap: 14px;
-  min-height: 72px;
+  height: 90px;
+  flex-shrink: 0;
 }
 
 .player-sidebar .sidebar-ch-item.playing {
@@ -314,6 +315,7 @@
 
 .player-sidebar .sidebar-ch-item .ch-name {
   font-size: 24px;
+  line-height: 1.25;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -321,6 +323,7 @@
 
 .player-sidebar .sidebar-ch-item .ch-now {
   font-size: 20px;
+  line-height: 1.25;
   color: var(--text-secondary);
   overflow: hidden;
   white-space: nowrap;
