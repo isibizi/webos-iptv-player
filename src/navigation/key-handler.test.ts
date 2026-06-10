@@ -66,18 +66,44 @@ describe('KeyHandler', () => {
       expect(handler).not.toHaveBeenCalled();
     });
 
-    it('does not handle keys when an input field is focused', () => {
+    // Text-editing keys stay with a focused input: digits are typed into the
+    // query, arrows move the caret, and the channel-list's own listener handles
+    // Enter/ArrowDown/Escape to leave the search box.
+    it.each([
+      [K.UP], [K.DOWN], [K.LEFT], [K.RIGHT], [K.ENTER], [27], [K.NUM_0 + 5],
+    ])('keeps text-editing key %i with a focused input (no app action)', (keyCode) => {
       const input = document.createElement('input');
       document.body.appendChild(input);
-      press(K.DOWN, input);
+      press(keyCode, input);
       expect(handler).not.toHaveBeenCalled();
     });
 
-    it('does not handle keys when a textarea is focused', () => {
+    // Dedicated remote-control buttons must still reach the app even while the
+    // search box has focus — otherwise Back can't exit, Red/Blue can't open
+    // EPG/Settings, etc.
+    it.each([
+      [K.BACK, 'back'],
+      [K.RED, 'red'],
+      [K.GREEN, 'green'],
+      [K.YELLOW, 'yellow'],
+      [K.BLUE, 'blue'],
+      [K.CH_UP, 'channel_up'],
+      [K.CH_DOWN, 'channel_down'],
+      [K.PLAY, 'play'],
+      [K.PAUSE, 'pause'],
+      [K.STOP, 'stop'],
+    ])('routes remote-control key %i to the app as "%s" from a focused input', (keyCode, action) => {
+      const input = document.createElement('input');
+      document.body.appendChild(input);
+      press(keyCode, input);
+      expect(handler).toHaveBeenCalledWith(action);
+    });
+
+    it('routes Back to the app from a focused textarea', () => {
       const ta = document.createElement('textarea');
       document.body.appendChild(ta);
-      press(K.ENTER, ta);
-      expect(handler).not.toHaveBeenCalled();
+      press(K.BACK, ta);
+      expect(handler).toHaveBeenCalledWith('back');
     });
   });
 

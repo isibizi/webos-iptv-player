@@ -24,6 +24,18 @@ const ACTION_MAP: Record<number, Action> = {
   [K.STOP]: 'stop',
 };
 
+// Remote-control keys that must still reach the app even when a text input has
+// focus. Text-editing keys are deliberately excluded so the input keeps them:
+// digits are typed into the query, Left/Right/Up move the caret, and the
+// channel-list's own listener handles Enter/ArrowDown/Escape to leave the box.
+// Without this, pressing these dedicated buttons while the search box is focused
+// (its blinking caret) did nothing — Back couldn't exit, Red/Blue couldn't open
+// EPG/Settings, etc.
+const INPUT_PASSTHROUGH_KEYS = new Set<number>([
+  K.BACK, K.RED, K.GREEN, K.YELLOW, K.BLUE,
+  K.CH_UP, K.CH_DOWN, K.PLAY, K.PAUSE, K.STOP,
+]);
+
 let activeHandler: ActionHandler | null = null;
 let numberBuffer = '';
 let numberTimer: ReturnType<typeof setTimeout> | null = null;
@@ -52,9 +64,11 @@ function handleNumber(digit: number): void {
 export const KeyHandler = {
   init(): void {
     document.addEventListener('keydown', (e: KeyboardEvent) => {
-      // Let input fields handle their own keyboard events
+      // Let input fields handle their own text-editing keys, but dedicated
+      // remote-control buttons (Back, colored, channel, media) must still reach
+      // the app — see INPUT_PASSTHROUGH_KEYS.
       const tag = (e.target as HTMLElement).tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      if ((tag === 'INPUT' || tag === 'TEXTAREA') && !INPUT_PASSTHROUGH_KEYS.has(e.keyCode)) return;
 
       const keyCode = e.keyCode;
 
