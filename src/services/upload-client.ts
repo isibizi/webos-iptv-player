@@ -46,7 +46,7 @@ function base(): string | null {
   return `http://${CONFIG.SERVICE_HOST}:${runtimePort}`;
 }
 
-/** Derive the stored upload id from its serve URL (…/uploads/<id>.m3u). */
+/** Derive the stored upload id from its /uploads/<id>.m3u serve URL. */
 export function uploadIdFromUrl(url: string): string {
   const m = url.match(/\/uploads\/([^/]+?)(?:\.m3u)?$/i);
   return m ? decodeURIComponent(m[1]) : '';

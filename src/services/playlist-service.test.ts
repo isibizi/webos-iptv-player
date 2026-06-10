@@ -121,6 +121,44 @@ describe('PlaylistService.load', () => {
   });
 });
 
+describe('PlaylistService.indexOf', () => {
+  beforeEach(() => {
+    storageMock.getPlaylists.mockReturnValue([
+      { name: 'P1', url: 'http://host1/p1.m3u' },
+      { name: 'P2', url: 'http://host2/p2.m3u' },
+    ]);
+    fetchTextMock.mockImplementation((url: string) =>
+      Promise.resolve(url.includes('p1') ? P1 : P2),
+    );
+  });
+
+  it('maps each channel to its global index after load', async () => {
+    await PlaylistService.refresh();
+    PlaylistService.channels.forEach((ch, i) =>
+      expect(PlaylistService.indexOf(ch)).toBe(i));
+  });
+
+  it('returns -1 for a channel not in the list', async () => {
+    await PlaylistService.refresh();
+    expect(PlaylistService.indexOf(channel({ name: 'Ghost' }))).toBe(-1);
+  });
+
+  it('stays in sync after a re-load (no stale indices)', async () => {
+    await PlaylistService.refresh();
+    storageMock.getPlaylists.mockReturnValue([{ name: 'P2', url: 'http://host2/p2.m3u' }]);
+    await PlaylistService.refresh();
+    expect(PlaylistService.channels.map(c => PlaylistService.indexOf(c)))
+      .toEqual(PlaylistService.channels.map((_, i) => i));
+  });
+
+  it('returns -1 after reset()', async () => {
+    await PlaylistService.refresh();
+    const first = PlaylistService.channels[0];
+    PlaylistService.reset();
+    expect(PlaylistService.indexOf(first)).toBe(-1);
+  });
+});
+
 describe('PlaylistService.getByGroup', () => {
   beforeEach(() => {
     PlaylistService.channels = [

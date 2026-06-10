@@ -101,7 +101,7 @@ export class Settings {
         <div class="settings-section">
           <h3>Upload Playlist</h3>
           <div class="upload-section">
-            <div class="upload-box upload-box-info" id="upload-info">Checking upload service&hellip;</div>
+            <div class="upload-box upload-box-info" id="upload-info">Checking upload service...</div>
             <div class="upload-box upload-box-list">
               <div class="upload-entries" id="upload-entries">
                 ${uploads.length

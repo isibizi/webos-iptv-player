@@ -11,6 +11,7 @@ class PlaylistServiceImpl {
   groups: string[] = [];
   playlistNames: string[] = [];
   epgUrls: string[] = [];
+  private indexMap = new Map<Channel, number>(); // channel -> global index, O(1) indexOf
 
   /**
    * Clear all in-memory state. Called when the user removes every configured
@@ -22,6 +23,7 @@ class PlaylistServiceImpl {
     this.groups = [];
     this.playlistNames = [];
     this.epgUrls = [];
+    this.indexMap = new Map();
   }
 
   async load(): Promise<Channel[]> {
@@ -103,7 +105,10 @@ class PlaylistServiceImpl {
 
   private buildGroups(): void {
     const groupSet = new Set<string>();
-    for (const ch of this.channels) {
+    this.indexMap = new Map();
+    for (let i = 0; i < this.channels.length; i++) {
+      const ch = this.channels[i];
+      this.indexMap.set(ch, i);
       if (ch.group) groupSet.add(ch.group);
     }
     this.groups = Array.from(groupSet);
@@ -154,7 +159,7 @@ class PlaylistServiceImpl {
   }
 
   indexOf(channel: Channel): number {
-    return this.channels.indexOf(channel);
+    return this.indexMap.get(channel) ?? -1;
   }
 }
 
