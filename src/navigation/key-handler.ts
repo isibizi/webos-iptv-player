@@ -12,7 +12,7 @@ const ACTION_MAP: Record<number, Action> = {
   [K.RIGHT]: 'right',
   [K.ENTER]: 'select',
   [K.BACK]: 'back',
-  27: 'back', // Escape key for desktop
+  [K.ESC]: 'back', // Escape key for desktop
   [K.RED]: 'red',
   [K.GREEN]: 'green',
   [K.YELLOW]: 'yellow',

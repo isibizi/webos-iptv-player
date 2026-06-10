@@ -46,7 +46,7 @@ describe('KeyHandler', () => {
       [K.RIGHT, 'right'],
       [K.ENTER, 'select'],
       [K.BACK, 'back'],
-      [27, 'back'], // Escape on desktop
+      [K.ESC, 'back'], // Escape on desktop
       [K.RED, 'red'],
       [K.GREEN, 'green'],
       [K.YELLOW, 'yellow'],
@@ -70,7 +70,7 @@ describe('KeyHandler', () => {
     // query, arrows move the caret, and the channel-list's own listener handles
     // Enter/ArrowDown/Escape to leave the search box.
     it.each([
-      [K.UP], [K.DOWN], [K.LEFT], [K.RIGHT], [K.ENTER], [27], [K.NUM_0 + 5],
+      [K.UP], [K.DOWN], [K.LEFT], [K.RIGHT], [K.ENTER], [K.ESC], [K.NUM_0 + 5],
     ])('keeps text-editing key %i with a focused input (no app action)', (keyCode) => {
       const input = document.createElement('input');
       document.body.appendChild(input);

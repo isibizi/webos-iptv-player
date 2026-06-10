@@ -30,6 +30,7 @@ export const CONFIG = {
     RIGHT: 39,
     ENTER: 13,
     BACK: 461,
+    ESC: 27, // Escape key for desktop, maps to Back
     RED: 403,
     GREEN: 404,
     YELLOW: 405,

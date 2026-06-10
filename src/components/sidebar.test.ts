@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { Channel } from '../types';
+import { CONFIG } from '../config';
 
 const { channels } = vi.hoisted(() => {
   function makeChannel(over: Partial<Channel>): Channel {
@@ -195,7 +196,7 @@ describe('Sidebar', () => {
     }
 
     it.each([
-      ['Back', { keyCode: 461 }],
+      ['Back', { keyCode: CONFIG.KEYS.BACK }],
       ['Escape', { key: 'Escape' }],
       ['Enter', { key: 'Enter' }],
       ['ArrowDown', { key: 'ArrowDown' }],
@@ -326,7 +327,7 @@ describe('Sidebar', () => {
       sidebar.show();
       sidebar.handleAction('select');
       el.querySelector<HTMLInputElement>('.sidebar-search-input')!
-        .dispatchEvent(new KeyboardEvent('keydown', { keyCode: 461, bubbles: true }));
+        .dispatchEvent(new KeyboardEvent('keydown', { keyCode: CONFIG.KEYS.BACK, bubbles: true }));
       expect(sidebar.visible).toBe(false);
     });
 
