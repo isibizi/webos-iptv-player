@@ -33,6 +33,9 @@ export class ChannelList {
       if (btn) this.onOpenSettings();
     });
 
+    // Cursor left the view: drop the hover highlight.
+    this.container.addEventListener('mouseleave', () => this.nav.clearHighlight());
+
     this.container.addEventListener('input', (e: Event) => {
       const t = e.target as HTMLElement;
       if (!t.classList.contains('channel-search-input')) return;

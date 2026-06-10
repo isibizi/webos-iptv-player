@@ -201,6 +201,29 @@ describe('Sidebar', () => {
       expect(items()[2].classList.contains('focused')).toBe(true);
     });
 
+    it('hovering up onto the search box highlights it and clears the channel', () => {
+      items()[1].dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+      expect(items()[1].classList.contains('focused')).toBe(true);
+      const search = el.querySelector<HTMLElement>('.sidebar-search-input')!;
+      search.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+      expect(items().some(i => i.classList.contains('focused'))).toBe(false);
+      expect(search.classList.contains('focused')).toBe(true);
+    });
+
+    it('clears the highlight when the cursor leaves the sidebar', () => {
+      items()[2].dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+      expect(items()[2].classList.contains('focused')).toBe(true);
+      el.dispatchEvent(new MouseEvent('mouseleave'));
+      expect(el.querySelectorAll('.focused')).toHaveLength(0);
+    });
+
+    it('re-shows the highlight when the cursor returns to the same row', () => {
+      items()[2].dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+      el.dispatchEvent(new MouseEvent('mouseleave'));
+      items()[2].dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); // same row
+      expect(items()[2].classList.contains('focused')).toBe(true);
+    });
+
     it('hover only re-highlights when the position changes', () => {
       const spy = vi.spyOn(sidebar as unknown as { updateFocus: () => void }, 'updateFocus');
       const row = items()[1];

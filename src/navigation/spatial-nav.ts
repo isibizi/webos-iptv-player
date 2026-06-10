@@ -36,6 +36,11 @@ export class SpatialNav {
     }
   }
 
+  /** Remove the visual highlight but keep `focused` so d-pad/hover can re-show it. */
+  clearHighlight(): void {
+    this.focused?.classList.remove('focused');
+  }
+
   focusFirst(): void {
     const items = this.getFocusables();
     if (items.length) this.focus(items[0]);

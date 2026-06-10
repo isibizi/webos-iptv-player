@@ -25,6 +25,7 @@ export class Sidebar {
   private playlist = ''; // '' = All
   private searchQuery = ''; // persists across opens (show() doesn't reset it)
   keyboardOn = false; // while on, the sidebar never auto-hides
+  private hoverCleared = false; // highlight removed on mouseleave; next hover re-shows it
 
   constructor(
     container: HTMLElement,
@@ -173,7 +174,14 @@ export class Sidebar {
     this.resetTimer();
   }
 
+  /** Drop the hover highlight; next hover/d-pad re-shows it (see hoverCleared). */
+  private clearHover(): void {
+    this.el?.querySelectorAll('.focused').forEach(n => n.classList.remove('focused'));
+    this.hoverCleared = true;
+  }
+
   private updateFocus(items?: NodeListOf<HTMLElement>): void {
+    this.hoverCleared = false;
     if (!items) {
       if (!this.el) return;
       items = this.el.querySelectorAll<HTMLElement>('.sidebar-ch-item');
@@ -316,18 +324,25 @@ export class Sidebar {
       }
     });
 
-    // Hover moves focus highlight; only when the position actually changes.
+    // Hover moves the highlight onto a channel, or onto the search box (-1).
+    // Only re-highlight when the position actually changes.
     el.addEventListener('mouseover', (e: MouseEvent) => {
-      const item = (e.target as HTMLElement).closest<HTMLElement>('[data-sidebar-pos]');
-      if (item) {
-        const pos = parseInt(item.dataset.sidebarPos!, 10);
-        if (pos !== this.focusIdx) {
-          this.focusIdx = pos;
-          this.updateFocus();
-        }
-        this.resetTimer();
+      const target = e.target as HTMLElement;
+      const item = target.closest<HTMLElement>('[data-sidebar-pos]');
+      const pos = item
+        ? parseInt(item.dataset.sidebarPos!, 10)
+        : (target.closest('.sidebar-search-input') ? -1 : null);
+      if (pos === null) return;
+      if (pos !== this.focusIdx || this.hoverCleared) {
+        this.focusIdx = pos;
+        this.updateFocus();
       }
+      this.resetTimer();
     });
+
+    // Cursor left the sidebar: drop the hover highlight. focusIdx is kept so a
+    // later d-pad press or hover re-shows it.
+    el.addEventListener('mouseleave', () => this.clearHover());
 
     // Scroll wheel moves focus up/down
     el.addEventListener('wheel', (e: WheelEvent) => {

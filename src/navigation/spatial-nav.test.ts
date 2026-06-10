@@ -60,6 +60,17 @@ describe('SpatialNav', () => {
       expect(a.classList.contains('focused')).toBe(true);
     });
 
+    it('clearHighlight removes the class but keeps focused, and re-focus restores it', () => {
+      const a = focusable({ x: 0, y: 0 });
+      const nav = new SpatialNav(makeContainer(a));
+      nav.focus(a);
+      nav.clearHighlight();
+      expect(a.classList.contains('focused')).toBe(false);
+      expect(nav.focused).toBe(a); // kept for d-pad/hover resume
+      nav.focus(a); // cursor returns to the same element
+      expect(a.classList.contains('focused')).toBe(true);
+    });
+
     it('focus(null) clears the current focus', () => {
       const a = focusable({ x: 0, y: 0 });
       const nav = new SpatialNav(makeContainer(a));

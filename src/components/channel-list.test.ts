@@ -159,6 +159,13 @@ describe('ChannelList interaction', () => {
     expect(container.textContent).not.toContain('Alpha');
   });
 
+  it('clears the focused channel when the cursor leaves the view', () => {
+    hover(channelItems()[1]);
+    expect(channelItems()[1].classList.contains('focused')).toBe(true);
+    container.dispatchEvent(new MouseEvent('mouseleave'));
+    expect(channelItems()[1].classList.contains('focused')).toBe(false);
+  });
+
   it('green toggles the focused channel as a favorite', () => {
     hover(channelItems()[0]);
     list.handleAction('green');

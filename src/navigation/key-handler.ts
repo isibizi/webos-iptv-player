@@ -82,6 +82,9 @@ export const KeyHandler = {
         lastHover = null;
       }
     });
+    // Cursor left the window: forget the last hover so returning to the same
+    // element re-dispatches nav:hover (re-showing a cleared highlight).
+    document.documentElement.addEventListener('mouseleave', () => { lastHover = null; });
 
     // Magic Remote scroll wheel / desktop mouse wheel
     // Let any scrollable ancestor scroll natively — otherwise mouseover-driven
