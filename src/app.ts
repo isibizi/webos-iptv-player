@@ -289,8 +289,13 @@ class App {
       }
 
       if (epgUrl) {
-        EpgService.load().catch(err => log.error('EPG load failed:', err));
-        setInterval(() => EpgService.refresh(), CONFIG.EPG_REFRESH_INTERVAL);
+        EpgService.load()
+          .then(() => this.channelList.render())
+          .catch(err => log.error('EPG load failed:', err));
+        setInterval(() => EpgService.refresh()
+          .then(() => this.channelList.render())
+          .catch(err => log.error('EPG refresh failed:', err)),
+          CONFIG.EPG_REFRESH_INTERVAL);
       }
     } catch (err) {
       log.error('loadData failed:', err);
