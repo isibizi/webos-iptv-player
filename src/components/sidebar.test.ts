@@ -69,19 +69,34 @@ function items(): HTMLElement[] {
 
 describe('Sidebar', () => {
   describe('show / hide', () => {
-    it('renders all channels and focuses the currently playing one', () => {
+    it('highlights the search box on open without taking the caret', () => {
       sidebar.show();
       expect(sidebar.visible).toBe(true);
       expect(items()).toHaveLength(3);
-      expect(items()[1].classList.contains('focused')).toBe(true); // getCurrentIndex => 1
+      const search = el.querySelector<HTMLInputElement>('.sidebar-search-input')!;
+      expect(search.classList.contains('focused')).toBe(true);
+      expect(items().some(i => i.classList.contains('focused'))).toBe(false);
+      expect(document.activeElement).not.toBe(search); // no caret until OK
       expect(el.classList.contains('hidden')).toBe(false);
       expect(el.classList.contains('visible')).toBe(true);
     });
 
-    it('falls back to focus index 0 when the playing channel is not in the list', () => {
-      getCurrentIndex.mockReturnValue(-1);
+    it('OK on the highlighted search box gives it the caret at the end', () => {
+      const search = () => el.querySelector<HTMLInputElement>('.sidebar-search-input')!;
       sidebar.show();
-      expect(items()[0].classList.contains('focused')).toBe(true);
+      sidebar.handleAction('select'); // OK on the search box
+      search().value = 'char';
+      search().dispatchEvent(new Event('input', { bubbles: true }));
+      sidebar.hide();
+      sidebar.show();
+      // Reopen highlights but does not grab the caret; OK does, at the end.
+      expect(document.activeElement).not.toBe(search());
+      sidebar.handleAction('select');
+      const s = search();
+      expect(s.value).toBe('char');
+      expect(document.activeElement).toBe(s);
+      expect(s.selectionStart).toBe(s.value.length);
+      expect(items().map(i => i.querySelector('.ch-name')?.textContent)).toEqual(['Charlie']);
     });
 
     it('hide() removes the visible class and reports not visible', () => {
@@ -100,30 +115,64 @@ describe('Sidebar', () => {
   });
 
   describe('handleAction', () => {
-    beforeEach(() => sidebar.show());
+    // Opens highlighting the search box; Down enters the list at the first channel.
+    beforeEach(() => {
+      sidebar.show();
+      sidebar.handleAction('down');
+    });
+
+    it('enters the list at the top channel', () => {
+      expect(items()[0].classList.contains('focused')).toBe(true);
+    });
 
     it('down then up moves the focus highlight', () => {
-      sidebar.handleAction('down');
-      expect(items()[2].classList.contains('focused')).toBe(true);
-      sidebar.handleAction('up');
+      sidebar.handleAction('down'); // 0 -> 1
       expect(items()[1].classList.contains('focused')).toBe(true);
+      sidebar.handleAction('up'); // 1 -> 0
+      expect(items()[0].classList.contains('focused')).toBe(true);
     });
 
     it('channel_up / channel_down behave like up / down', () => {
-      sidebar.handleAction('channel_down');
-      expect(items()[2].classList.contains('focused')).toBe(true);
-      sidebar.handleAction('channel_up');
+      sidebar.handleAction('channel_down'); // 0 -> 1
       expect(items()[1].classList.contains('focused')).toBe(true);
+      sidebar.handleAction('channel_up'); // 1 -> 0
+      expect(items()[0].classList.contains('focused')).toBe(true);
     });
 
-    it('clamps at the ends', () => {
-      sidebar.handleAction('up'); // from 1 -> 0
-      sidebar.handleAction('up'); // stays 0
+    it('clamps at the bottom end', () => {
+      sidebar.handleAction('down'); // 0 -> 1
+      sidebar.handleAction('down'); // 1 -> 2 (last)
+      sidebar.handleAction('down'); // stays 2
+      expect(items()[2].classList.contains('focused')).toBe(true);
+    });
+
+    it('up from the top channel highlights the search box (no caret)', () => {
+      const search = el.querySelector<HTMLInputElement>('.sidebar-search-input')!;
+      sidebar.handleAction('up'); // from 0 -> search box
+      expect(items().some(i => i.classList.contains('focused'))).toBe(false);
+      expect(search.classList.contains('focused')).toBe(true);
+      expect(document.activeElement).not.toBe(search);
+    });
+
+    it('typing in the search box filters channels across playlists', () => {
+      const search = el.querySelector<HTMLInputElement>('.sidebar-search-input')!;
+      search.value = 'char';
+      search.dispatchEvent(new Event('input', { bubbles: true }));
+      const names = items().map(i => i.querySelector('.ch-name')?.textContent);
+      expect(names).toEqual(['Charlie']);
+    });
+
+    it('Enter in the search box drops focus onto the first result', () => {
+      const search = el.querySelector<HTMLInputElement>('.sidebar-search-input')!;
+      search.value = 'a';
+      search.dispatchEvent(new Event('input', { bubbles: true }));
+      search.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
       expect(items()[0].classList.contains('focused')).toBe(true);
     });
 
     it('select fires onSelectChannel with the global index and hides', () => {
-      sidebar.handleAction('down'); // focus index 2 (global 2)
+      sidebar.handleAction('down'); // 0 -> 1
+      sidebar.handleAction('down'); // 1 -> 2 (global 2)
       sidebar.handleAction('select');
       expect(onSelect).toHaveBeenCalledWith(2);
       expect(sidebar.visible).toBe(false);
@@ -153,10 +202,13 @@ describe('Sidebar', () => {
     });
 
     it('wheel down / up moves the focus highlight', () => {
+      // Opens on the search box (focusIdx -1); first wheel-down enters the list.
       el.dispatchEvent(new WheelEvent('wheel', { deltaY: 120, bubbles: true, cancelable: true }));
-      expect(items()[2].classList.contains('focused')).toBe(true);
-      el.dispatchEvent(new WheelEvent('wheel', { deltaY: -120, bubbles: true, cancelable: true }));
+      expect(items()[0].classList.contains('focused')).toBe(true);
+      el.dispatchEvent(new WheelEvent('wheel', { deltaY: 120, bubbles: true, cancelable: true }));
       expect(items()[1].classList.contains('focused')).toBe(true);
+      el.dispatchEvent(new WheelEvent('wheel', { deltaY: -120, bubbles: true, cancelable: true }));
+      expect(items()[0].classList.contains('focused')).toBe(true);
     });
 
     it('does not stack listeners across re-renders (single select per click)', () => {
@@ -174,6 +226,64 @@ describe('Sidebar', () => {
       sidebar.show();
       vi.advanceTimersByTime(5000);
       expect(sidebar.visible).toBe(false);
+    });
+
+    // Keyboard on → never auto-hide, wherever the mouse is.
+    it('stays open while the keyboard is on (OK pressed)', () => {
+      sidebar.show();
+      sidebar.handleAction('select'); // OK → keyboard on
+      expect(sidebar.keyboardOn).toBe(true);
+      vi.advanceTimersByTime(5000);
+      expect(sidebar.visible).toBe(true);
+    });
+
+    // Also holds when the box is focused by a pointer click (not just OK):
+    // the global click handler skips the sidebar, so focusin is what flips it on.
+    it('stays open when the search box is focused by pointer (keyboard on)', () => {
+      sidebar.show();
+      el.querySelector<HTMLInputElement>('.sidebar-search-input')!.focus();
+      expect(sidebar.keyboardOn).toBe(true);
+      vi.advanceTimersByTime(5000);
+      expect(sidebar.visible).toBe(true);
+    });
+
+    // Cancel/Back → keyboard off → hide (pointer not over the sidebar).
+    it('Cancel (Escape) on the search box turns the keyboard off and hides', () => {
+      sidebar.show();
+      sidebar.handleAction('select');
+      el.querySelector<HTMLInputElement>('.sidebar-search-input')!
+        .dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      expect(sidebar.keyboardOn).toBe(false);
+      expect(sidebar.visible).toBe(false);
+    });
+
+    it('Back on the search box turns the keyboard off and hides', () => {
+      sidebar.show();
+      sidebar.handleAction('select');
+      el.querySelector<HTMLInputElement>('.sidebar-search-input')!
+        .dispatchEvent(new KeyboardEvent('keydown', { keyCode: 461, bubbles: true }));
+      expect(sidebar.visible).toBe(false);
+    });
+
+    // The real webOS fix: keyboard dismissed while the input keeps the caret.
+    it('hides on keyboardStateChange:false even if the box keeps focus', () => {
+      sidebar.show();
+      sidebar.handleAction('select'); // focus → keyboard on
+      expect(sidebar.keyboardOn).toBe(true);
+      // webOS dismiss: keyboard off, but the input is NOT blurred (caret stays).
+      document.dispatchEvent(new CustomEvent('keyboardStateChange', { detail: { visibility: false } }));
+      expect(sidebar.keyboardOn).toBe(false);
+      expect(sidebar.visible).toBe(false);
+    });
+
+    it('Down moves into the list (keyboard off) without hiding', () => {
+      sidebar.show();
+      sidebar.handleAction('select'); // keyboard on
+      el.querySelector<HTMLInputElement>('.sidebar-search-input')!
+        .dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+      expect(sidebar.keyboardOn).toBe(false);
+      expect(sidebar.visible).toBe(true);
+      expect(items()[0].classList.contains('focused')).toBe(true);
     });
   });
 });

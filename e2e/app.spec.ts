@@ -10,6 +10,18 @@ const SAMPLE_M3U = [
 
 const PLAYLIST_URL = 'http://host.example.com/playlist.m3u';
 
+const SEARCH_M3U = [
+  '#EXTM3U',
+  '#EXTINF:-1 group-title="News",Alpha News',
+  'http://streams.example.com/1.m3u8',
+  '#EXTINF:-1 group-title="News",Beta News',
+  'http://streams.example.com/2.m3u8',
+  '#EXTINF:-1 group-title="Entertainment",Alpha Movies',
+  'http://streams.example.com/3.m3u8',
+  '#EXTINF:-1 group-title="Sports",Delta Sports',
+  'http://streams.example.com/4.m3u8',
+].join('\n');
+
 /** Serve the given M3U body for the playlist URL the tests configure. */
 async function routePlaylist(page: Page, body = SAMPLE_M3U): Promise<void> {
   await page.route('**/playlist.m3u', route =>
@@ -105,12 +117,12 @@ test('remote arrow keys move focus and Enter starts playback', async ({ page }) 
 
   await expect(page.locator('#view-channels')).toBeVisible();
 
-  // Initial focus lands on the first channel in the channel list.
+  // Initial focus is the search box; Arrow Down enters the list at the first channel.
+  await page.keyboard.press('ArrowDown');
   const focused = page.locator('.channel-main .channel-item.focused');
   await expect(focused).toHaveCount(1);
   await expect(focused).toContainText('Channel One');
 
-  // Arrow Down moves focus to the next channel, Arrow Up moves it back.
   await page.keyboard.press('ArrowDown');
   await expect(page.locator('.channel-main .channel-item.focused')).toContainText('Channel Two');
 
@@ -334,4 +346,85 @@ test('Settings shows an uploaded playlist when the upload service pushes a uploa
   await page.evaluate(() => (window as unknown as { __triggerUploadPush__: () => void }).__triggerUploadPush__());
   await expect(page.locator('#upload-entries .settings-row')).toHaveCount(0);
   await expect(page.locator('#upload-entries .empty-hint')).toBeVisible();
+});
+
+test('channel list search filters by name and clears', async ({ page }) => {
+  await routePlaylist(page, SEARCH_M3U);
+  await seedPlaylist(page);
+  await page.goto('/');
+  await expect(page.locator('#view-channels')).toBeVisible();
+  await expect(page.locator('.channel-main .channel-item')).toHaveCount(4);
+
+  await page.locator('.channel-search-input').fill('alpha');
+  await expect(page.locator('.channel-main .channel-item')).toHaveCount(2);
+  await expect(page.locator('.channel-main')).toContainText('Alpha News');
+  await expect(page.locator('.channel-main')).toContainText('Alpha Movies');
+  await expect(page.locator('.channel-main')).not.toContainText('Beta News');
+
+  await page.locator('.channel-search-input').fill('');
+  await expect(page.locator('.channel-main .channel-item')).toHaveCount(4);
+});
+
+test('channel list search spans groups, ignoring the selected group', async ({ page }) => {
+  await routePlaylist(page, SEARCH_M3U);
+  await seedPlaylist(page);
+  await page.goto('/');
+  await expect(page.locator('#view-channels')).toBeVisible();
+
+  // Narrow to the News group, then search a Sports channel — it still appears.
+  await page.locator('[data-group="News"]').click();
+  await expect(page.locator('.channel-main .channel-item')).toHaveCount(2);
+
+  await page.locator('.channel-search-input').fill('delta');
+  await expect(page.locator('.channel-main .channel-item')).toHaveCount(1);
+  await expect(page.locator('.channel-main')).toContainText('Delta Sports');
+});
+
+test('the channel list highlights the search box on entry; caret only on OK', async ({ page }) => {
+  await routePlaylist(page, SEARCH_M3U);
+  await seedPlaylist(page);
+  await page.goto('/');
+  await expect(page.locator('#view-channels')).toBeVisible();
+
+  const search = page.locator('.channel-search-input');
+  // Highlighted, but no caret/keyboard until OK.
+  await expect(search).toHaveClass(/focused/);
+  await expect(search).not.toBeFocused();
+
+  // Re-entering from settings highlights it again, still without the caret.
+  await page.locator('.settings-btn').click();
+  await expect(page.locator('#view-settings')).toBeVisible();
+  await page.locator('#cancel-settings').click();
+  await expect(page.locator('#view-channels')).toBeVisible();
+  await expect(search).toHaveClass(/focused/);
+  await expect(search).not.toBeFocused();
+
+  // OK grabs the caret.
+  await page.keyboard.press('Enter');
+  await expect(search).toBeFocused();
+});
+
+test('player sidebar highlights its search box on open; OK then filters', async ({ page }) => {
+  await routePlaylist(page, SEARCH_M3U);
+  await seedPlaylist(page);
+  await page.goto('/');
+  await expect(page.locator('#view-channels')).toBeVisible();
+
+  // Search box holds initial focus; Arrow Down enters the list, then Enter plays.
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#view-player')).toBeVisible();
+  await page.keyboard.press('ArrowLeft');
+
+  const sidebar = page.locator('#player-sidebar');
+  await expect(sidebar).toBeVisible();
+  const search = page.locator('.sidebar-search-input');
+  await expect(search).toHaveClass(/focused/);
+  await expect(search).not.toBeFocused();
+
+  // OK gives it the caret, then typing filters.
+  await page.keyboard.press('Enter');
+  await expect(search).toBeFocused();
+  await search.fill('alpha');
+  await expect(sidebar.locator('.sidebar-ch-item')).toHaveCount(2);
 });

@@ -20,6 +20,13 @@ const { data, playlistMock, epgMock, storageMock } = vi.hoisted(() => {
     return channels.filter(c => c.group === group);
   };
 
+  const search = (q: string, playlist?: string): Channel[] => {
+    const needle = q.trim().toLowerCase();
+    if (!needle) return [];
+    const pool = playlist ? channels.filter(c => c.playlist === playlist) : channels;
+    return pool.filter(c => c.name.toLowerCase().includes(needle));
+  };
+
   return {
     data,
     playlistMock: {
@@ -27,6 +34,7 @@ const { data, playlistMock, epgMock, storageMock } = vi.hoisted(() => {
       playlistNames: [] as string[],
       getGroupsForPlaylist: () => ['News', 'Sports'],
       getByGroup,
+      search,
       indexOf: (ch: Channel) => channels.indexOf(ch),
       getByIndex: (i: number) => channels[i] ?? null,
     },
@@ -69,6 +77,23 @@ function hover(el: HTMLElement): void {
 }
 
 describe('ChannelList.render', () => {
+  it('initial focus is the search box when channels exist', () => {
+    list.render();
+    expect(container.querySelector('.channel-search-input.focused')).not.toBeNull();
+    expect(channelItems()[0].classList.contains('focused')).toBe(false);
+  });
+
+  it('initial focus is the settings gear when there are no channels', () => {
+    const saved = playlistMock.channels.splice(0);
+    try {
+      list.render();
+      expect(container.querySelector('.settings-btn.focused')).not.toBeNull();
+      expect(container.querySelector('.channel-search-input.focused')).toBeNull();
+    } finally {
+      playlistMock.channels.push(...saved);
+    }
+  });
+
   it('renders the channel count and all channels for the default group', () => {
     list.render();
     expect(container.querySelector('.channel-count')?.textContent).toBe('3 channels');
@@ -154,6 +179,82 @@ describe('ChannelList interaction', () => {
     list.setPlayingIndex(2);
     list.render();
     expect(channelItems()[2].classList.contains('playing')).toBe(true);
+  });
+});
+
+describe('ChannelList search', () => {
+  beforeEach(() => list.render());
+
+  function searchInput(): HTMLInputElement {
+    return container.querySelector<HTMLInputElement>('.channel-search-input')!;
+  }
+
+  it('renders a search box at the top of the channel list', () => {
+    expect(searchInput()).not.toBeNull();
+  });
+
+  it('filters channels by name across all groups as the user types', () => {
+    const input = searchInput();
+    input.value = 'char';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    const names = channelItems().map(i => i.querySelector('.channel-name')?.textContent);
+    expect(names).toEqual(['Charlie']);
+  });
+
+  it('shows a search-specific empty state when nothing matches', () => {
+    const input = searchInput();
+    input.value = 'zzz';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(container.querySelector('.empty-state')?.textContent)
+      .toBe('No channels match your search');
+  });
+
+  it('search ignores the selected group (spans all channels)', () => {
+    // Narrow to Sports first, then search for a News channel.
+    hover(container.querySelector<HTMLElement>('[data-group="Sports"]')!);
+    list.handleAction('select');
+    const input = searchInput();
+    input.value = 'alpha';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(channelItems().map(i => i.querySelector('.channel-name')?.textContent))
+      .toEqual(['Alpha']);
+  });
+
+  it('clearSearchIfActive clears the query and reports it consumed the action', () => {
+    const input = searchInput();
+    input.value = 'char';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(channelItems()).toHaveLength(1);
+
+    expect(list.clearSearchIfActive()).toBe(true);
+    expect(channelItems()).toHaveLength(3);
+    // Nothing to clear the second time.
+    expect(list.clearSearchIfActive()).toBe(false);
+  });
+
+  it('Escape in the search box clears the query and restores the full list', () => {
+    const input = searchInput();
+    input.value = 'char';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(channelItems()).toHaveLength(1);
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(channelItems()).toHaveLength(3);
+  });
+
+  it('highlightEntryPoint highlights the search box without taking the caret', () => {
+    list.highlightEntryPoint();
+    expect(searchInput().classList.contains('focused')).toBe(true);
+    expect(document.activeElement).not.toBe(searchInput());
+  });
+
+  it('pressing OK on the highlighted search box gives it the caret at the end', () => {
+    const input = searchInput();
+    input.value = 'bra';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    list.highlightEntryPoint();  // highlight (nav.focused = input)
+    list.handleAction('select'); // OK
+    expect(document.activeElement).toBe(input);
+    expect(input.selectionStart).toBe(input.value.length);
   });
 });
 

@@ -315,6 +315,9 @@ class App {
     } else if (name !== this.viewStack[this.viewStack.length - 1]) {
       this.viewStack = [name];
     }
+
+    // Focus search box (or gear if empty) on entry. No-op on first load (render runs after).
+    if (name === 'channels') this.channelList.highlightEntryPoint();
   }
 
   private playChannel(index: number, catchup?: CatchupInfo): void {
@@ -372,6 +375,7 @@ class App {
         return;
       }
       if (currentView === 'channels') {
+        if (this.channelList.clearSearchIfActive()) return;
         const now = Date.now();
         if (now - this.backPressTime < 3000) {
           const webOS = (window as unknown as Record<string, { platformBack?: () => void }>).webOS;
@@ -444,7 +448,9 @@ class App {
         const overSidebar = !!(e.target as HTMLElement).closest('.player-sidebar');
         if (overSidebar) {
           this.sidebar.resetTimer();
-        } else if (e.clientX > 460) {
+        } else if (e.clientX > 460 && !this.sidebar.keyboardOn) {
+          // Never dismiss while the keyboard is on — the pointer naturally
+          // leaves the sidebar on its way to the on-screen keyboard.
           this.sidebar.hide();
         }
       }

@@ -14,6 +14,7 @@ An IPTV player for LG webOS TVs. Supports M3U playlists, XMLTV programme guides,
 - **LAN M3U Upload** — Drop `.m3u` files onto the TV from any phone/laptop on the same network via a QR-scannable upload page; new playlists appear in Settings within milliseconds (push, not polling). See [`upload-service/README.md`](upload-service/README.md) for details.
 - **Electronic Programme Guide (EPG)** — Three-pane layout (channels / date bar / programmes), date range auto-derived from EPG data, with IndexedDB caching for instant reopen
 - **Catch-up / Timeshift** — Play past programmes using `catchup-source` URL templates from M3U
+- **Channel Search** — Find channels by name from both the channel list and the player sidebar; focus the search box and press OK to type. Search spans all groups and is scoped to the selected playlist tab
 - **Channel Sidebar** — Quick channel switching overlay with current programme info and auto-scrolling text
 - **Magic Remote Support** — Pointer-driven navigation for sidebar, menu, and channel selection
 - **Spatial Navigation** — Full D-pad/remote navigation across all views

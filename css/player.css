@@ -207,6 +207,29 @@
   border-bottom: 1px solid var(--border);
 }
 
+.player-sidebar .sidebar-search-input {
+  margin: 12px;
+  padding: 18px 16px;
+  font-size: 28px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  outline: none;
+  transition: var(--transition);
+  flex-shrink: 0;
+}
+
+.player-sidebar .sidebar-search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.player-sidebar .sidebar-search-input.focused,
+.player-sidebar .sidebar-search-input:focus {
+  border-color: var(--accent);
+  background: rgba(255, 255, 255, 0.1);
+}
+
 .player-sidebar .sidebar-tabs {
   display: flex;
   gap: 4px;

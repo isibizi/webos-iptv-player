@@ -14,6 +14,7 @@ export class ChannelList {
   private currentGroup = 'All';
   private currentPlaylist = '';  // '' = All playlists
   private playingIndex = -1;
+  private searchQuery = '';
 
   constructor(
     container: HTMLElement,
@@ -31,13 +32,49 @@ export class ChannelList {
       const btn = (e.target as HTMLElement).closest('.settings-btn');
       if (btn) this.onOpenSettings();
     });
+
+    this.container.addEventListener('input', (e: Event) => {
+      const t = e.target as HTMLElement;
+      if (!t.classList.contains('channel-search-input')) return;
+      this.searchQuery = (t as HTMLInputElement).value;
+      this.render();
+    });
+
+    // The global key handler ignores INPUT keydowns, so move focus out of the box here.
+    this.container.addEventListener('keydown', (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement;
+      if (!t.classList.contains('channel-search-input')) return;
+      if (e.key === 'Enter' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        this.focusFirstChannel();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        this.searchQuery = '';
+        this.render();
+        this.focusFirstChannel();
+      }
+    });
+  }
+
+  private focusFirstChannel(): void {
+    const input = this.container.querySelector<HTMLInputElement>('.channel-search-input');
+    input?.blur();
+    const first = this.container.querySelector<HTMLElement>('.channel-main [data-channel-index]');
+    if (first) this.nav.focus(first);
   }
 
   render(): void {
     const plNames = PlaylistService.playlistNames;
     const showTabs = plNames.length > 1;
     const groups = ['All', 'Favorites', ...PlaylistService.getGroupsForPlaylist(this.currentPlaylist || undefined)];
-    const filteredChannels = PlaylistService.getByGroup(this.currentGroup, this.currentPlaylist || undefined);
+    // Search spans groups, scoped to the selected playlist tab.
+    const searching = this.searchQuery.trim().length > 0;
+    const filteredChannels = searching
+      ? PlaylistService.search(this.searchQuery, this.currentPlaylist || undefined)
+      : PlaylistService.getByGroup(this.currentGroup, this.currentPlaylist || undefined);
+    const searchPlaceholder = this.currentPlaylist
+      ? `Search ${this.currentPlaylist}...`
+      : 'Search all channels...';
     const totalChannels = this.currentPlaylist
       ? PlaylistService.getByGroup('All', this.currentPlaylist).length
       : PlaylistService.channels.length;
@@ -86,9 +123,14 @@ export class ChannelList {
           </div>
         </div>
         <div class="channel-main" data-nav-container>
+          <div class="channel-search">
+            <input type="text" class="channel-search-input" data-focusable data-key="search"
+                   aria-label="Search channels" placeholder="${searchPlaceholder}"
+                   value="${this.searchQuery}">
+          </div>
           <div class="channel-list-scroll">
             ${filteredChannels.length === 0
-              ? raw('<div class="empty-state">No channels found</div>')
+              ? raw(`<div class="empty-state">${searching ? 'No channels match your search' : 'No channels found'}</div>`)
               : filteredChannels.map(ch => {
                   const globalIdx = PlaylistService.indexOf(ch);
                   const epgId = EpgService.findChannelId(ch);
@@ -131,11 +173,13 @@ export class ChannelList {
       playingChannel = this.playingIndex >= 0
         ? this.container.querySelector<HTMLElement>(`.channel-main [data-channel-index="${this.playingIndex}"]`)
         : null;
-      // Initial focus should land on content, never on the settings gear.
+      // Default focus: search box when there are channels, settings gear when empty.
+      const target0 = PlaylistService.channels.length > 0
+        ? this.container.querySelector<HTMLElement>('.channel-search-input')
+        : this.container.querySelector<HTMLElement>('.settings-btn');
       target = playingChannel
-        ?? this.container.querySelector<HTMLElement>('.channel-main [data-focusable]')
-        ?? this.container.querySelector<HTMLElement>('.group-list [data-focusable]')
-        ?? this.container.querySelector<HTMLElement>('[data-focusable]:not(.settings-btn)');
+        ?? target0
+        ?? this.container.querySelector<HTMLElement>('[data-focusable]');
     }
     if (target) {
       this.nav.focus(target);
@@ -164,7 +208,11 @@ export class ChannelList {
         const focused = this.nav.focused;
         if (!focused) break;
 
-        if (focused.dataset.action === 'settings') {
+        if (focused.classList.contains('channel-search-input')) {
+          const input = focused as HTMLInputElement;
+          input.focus();
+          input.setSelectionRange(input.value.length, input.value.length);
+        } else if (focused.dataset.action === 'settings') {
           this.onOpenSettings();
         } else if (focused.dataset.playlist !== undefined) {
           this.currentPlaylist = focused.dataset.playlist;
@@ -209,6 +257,23 @@ export class ChannelList {
   setPlayingIndex(idx: number): void {
     this.playingIndex = idx;
   }
+
+  /** On entering the view: highlight the search box, or the gear if empty. No caret. */
+  highlightEntryPoint(): void {
+    const entry = PlaylistService.channels.length > 0
+      ? this.container.querySelector<HTMLElement>('.channel-search-input')
+      : this.container.querySelector<HTMLElement>('.settings-btn');
+    if (entry) this.nav.focus(entry);
+  }
+
+  /** Clear an active search (so BACK exits search first). Returns true if it did. */
+  clearSearchIfActive(): boolean {
+    if (!this.searchQuery) return false;
+    this.searchQuery = '';
+    this.render();
+    return true;
+  }
+
 }
 
 function groupIcon(group: string): string {

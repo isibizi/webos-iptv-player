@@ -1,4 +1,5 @@
 import type { Action, Channel } from '../types';
+import { CONFIG } from '../config';
 import { PlaylistService } from '../services/playlist-service';
 import { EpgService } from '../services/epg-service';
 import { $, html } from '../utils/dom';
@@ -20,8 +21,10 @@ export class Sidebar {
   private onSelectChannel: (index: number) => void;
   private isVisible = false;
   private timer: ReturnType<typeof setTimeout> | null = null;
-  private focusIdx = -1;
+  private focusIdx = -1; // -1 here means the search box is focused
   private playlist = ''; // '' = All
+  private searchQuery = ''; // persists across opens (show() doesn't reset it)
+  keyboardOn = false; // while on, the sidebar never auto-hides
 
   constructor(
     container: HTMLElement,
@@ -41,10 +44,8 @@ export class Sidebar {
   show(): void {
     if (this.isVisible) return;
     this.isVisible = true;
-    const currentIdx = this.getCurrentIndex();
-    const entries = this.getChannels();
-    const pos = entries.findIndex(e => e.globalIdx === currentIdx);
-    this.focusIdx = Math.max(0, pos);
+    this.keyboardOn = false;
+    this.focusIdx = -1; // highlight the search box, not a channel (no caret yet)
     this.render();
     if (this.el) {
       this.el.classList.remove('hidden');
@@ -58,8 +59,10 @@ export class Sidebar {
   hide(): void {
     if (!this.isVisible) return;
     this.isVisible = false;
+    this.keyboardOn = false;
     const el = this.el;
     if (el) {
+      el.querySelector<HTMLInputElement>('.sidebar-search-input')?.blur(); // dismiss keyboard
       el.classList.remove('visible');
       el.addEventListener('transitionend', () => {
         if (!this.isVisible) el.classList.add('hidden');
@@ -74,8 +77,8 @@ export class Sidebar {
   resetTimer(): void {
     if (this.timer) clearTimeout(this.timer);
     this.timer = setTimeout(() => {
-      // Don't auto-hide if pointer is still over the sidebar
-      if (this.el?.matches(':hover')) {
+      // Stay while the keyboard is on or the pointer is over the sidebar.
+      if (this.keyboardOn || this.el?.matches(':hover')) {
         this.resetTimer();
         return;
       }
@@ -83,18 +86,37 @@ export class Sidebar {
     }, AUTO_HIDE_MS);
   }
 
+  // Keyboard off while still on the search box → hide; in the list → stay.
+  setKeyboardVisible(visible: boolean): void {
+    if (visible === this.keyboardOn) return;
+    this.keyboardOn = visible;
+    if (visible) {
+      this.focusIdx = -1;
+      this.updateFocus();
+      this.resetTimer();
+    } else if (this.focusIdx < 0) {
+      this.hide();
+    } else {
+      this.resetTimer();
+    }
+  }
+
   handleAction(action: Action): void {
     if (!this.el) return;
+
+    if (action === 'select' && this.focusIdx === -1) {
+      this.openSearchInput(); // OK on the search box
+      return;
+    }
+
     const items = this.el.querySelectorAll<HTMLElement>('.sidebar-ch-item');
     const len = items.length;
-    if (!len) return;
-
     this.resetTimer();
 
     if (action === 'up' || action === 'channel_up') {
-      this.focusIdx = Math.max(0, this.focusIdx - 1);
+      this.focusIdx = this.focusIdx <= 0 ? -1 : this.focusIdx - 1;
     } else if (action === 'down' || action === 'channel_down') {
-      this.focusIdx = Math.min(len - 1, this.focusIdx + 1);
+      if (this.focusIdx < len - 1) this.focusIdx += 1;
     } else if (action === 'select') {
       const item = items[this.focusIdx];
       const idx = parseInt(item?.dataset.sidebarIndex || '-1', 10);
@@ -110,6 +132,18 @@ export class Sidebar {
 
   private getChannels(): SidebarEntry[] {
     const all = PlaylistService.channels;
+    const q = this.searchQuery.trim().toLowerCase();
+    // Search spans groups, scoped to the selected playlist tab.
+    if (q) {
+      const result: SidebarEntry[] = [];
+      for (let i = 0; i < all.length; i++) {
+        if (this.playlist && all[i].playlist !== this.playlist) continue;
+        if (all[i].name.toLowerCase().includes(q)) {
+          result.push({ ch: all[i], globalIdx: i });
+        }
+      }
+      return result;
+    }
     if (!this.playlist) {
       return all.map((ch, i) => ({ ch, globalIdx: i }));
     }
@@ -122,6 +156,23 @@ export class Sidebar {
     return result;
   }
 
+  /** OK: focus the search box (caret at end); focus turns the keyboard on. */
+  private openSearchInput(): void {
+    const input = this.el?.querySelector<HTMLInputElement>('.sidebar-search-input');
+    if (!input) return;
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+    this.resetTimer();
+  }
+
+  // Down/Enter: into the list. focusIdx set before blur so keyboard-off keeps it open.
+  private exitSearchToList(): void {
+    this.focusIdx = 0;
+    this.updateFocus();
+    this.el?.querySelector<HTMLInputElement>('.sidebar-search-input')?.blur();
+    this.resetTimer();
+  }
+
   private updateFocus(items?: NodeListOf<HTMLElement>): void {
     if (!items) {
       if (!this.el) return;
@@ -130,7 +181,8 @@ export class Sidebar {
     items.forEach((item, i) => {
       item.classList.toggle('focused', i === this.focusIdx);
     });
-    items[this.focusIdx]?.scrollIntoView({ block: 'nearest' });
+    this.el?.querySelector('.sidebar-search-input')?.classList.toggle('focused', this.focusIdx === -1);
+    if (this.focusIdx >= 0) items[this.focusIdx]?.scrollIntoView({ block: 'nearest' });
   }
 
   private render(): void {
@@ -141,9 +193,13 @@ export class Sidebar {
     const showTabs = plNames.length > 1;
     const entries = this.getChannels();
     const currentIdx = this.getCurrentIndex();
+    const searchPlaceholder = this.playlist ? `Search ${this.playlist}...` : 'Search all channels...';
 
     morph(el, html`
       <div class="sidebar-title">Channels</div>
+      <input type="text" class="sidebar-search-input ${this.focusIdx === -1 ? 'focused' : ''}" data-key="search"
+             aria-label="Search channels" placeholder="${searchPlaceholder}"
+             value="${this.searchQuery}">
       ${showTabs ? html`
         <div class="sidebar-tabs">
           <div class="sidebar-tab ${!this.playlist ? 'active' : ''}"
@@ -203,6 +259,44 @@ export class Sidebar {
   private bindEvents(): void {
     const el = this.el;
     if (!el) return;
+
+    el.addEventListener('input', (e: Event) => {
+      if (!(e.target as HTMLElement).classList.contains('sidebar-search-input')) return;
+      this.searchQuery = (e.target as HTMLInputElement).value;
+      this.focusIdx = -1;
+      this.render();
+      this.resetTimer();
+    });
+
+    // Desktop fallback for the keyboard signal: the input's focus.
+    el.addEventListener('focusin', (e: FocusEvent) => {
+      if (!(e.target as HTMLElement).classList.contains('sidebar-search-input')) return;
+      this.setKeyboardVisible(true);
+    });
+    el.addEventListener('focusout', (e: FocusEvent) => {
+      if (!(e.target as HTMLElement).classList.contains('sidebar-search-input')) return;
+      this.setKeyboardVisible(false);
+    });
+
+    // webOS: authoritative keyboard signal (independent of the lingering caret).
+    document.addEventListener('keyboardStateChange', (e: Event) => {
+      const visible = (e as CustomEvent<{ visibility?: boolean }>).detail?.visibility;
+      if (typeof visible !== 'boolean') return;
+      this.setKeyboardVisible(visible);
+    });
+
+    // The global key handler ignores INPUT keydowns, so handle them here.
+    el.addEventListener('keydown', (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement;
+      if (!t.classList.contains('sidebar-search-input')) return;
+      if (e.key === 'Enter' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        this.exitSearchToList();
+      } else if (e.key === 'Escape' || e.keyCode === CONFIG.KEYS.BACK) {
+        e.preventDefault();
+        (t as HTMLInputElement).blur();
+      }
+    });
 
     // Click to select channel or tab
     el.addEventListener('click', (e: MouseEvent) => {

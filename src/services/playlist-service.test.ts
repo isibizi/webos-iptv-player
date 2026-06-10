@@ -149,6 +149,31 @@ describe('PlaylistService.getByGroup', () => {
   });
 });
 
+describe('PlaylistService.search', () => {
+  beforeEach(() => {
+    PlaylistService.channels = [
+      channel({ name: 'Alpha', group: 'News', playlist: 'P1' }),
+      channel({ name: 'Bravo', group: 'Sports', playlist: 'P1' }),
+      channel({ name: 'Charlie', group: 'News', playlist: 'P2' }),
+    ];
+  });
+
+  it('matches channel names case-insensitively, spanning all groups/playlists', () => {
+    expect(PlaylistService.search('A').map(c => c.name)).toEqual(['Alpha', 'Bravo', 'Charlie']);
+    expect(PlaylistService.search('char').map(c => c.name)).toEqual(['Charlie']);
+  });
+
+  it('scopes results to a single playlist when one is given', () => {
+    expect(PlaylistService.search('a', 'P1').map(c => c.name)).toEqual(['Alpha', 'Bravo']);
+    expect(PlaylistService.search('a', 'P2').map(c => c.name)).toEqual(['Charlie']);
+  });
+
+  it('returns no results for an empty or whitespace query', () => {
+    expect(PlaylistService.search('')).toEqual([]);
+    expect(PlaylistService.search('   ')).toEqual([]);
+  });
+});
+
 describe('PlaylistService.getGroupsForPlaylist', () => {
   beforeEach(() => {
     PlaylistService.channels = [

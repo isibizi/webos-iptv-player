@@ -130,6 +130,14 @@ class PlaylistServiceImpl {
     return filtered.filter(ch => ch.group === group);
   }
 
+  /** Case-insensitive name search, optionally scoped to one playlist. Empty query → []. */
+  search(query: string, playlist?: string): Channel[] {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    const pool = playlist ? this.channels.filter(ch => ch.playlist === playlist) : this.channels;
+    return pool.filter(ch => ch.name.toLowerCase().includes(q));
+  }
+
   getGroupsForPlaylist(playlist?: string): string[] {
     const channels = playlist
       ? this.channels.filter(ch => ch.playlist === playlist)
