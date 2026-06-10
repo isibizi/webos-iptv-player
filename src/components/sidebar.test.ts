@@ -201,6 +201,19 @@ describe('Sidebar', () => {
       expect(items()[2].classList.contains('focused')).toBe(true);
     });
 
+    it('hover only re-highlights when the position changes', () => {
+      const spy = vi.spyOn(sidebar as unknown as { updateFocus: () => void }, 'updateFocus');
+      const row = items()[1];
+      row.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+      expect(spy).toHaveBeenCalledTimes(1);
+      // Sweeping across a child of the same row must not re-run updateFocus.
+      row.querySelector('.ch-name')!.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+      expect(spy).toHaveBeenCalledTimes(1);
+      // A different row does.
+      items()[2].dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+      expect(spy).toHaveBeenCalledTimes(2);
+    });
+
     it('wheel down / up moves the focus highlight', () => {
       // Opens on the search box (focusIdx -1); first wheel-down enters the list.
       el.dispatchEvent(new WheelEvent('wheel', { deltaY: 120, bubbles: true, cancelable: true }));

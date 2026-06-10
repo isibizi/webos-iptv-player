@@ -316,12 +316,15 @@ export class Sidebar {
       }
     });
 
-    // Hover moves focus highlight
+    // Hover moves focus highlight; only when the position actually changes.
     el.addEventListener('mouseover', (e: MouseEvent) => {
       const item = (e.target as HTMLElement).closest<HTMLElement>('[data-sidebar-pos]');
       if (item) {
-        this.focusIdx = parseInt(item.dataset.sidebarPos!, 10);
-        this.updateFocus();
+        const pos = parseInt(item.dataset.sidebarPos!, 10);
+        if (pos !== this.focusIdx) {
+          this.focusIdx = pos;
+          this.updateFocus();
+        }
         this.resetTimer();
       }
     });

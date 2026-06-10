@@ -23,6 +23,11 @@ export class SpatialNav {
   }
 
   focus(el: HTMLElement | null): void {
+    // Already focused: re-assert the class (morph may strip it), skip scroll.
+    if (el && el === this.focused) {
+      el.classList.add('focused');
+      return;
+    }
     if (this.focused) this.focused.classList.remove('focused');
     this.focused = el;
     if (el) {

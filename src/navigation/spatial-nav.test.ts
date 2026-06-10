@@ -42,6 +42,24 @@ describe('SpatialNav', () => {
       expect(nav.focused).toBe(b);
     });
 
+    it('skips scrollIntoView when re-focusing the already-focused element', () => {
+      const a = focusable({ x: 0, y: 0 });
+      const nav = new SpatialNav(makeContainer(a));
+      nav.focus(a);
+      expect(a.scrollIntoView).toHaveBeenCalledTimes(1);
+      nav.focus(a); // e.g. mouseover sweeping across the row's children
+      expect(a.scrollIntoView).toHaveBeenCalledTimes(1);
+    });
+
+    it('re-asserts the focused class on the same element (morph may strip it)', () => {
+      const a = focusable({ x: 0, y: 0 });
+      const nav = new SpatialNav(makeContainer(a));
+      nav.focus(a);
+      a.classList.remove('focused'); // morph treats class as authoritative
+      nav.focus(a);
+      expect(a.classList.contains('focused')).toBe(true);
+    });
+
     it('focus(null) clears the current focus', () => {
       const a = focusable({ x: 0, y: 0 });
       const nav = new SpatialNav(makeContainer(a));

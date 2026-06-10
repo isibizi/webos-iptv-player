@@ -114,6 +114,35 @@ describe('KeyHandler', () => {
       expect(onHover).toHaveBeenCalledTimes(1);
     });
 
+    it('dispatches nav:hover once while moving within one focusable (skips its children)', () => {
+      const row = document.createElement('div');
+      row.setAttribute('data-focusable', '');
+      const child1 = document.createElement('span');
+      const child2 = document.createElement('span');
+      row.append(child1, child2);
+      document.body.appendChild(row);
+      const onHover = vi.fn();
+      row.addEventListener('nav:hover', onHover);
+
+      child1.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+      child2.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+      expect(onHover).toHaveBeenCalledTimes(1);
+    });
+
+    it('dispatches nav:hover again when the pointer moves to a different focusable', () => {
+      const a = document.createElement('div'); a.setAttribute('data-focusable', '');
+      const b = document.createElement('div'); b.setAttribute('data-focusable', '');
+      document.body.append(a, b);
+      const onA = vi.fn(); const onB = vi.fn();
+      a.addEventListener('nav:hover', onA);
+      b.addEventListener('nav:hover', onB);
+
+      a.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+      b.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+      expect(onA).toHaveBeenCalledTimes(1);
+      expect(onB).toHaveBeenCalledTimes(1);
+    });
+
     it('does not dispatch nav:hover over non-focusable elements', () => {
       const el = document.createElement('div');
       document.body.appendChild(el);

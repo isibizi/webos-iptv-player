@@ -71,11 +71,15 @@ export const KeyHandler = {
       }
     });
 
-    // Mouse support for desktop preview
+    // Mouse support for desktop preview. Skip re-dispatching when the focusable hasn't changed.
+    let lastHover: HTMLElement | null = null;
     document.addEventListener('mouseover', (e: MouseEvent) => {
       const target = (e.target as HTMLElement).closest<HTMLElement>('[data-focusable]');
-      if (target) {
+      if (target && target !== lastHover) {
+        lastHover = target;
         target.dispatchEvent(new CustomEvent('nav:hover', { bubbles: true }));
+      } else if (!target) {
+        lastHover = null;
       }
     });
 
