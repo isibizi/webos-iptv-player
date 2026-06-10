@@ -126,6 +126,10 @@ function patchNode(oldNode: Node, newNode: Node): void {
   }
 
   if (oldNode.nodeType === ELEMENT) {
+    // Fast path: a native deep-equality check (C++) is much cheaper than the
+    // JS attribute-by-attribute + recursive child walk. Unchanged keyed rows
+    // (the common re-render case) skip the whole subtree.
+    if ((oldNode as Element).isEqualNode(newNode)) return;
     syncAttributes(oldNode as Element, newNode as Element);
     patchChildren(oldNode, Array.from(newNode.childNodes));
   }

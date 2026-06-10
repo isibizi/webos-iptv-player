@@ -227,3 +227,36 @@ describe('morph — nested', () => {
     expect(p.textContent).toBe('body 2');
   });
 });
+
+describe('morph — unchanged-subtree fast path', () => {
+  it('reuses a deeply-equal keyed subtree, keeping identity and listeners', () => {
+    morph(root, html`<ul><li data-key="a"><span>A</span></li></ul>`);
+    const span = root.querySelector('span')!;
+    const onClick = vi.fn();
+    span.addEventListener('click', onClick);
+
+    morph(root, html`<ul><li data-key="a"><span>A</span></li></ul>`); // identical
+    expect(root.querySelector('span')).toBe(span);
+    root.querySelector('span')!.dispatchEvent(new MouseEvent('click'));
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it('still applies a change deep inside an otherwise-equal subtree', () => {
+    morph(root, html`<ul><li data-key="a"><span>A</span></li></ul>`);
+    const li = root.querySelector('li')!;
+    morph(root, html`<ul><li data-key="a"><span>B</span></li></ul>`);
+    expect(root.querySelector('li')).toBe(li);
+    expect(root.querySelector('span')!.textContent).toBe('B');
+  });
+
+  it('still strips an imperative class when the template subtree is otherwise equal', () => {
+    // The focus-restoration case: a row carries an imperative `.focused`, and
+    // the next render produces an identical template — it must still be removed.
+    morph(root, html`<ul><li data-key="a">A</li></ul>`);
+    const li = root.querySelector('li')!;
+    li.classList.add('focused');
+    morph(root, html`<ul><li data-key="a">A</li></ul>`);
+    expect(li.classList.contains('focused')).toBe(false);
+    expect(root.querySelector('li')).toBe(li);
+  });
+});
