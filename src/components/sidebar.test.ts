@@ -179,6 +179,35 @@ describe('Sidebar', () => {
     });
   });
 
+  // Regression guard: the global key handler routes the remote Back key through
+  // even from inputs, so the search box must stop propagation on the keys it
+  // owns. Otherwise Back would both exit the search box (here) and bubble up to
+  // the global handler, closing the whole sidebar / acting on the player.
+  describe('search box key propagation', () => {
+    function pressInSearch(init: KeyboardEventInit): ReturnType<typeof vi.fn> {
+      sidebar.show();
+      const globalSpy = vi.fn();
+      document.addEventListener('keydown', globalSpy);
+      el.querySelector<HTMLInputElement>('.sidebar-search-input')!
+        .dispatchEvent(new KeyboardEvent('keydown', { ...init, bubbles: true, cancelable: true }));
+      document.removeEventListener('keydown', globalSpy);
+      return globalSpy;
+    }
+
+    it.each([
+      ['Back', { keyCode: 461 }],
+      ['Escape', { key: 'Escape' }],
+      ['Enter', { key: 'Enter' }],
+      ['ArrowDown', { key: 'ArrowDown' }],
+    ] as [string, KeyboardEventInit][])('stops %s from reaching the global handler', (_name, init) => {
+      expect(pressInSearch(init)).not.toHaveBeenCalled();
+    });
+
+    it('lets an unhandled key (typing) reach the global handler', () => {
+      expect(pressInSearch({ key: 'a' })).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('pointer interaction', () => {
     beforeEach(() => sidebar.show());
 

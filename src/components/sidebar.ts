@@ -293,15 +293,20 @@ export class Sidebar {
       this.setKeyboardVisible(visible);
     });
 
-    // The global key handler ignores INPUT keydowns, so handle them here.
+    // Keys typed in the search box are handled here. The global key handler now
+    // routes the remote Back key through even from inputs, so stop propagation
+    // on the keys we own — otherwise Back would both exit the search box (below)
+    // and bubble up to close the whole sidebar / act on the player.
     el.addEventListener('keydown', (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
       if (!t.classList.contains('sidebar-search-input')) return;
       if (e.key === 'Enter' || e.key === 'ArrowDown') {
         e.preventDefault();
+        e.stopPropagation();
         this.exitSearchToList();
       } else if (e.key === 'Escape' || e.keyCode === CONFIG.KEYS.BACK) {
         e.preventDefault();
+        e.stopPropagation();
         (t as HTMLInputElement).blur();
       }
     });
