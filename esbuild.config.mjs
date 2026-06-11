@@ -19,6 +19,7 @@ cpSync('css', 'dist/css', { recursive: true });
 cpSync('webOSjs/webOS.js', 'dist/webOSjs/webOS.js');
 cpSync('assets/icon80.png', 'dist/icon.png');
 cpSync('assets/icon130.png', 'dist/largeIcon.png');
+cpSync('assets/group-icons', 'dist/assets/group-icons', { recursive: true });
 
 // Main app bundle — excludes hls.js and mpegts.js (only needed on desktop).
 const serviceId = JSON.parse(readFileSync('upload-service/src/services.json', 'utf8')).id;

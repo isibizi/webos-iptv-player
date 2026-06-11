@@ -120,12 +120,11 @@
   justify-content: center;
 }
 
-.icon-all {
-  width: 18px;
-  height: 2px;
-  background: var(--accent);
-  border-radius: 1px;
-  box-shadow: 0 -6px 0 var(--accent), 0 6px 0 var(--accent);
+.group-icon .group-logo {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  display: block;
 }
 
 .group-name {

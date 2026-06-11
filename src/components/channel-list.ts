@@ -5,6 +5,7 @@ import { morph } from '../utils/morph';
 import { PlaylistService } from '../services/playlist-service';
 import { EpgService } from '../services/epg-service';
 import { StorageService } from '../services/storage-service';
+import { groupIcon } from './group-icon';
 
 export class ChannelList {
   private container: HTMLElement;
@@ -277,12 +278,6 @@ export class ChannelList {
     return true;
   }
 
-}
-
-function groupIcon(group: string): string {
-  if (group === 'All') return '<span class="icon-all"></span>';
-  if (group === 'Favorites') return '&#9733;';
-  return '&#9654;';
 }
 
 // Escape a value for use inside a `[attr="..."]` selector. Only `\` and `"`
