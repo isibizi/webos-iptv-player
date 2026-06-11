@@ -10,6 +10,7 @@
     "package": "bash build.sh",
     "clean": "rm -rf dist *.ipk",
     "preview": "npm run build && node serve.mjs",
+    "screenshots": "node scripts/generate-screenshots.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",

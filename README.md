@@ -6,7 +6,15 @@ An IPTV player for LG webOS TVs. Supports M3U playlists, XMLTV programme guides,
 
 ## Preview
 
-![preview](preview.png)
+![Channel list](https://github.com/user-attachments/assets/b9ae3b70-9ae0-42ad-acec-6c086d506826)
+
+| Programme guide | Settings |
+| --- | --- |
+| ![Programme guide](https://github.com/user-attachments/assets/4a2fecc8-bd32-45dd-9067-69d6f44649a6) | ![Settings](https://github.com/user-attachments/assets/107d2879-8e9a-4dd1-9b99-1cb1100a392a) |
+
+| Playback overlays | Channel info |
+| --- | --- |
+| ![Playback overlays](https://github.com/user-attachments/assets/c6209a19-2faf-41fe-bcd0-e3bceecbefe0) | ![Channel info](https://github.com/user-attachments/assets/bd3401d9-728c-499b-b7d1-bb8b057b5786) |
 
 ## Features
 
