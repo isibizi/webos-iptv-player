@@ -7,7 +7,7 @@ import { UploadClient, setServicePort } from './services/upload-client';
 import { ChannelList } from './components/channel-list';
 import { Player } from './components/player';
 import { EpgGrid } from './components/epg-grid';
-import { Settings } from './components/settings';
+import { Settings, type SaveAction } from './components/settings';
 import { Sidebar } from './components/sidebar';
 import { PlayerMenu } from './components/player-menu';
 import { showToast } from './components/toast';
@@ -56,7 +56,7 @@ class App {
       this.showView('channels');
     });
     this.epgGrid = new EpgGrid(this.views.epg, (idx, catchup) => this.playChannel(idx, catchup));
-    this.settings = new Settings(this.views.settings, (reload) => this.onSettingsSaved(reload));
+    this.settings = new Settings(this.views.settings, (action) => this.onSettingsSaved(action));
 
     this.player.init($('#video-player') as HTMLVideoElement);
 
@@ -519,15 +519,20 @@ class App {
   }
 
 
-  private async onSettingsSaved(reload: boolean): Promise<void> {
-    if (reload) {
+  private async onSettingsSaved(action: SaveAction): Promise<void> {
+    if (action === 'reload') {
       StorageService.remove('cached_playlist');
       this.showView('channels');
       await this.loadData();
-    } else {
-      this.channelList.render();
-      this.showView('channels');
+      return;
     }
+    // 'apply': only display settings changed — re-apply + re-render, no re-fetch.
+    if (action === 'apply') {
+      this.applyDisplayTz();
+      this.epgGrid.resetDay();
+    }
+    this.channelList.render();
+    this.showView('channels');
   }
 }
 

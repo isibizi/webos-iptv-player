@@ -161,11 +161,11 @@ describe('Settings editing', () => {
     expect(toastMock.showToast).toHaveBeenCalledWith('Cache cleared');
   });
 
-  it('cancel calls onSave(false); refresh calls onSave(true)', () => {
+  it('cancel discards; refresh reloads', () => {
     click('#cancel-settings');
-    expect(onSave).toHaveBeenLastCalledWith(false);
+    expect(onSave).toHaveBeenLastCalledWith('cancel');
     click('#refresh-data');
-    expect(onSave).toHaveBeenLastCalledWith(true);
+    expect(onSave).toHaveBeenLastCalledWith('reload');
   });
 });
 
@@ -190,7 +190,16 @@ describe('Settings.save', () => {
     expect(storageMock.setPlaylists).toHaveBeenCalledWith([{ name: 'My', url: 'http://x', source: 'url' }]);
     expect(storageMock.setEpgUrl).toHaveBeenCalledWith('http://epg');
     expect(storageMock.setAutoPlay).toHaveBeenCalledWith(true);
-    expect(onSave).toHaveBeenCalledWith(true);
+    expect(onSave).toHaveBeenCalledWith('reload'); // playlist + EPG changed
+  });
+
+  it('applies a display-only change without a full reload', () => {
+    state.playlists = [{ name: 'P', url: 'http://p' }]; // unchanged by the form
+    settings.render();
+    click('#tz-mode [data-value="feed"]'); // only the time zone changes
+    click('#save-settings');
+    expect(storageMock.setTzMode).toHaveBeenCalledWith('feed');
+    expect(onSave).toHaveBeenCalledWith('apply'); // no re-fetch
   });
 
   it('defaults a missing name to "Playlist N"', () => {

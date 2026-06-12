@@ -45,12 +45,16 @@ function toggleGroup(id: string, options: { value: string; label: string }[], ac
     </div>`;
 }
 
+/** What the app does after Settings closes: reload = re-fetch playlist/EPG;
+ *  apply = re-render for display-only changes; cancel = discard. */
+export type SaveAction = 'reload' | 'apply' | 'cancel';
+
 export class Settings {
   private container: HTMLElement;
-  private onSave: (reload: boolean) => void;
+  private onSave: (action: SaveAction) => void;
   private nav: SpatialNav;
 
-  constructor(container: HTMLElement, onSave: (reload: boolean) => void) {
+  constructor(container: HTMLElement, onSave: (action: SaveAction) => void) {
     this.container = container;
     this.onSave = onSave;
     this.nav = new SpatialNav(container);
@@ -234,9 +238,9 @@ export class Settings {
     } else if (el.id === 'save-settings') {
       this.save();
     } else if (el.id === 'cancel-settings') {
-      this.onSave(false);
+      this.onSave('cancel');
     } else if (el.id === 'refresh-data') {
-      this.onSave(true);
+      this.onSave('reload');
     } else if (el.id === 'clear-cache') {
       StorageService.remove('cached_playlist');
       void clearCachedEpg();
@@ -323,11 +327,15 @@ export class Settings {
     }
 
     // Preserve auto-managed uploaded playlists (not shown in the URL editor).
-    const uploads = StorageService.getPlaylists().filter(pl => pl.source === 'upload');
+    const stored = StorageService.getPlaylists();
+    const prevUrls = stored.filter(pl => pl.source !== 'upload');
+    const uploads = stored.filter(pl => pl.source === 'upload');
     StorageService.setPlaylists([...playlists, ...uploads]);
 
     const epgInput = $('#epg-url', this.container) as HTMLInputElement | null;
-    if (epgInput) StorageService.setEpgUrl(epgInput.value.trim());
+    const prevEpg = StorageService.getEpgUrl();
+    const epgUrl = epgInput ? epgInput.value.trim() : prevEpg;
+    if (epgInput) StorageService.setEpgUrl(epgUrl);
 
     const autoPlayBtn = $('#auto-play .toggle-option.active', this.container);
     if (autoPlayBtn) StorageService.setAutoPlay(autoPlayBtn.dataset.value === 'on');
@@ -335,7 +343,11 @@ export class Settings {
     const tzModeBtn = $('#tz-mode .toggle-option.active', this.container);
     if (tzModeBtn?.dataset.value) StorageService.setTzMode(tzModeBtn.dataset.value as TzMode);
 
-    this.onSave(true);
+    // Only a playlist or EPG-URL change needs a re-fetch; display-only settings
+    // (time zone, auto-play) just re-render in place.
+    const sig = (l: PlaylistEntry[]) => JSON.stringify(l.map(pl => [pl.name, pl.url]));
+    const dataChanged = epgUrl !== prevEpg || sig(prevUrls) !== sig(playlists);
+    this.onSave(dataChanged ? 'reload' : 'apply');
   }
 
   /**
