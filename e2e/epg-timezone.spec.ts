@@ -71,7 +71,7 @@ test('switching device → feed re-snaps the selected day to today', async ({ pa
   await expect(page.locator('#view-channels')).toBeVisible();
   await page.evaluate(() => document.dispatchEvent(new KeyboardEvent('keydown', { keyCode: 406, bubbles: true })));
   await expect(page.locator('#view-settings')).toBeVisible();
-  await page.locator('#tz-mode-toggle').click();
+  await page.locator('#tz-mode [data-value="feed"]').click();
   await page.locator('#save-settings').click();
   await expect(page.locator('#view-channels')).toBeVisible();
 

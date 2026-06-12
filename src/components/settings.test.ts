@@ -92,9 +92,7 @@ describe('Settings.render', () => {
   it('reflects the auto-play state on the toggle', () => {
     state.autoPlay = true;
     settings.render();
-    const toggle = container.querySelector('#auto-play-toggle')!;
-    expect(toggle.classList.contains('active')).toBe(true);
-    expect(toggle.textContent?.trim()).toBe('ON');
+    expect(container.querySelector('#auto-play .toggle-option.active')!.getAttribute('data-value')).toBe('on');
   });
 });
 
@@ -149,12 +147,11 @@ describe('Settings editing', () => {
     expect(container.querySelectorAll('#playlist-entries .settings-row:not(.playlist-header-row)')).toHaveLength(1);
   });
 
-  it('toggles auto-play off to on', () => {
-    const toggle = container.querySelector('#auto-play-toggle')!;
-    expect(toggle.textContent?.trim()).toBe('OFF');
-    click('#auto-play-toggle');
-    expect(toggle.classList.contains('active')).toBe(true);
-    expect(toggle.textContent?.trim()).toBe('ON');
+  it('selecting On activates auto-play', () => {
+    const activeVal = () => container.querySelector('#auto-play .toggle-option.active')!.getAttribute('data-value');
+    expect(activeVal()).toBe('off');
+    click('#auto-play [data-value="on"]');
+    expect(activeVal()).toBe('on');
   });
 
   it('clears the playlist and EPG caches and shows a toast', () => {
@@ -186,7 +183,7 @@ describe('Settings.save', () => {
     names[1].value = 'Unnamed';
     urls[1].value = '   '; // blank URL -> dropped
     container.querySelector<HTMLInputElement>('#epg-url')!.value = ' http://epg ';
-    click('#auto-play-toggle'); // -> ON
+    click('#auto-play [data-value="on"]');
 
     click('#save-settings');
 
@@ -203,11 +200,11 @@ describe('Settings.save', () => {
     expect(storageMock.setPlaylists).toHaveBeenCalledWith([{ name: 'Playlist 1', url: 'http://only', source: 'url' }]);
   });
 
-  it('toggling the time-zone control persists the feed mode', () => {
-    const toggle = container.querySelector<HTMLButtonElement>('#tz-mode-toggle')!;
-    expect(toggle.textContent!.trim()).toBe('Device');
-    click('#tz-mode-toggle');
-    expect(toggle.textContent!.trim()).toBe('Feed');
+  it('selecting the Feed option persists the feed mode', () => {
+    const activeTz = () => container.querySelector('#tz-mode .toggle-option.active')!.getAttribute('data-value');
+    expect(activeTz()).toBe('device'); // default
+    click('#tz-mode [data-value="feed"]');
+    expect(activeTz()).toBe('feed');
     click('#save-settings');
     expect(storageMock.setTzMode).toHaveBeenCalledWith('feed');
   });

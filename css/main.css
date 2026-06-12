@@ -122,11 +122,6 @@ h3 {
   font-size: 26px;
 }
 
-.toggle-btn.active {
-  background: var(--accent-dim);
-  border-color: var(--accent);
-}
-
 /* Toast */
 .toast {
   position: fixed;

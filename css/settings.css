@@ -158,7 +158,32 @@
   color: var(--text-secondary);
 }
 
-.settings-toggle-row > .toggle-btn {
+/* Connected buttons; no overflow:hidden so the focus glow isn't clipped. */
+.settings-toggle-row > .toggle-group {
   flex: 0 0 auto;
+  display: inline-flex;
+}
+
+.toggle-option {
   min-width: 120px;
+  padding: 10px 24px;
+  font-size: 22px;
+  text-align: center;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 2px solid var(--border);
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.toggle-option:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+.toggle-option:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
+.toggle-option + .toggle-option { margin-left: -2px; } /* collapse the shared edge into one divider */
+
+.toggle-option.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg-primary);
+  font-weight: 600;
+  z-index: 1; /* lift the accent border above the neighbouring option */
 }

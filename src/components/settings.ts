@@ -1,4 +1,4 @@
-import type { Action, PlaylistEntry } from '../types';
+import type { Action, PlaylistEntry, TzMode } from '../types';
 import { $, $$, html, raw } from '../utils/dom';
 import { morph } from '../utils/morph';
 import { SpatialNav } from '../navigation/spatial-nav';
@@ -31,6 +31,18 @@ function uploadLabel(pl: PlaylistEntry): string {
     return `${pl.name} — ${pl.count} channel${pl.count === 1 ? '' : 's'}`;
   }
   return pl.name;
+}
+
+/** A single-select toggle group: connected buttons, the active one filled.
+ *  Shared by every toggle row (styled via .toggle-group in settings.css). */
+function toggleGroup(id: string, options: { value: string; label: string }[], active: string) {
+  return html`
+    <div class="toggle-group" id="${id}">
+      ${options.map(o => html`
+        <button class="toggle-option ${o.value === active ? 'active' : ''}"
+                data-focusable data-value="${o.value}">${o.label}</button>
+      `)}
+    </div>`;
 }
 
 export class Settings {
@@ -145,11 +157,8 @@ export class Settings {
         <div class="settings-section">
           <h3>Display</h3>
           <div class="settings-row settings-toggle-row">
-            <label for="tz-mode-toggle">Programme time zone</label>
-            <button class="btn toggle-btn ${feedTime ? 'active' : ''}"
-                    data-focusable id="tz-mode-toggle">
-              ${feedTime ? 'Feed' : 'Device'}
-            </button>
+            <label>Programme time zone</label>
+            ${toggleGroup('tz-mode', [{ value: 'device', label: 'Device' }, { value: 'feed', label: 'Feed' }], feedTime ? 'feed' : 'device')}
           </div>
           <div class="empty-hint">
             ${tzOffset === null
@@ -161,11 +170,8 @@ export class Settings {
         <div class="settings-section">
           <h3>Playback</h3>
           <div class="settings-row settings-toggle-row">
-            <label for="auto-play-toggle">Auto-play last channel on startup</label>
-            <button class="btn toggle-btn ${autoPlay ? 'active' : ''}"
-                    data-focusable id="auto-play-toggle">
-              ${autoPlay ? 'ON' : 'OFF'}
-            </button>
+            <label>Auto-play last channel on startup</label>
+            ${toggleGroup('auto-play', [{ value: 'on', label: 'ON' }, { value: 'off', label: 'OFF' }], autoPlay ? 'on' : 'off')}
           </div>
         </div>
 
@@ -221,12 +227,10 @@ export class Settings {
       this.removePlaylistEntry(parseInt(el.dataset.index!, 10));
     } else if (el.classList.contains('remove-upload')) {
       void this.removeUpload(el.dataset.url!);
-    } else if (el.id === 'auto-play-toggle') {
-      el.classList.toggle('active');
-      el.textContent = el.classList.contains('active') ? 'ON' : 'OFF';
-    } else if (el.id === 'tz-mode-toggle') {
-      el.classList.toggle('active');
-      el.textContent = el.classList.contains('active') ? 'Feed' : 'Device';
+    } else if (el.classList.contains('toggle-option')) {
+      // Single-select toggle group: clear the siblings, activate the chosen option.
+      el.parentElement?.querySelectorAll('.toggle-option').forEach(b => b.classList.remove('active'));
+      el.classList.add('active');
     } else if (el.id === 'save-settings') {
       this.save();
     } else if (el.id === 'cancel-settings') {
@@ -325,13 +329,11 @@ export class Settings {
     const epgInput = $('#epg-url', this.container) as HTMLInputElement | null;
     if (epgInput) StorageService.setEpgUrl(epgInput.value.trim());
 
-    const autoPlayBtn = $('#auto-play-toggle', this.container);
-    if (autoPlayBtn) StorageService.setAutoPlay(autoPlayBtn.classList.contains('active'));
+    const autoPlayBtn = $('#auto-play .toggle-option.active', this.container);
+    if (autoPlayBtn) StorageService.setAutoPlay(autoPlayBtn.dataset.value === 'on');
 
-    const tzModeBtn = $('#tz-mode-toggle', this.container);
-    if (tzModeBtn) {
-      StorageService.setTzMode(tzModeBtn.classList.contains('active') ? 'feed' : 'device');
-    }
+    const tzModeBtn = $('#tz-mode .toggle-option.active', this.container);
+    if (tzModeBtn?.dataset.value) StorageService.setTzMode(tzModeBtn.dataset.value as TzMode);
 
     this.onSave(true);
   }
