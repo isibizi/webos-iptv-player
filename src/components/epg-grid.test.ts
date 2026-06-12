@@ -14,11 +14,6 @@ const { state, playlistMock, epgMock } = vi.hoisted(() => {
     epgMock: {
       get programmes() { return state.programmes; },
       findChannelId: vi.fn((ch: any) => (state.programmes[ch.name] ? ch.name : null)),
-      getProgrammesInRange: vi.fn((id: string, start: Date, end: Date) =>
-        (state.programmes[id] || []).filter(
-          (p: any) => p.start.getTime() < end.getTime() && p.stop.getTime() > start.getTime()
-        )
-      ),
     },
   };
 });

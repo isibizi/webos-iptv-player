@@ -1,5 +1,5 @@
 import type { ParsedEpg, Programme, EpgChannel } from '../types';
-import { parseXmltvDate } from '../utils/time';
+import { parseXmltvDate, parseXmltvOffsetMinutes } from '../utils/time';
 import { createLogger } from '../utils/logger';
 
 const log = createLogger('XMLTV');
@@ -43,12 +43,14 @@ export function parseXMLTV(xmlString: string): ParsedEpg {
 
   let skippedDate = 0;
   let skippedRange = 0;
+  let tzOffsetMinutes: number | null = null;
 
   for (const prog of progElements) {
     const channelId = prog.getAttribute('channel');
     if (!channelId) continue;
 
-    const start = parseXmltvDate(prog.getAttribute('start'));
+    const startAttr = prog.getAttribute('start');
+    const start = parseXmltvDate(startAttr);
     const stop = parseXmltvDate(prog.getAttribute('stop'));
     if (!start || !stop) {
       skippedDate++;
@@ -58,6 +60,7 @@ export function parseXMLTV(xmlString: string): ParsedEpg {
       skippedRange++;
       continue;
     }
+    if (tzOffsetMinutes === null) tzOffsetMinutes = parseXmltvOffsetMinutes(startAttr);
 
     const titleEl = prog.querySelector('title');
     const descEl = prog.querySelector('desc');
@@ -83,5 +86,5 @@ export function parseXMLTV(xmlString: string): ParsedEpg {
     programmes[id].sort((a, b) => a.start.getTime() - b.start.getTime());
   }
 
-  return { channels, programmes };
+  return { channels, programmes, tzOffsetMinutes };
 }

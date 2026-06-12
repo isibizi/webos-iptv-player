@@ -11,6 +11,8 @@ const log = createLogger('EPG');
 class EpgServiceImpl {
   channels: Record<string, EpgChannel> = {};
   programmes: Record<string, Programme[]> = {};
+  /** Timezone offset (minutes east of UTC) of the source feed, or null. Display only. */
+  tzOffsetMinutes: number | null = null;
   loaded = false;
   private lastFetchTime = 0;
 
@@ -21,6 +23,7 @@ class EpgServiceImpl {
   reset(): void {
     this.channels = {};
     this.programmes = {};
+    this.tzOffsetMinutes = null;
     this.loaded = false;
     this.lastFetchTime = 0;
   }
@@ -36,9 +39,14 @@ class EpgServiceImpl {
       const cached = await getCachedEpg(url);
       if (cached) {
         const age = Date.now() - cached.timestamp;
-        if (age < CONFIG.EPG_REFRESH_INTERVAL) {
+        // A cache written before tz capture lacks the field entirely (vs. a feed
+        // with no offset, which stores it as null). Refresh those so 'feed'
+        // mode gets the offset instead of silently falling back to the device clock.
+        const hasTzField = 'tzOffsetMinutes' in cached.data;
+        if (age < CONFIG.EPG_REFRESH_INTERVAL && hasTzField) {
           this.channels = cached.data.channels;
           this.programmes = cached.data.programmes;
+          this.tzOffsetMinutes = cached.data.tzOffsetMinutes ?? null;
           this.loaded = true;
           this.lastFetchTime = cached.timestamp;
           log.info('Loaded from IDB cache:',
@@ -47,7 +55,9 @@ class EpgServiceImpl {
             Math.round(age / 60000), 'min');
           return;
         }
-        log.info('Cache stale (age', Math.round(age / 60000), 'min) — refreshing');
+        log.info(hasTzField
+          ? `Cache stale (age ${Math.round(age / 60000)} min) — refreshing`
+          : 'Cache predates timezone capture — refreshing');
       }
     } catch (err) {
       log.warn('Cache read failed:', err);
@@ -78,6 +88,7 @@ class EpgServiceImpl {
       parseDone();
       this.channels = result.channels;
       this.programmes = result.programmes;
+      this.tzOffsetMinutes = result.tzOffsetMinutes ?? null;
       this.loaded = true;
       this.lastFetchTime = Date.now();
       log.info('Loaded', Object.keys(result.channels).length, 'channels,',
@@ -102,14 +113,6 @@ class EpgServiceImpl {
     if (!progs) return [];
     const now = Date.now();
     return progs.filter(p => p.start.getTime() > now).slice(0, count);
-  }
-
-  getProgrammesInRange(channelId: string, startTime: Date, endTime: Date): Programme[] {
-    const progs = this.programmes[channelId];
-    if (!progs) return [];
-    return progs.filter(p =>
-      p.stop.getTime() > startTime.getTime() && p.start.getTime() < endTime.getTime()
-    );
   }
 
   findChannelId(m3uChannel: Channel): string | null {

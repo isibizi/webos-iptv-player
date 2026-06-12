@@ -34,6 +34,8 @@ export interface EpgChannel {
 export interface ParsedEpg {
   channels: Record<string, EpgChannel>;
   programmes: Record<string, Programme[]>;
+  /** Minutes east of UTC declared by the feed's timestamps (e.g. +0100 -> 60), or null if none carry an offset. */
+  tzOffsetMinutes?: number | null;
 }
 
 export interface PlaylistEntry {
@@ -57,6 +59,9 @@ export interface CatchupInfo {
   description: string;
   icon: string;
 }
+
+/** Which timezone EPG times are displayed in: the device's, or the feed's. */
+export type TzMode = 'device' | 'feed';
 
 export type NavDirection = 'up' | 'down' | 'left' | 'right';
 

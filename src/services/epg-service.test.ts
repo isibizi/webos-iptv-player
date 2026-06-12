@@ -1,6 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+
+vi.mock('./idb-cache', () => ({ getCachedEpg: vi.fn(), setCachedEpg: vi.fn(async () => {}) }));
+vi.mock('../utils/fetch-helper', () => ({ fetchText: vi.fn(async () => '<tv/>') }));
+vi.mock('../parsers/xmltv-parser', () => ({ parseXMLTV: vi.fn() }));
+vi.mock('./storage-service', () => ({ StorageService: { getEpgUrl: vi.fn(() => 'http://epg') } }));
+
 import { EpgService } from './epg-service';
-import type { Channel, Programme } from '../types';
+import { getCachedEpg } from './idb-cache';
+import { parseXMLTV } from '../parsers/xmltv-parser';
+import { fetchText } from '../utils/fetch-helper';
+import type { Channel, Programme, ParsedEpg } from '../types';
 
 function prog(over: Partial<Programme>): Programme {
   return {
@@ -66,21 +75,6 @@ describe('EpgService.getUpcoming', () => {
   });
 });
 
-describe('EpgService.getProgrammesInRange', () => {
-  it('returns programmes that overlap the window', () => {
-    EpgService.programmes = {
-      ch1: [
-        prog({ title: 'Before', start: h(-5), stop: h(-4) }),
-        prog({ title: 'Overlap-start', start: h(-1), stop: h(1) }),
-        prog({ title: 'Inside', start: h(1), stop: h(2) }),
-        prog({ title: 'After', start: h(5), stop: h(6) }),
-      ],
-    };
-    const result = EpgService.getProgrammesInRange('ch1', h(0), h(3)).map(p => p.title);
-    expect(result).toEqual(['Overlap-start', 'Inside']);
-  });
-});
-
 describe('EpgService.findChannelId', () => {
   it('matches by tvg-id when programmes exist for it', () => {
     EpgService.programmes = { 'tvg.1': [prog({})] };
@@ -95,6 +89,35 @@ describe('EpgService.findChannelId', () => {
   it('returns null when neither id nor name matches', () => {
     EpgService.channels = { 'epg.5': { name: 'Beta', icon: '' } };
     expect(EpgService.findChannelId(channel({ id: 'x', name: 'Alpha' }))).toBeNull();
+  });
+});
+
+describe('EpgService.load — timezone offset capture', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    EpgService.reset();
+  });
+
+  it('refreshes a cache that predates tz capture so the offset is recovered', async () => {
+    // Pre-feature cache: fresh by age, but its data has no tzOffsetMinutes field.
+    const stale = { channels: { c1: { name: 'C1', icon: '' } }, programmes: {} } as ParsedEpg;
+    vi.mocked(getCachedEpg).mockResolvedValue({ url: 'http://epg', timestamp: NOON, data: stale });
+    vi.mocked(parseXMLTV).mockReturnValue({ channels: {}, programmes: {}, tzOffsetMinutes: 480 });
+
+    await EpgService.load();
+
+    expect(fetchText).toHaveBeenCalled(); // did NOT trust the stale cache
+    expect(EpgService.tzOffsetMinutes).toBe(480);
+  });
+
+  it('uses a fresh cache that carries the tz field, even when it is null', async () => {
+    const cached = { channels: {}, programmes: {}, tzOffsetMinutes: null } as ParsedEpg;
+    vi.mocked(getCachedEpg).mockResolvedValue({ url: 'http://epg', timestamp: NOON, data: cached });
+
+    await EpgService.load();
+
+    expect(fetchText).not.toHaveBeenCalled(); // trusted the cache
+    expect(EpgService.tzOffsetMinutes).toBeNull();
   });
 });
 

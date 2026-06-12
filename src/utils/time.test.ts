@@ -1,12 +1,23 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   parseXmltvDate,
+  parseXmltvOffsetMinutes,
   formatTime,
+  formatDayLabel,
+  displayDayKey,
+  startOfDisplayDay,
+  addDisplayDays,
   formatDuration,
   getTimeSlots,
   isNow,
   getProgress,
+  setDisplayTz,
 } from './time';
+
+// Display state is module-global; keep tests in the default 'device' mode.
+afterEach(() => {
+  setDisplayTz('device', null);
+});
 
 describe('parseXmltvDate', () => {
   it('parses a timestamp with an explicit timezone offset', () => {
@@ -29,6 +40,55 @@ describe('parseXmltvDate', () => {
     expect(parseXmltvDate('')).toBeNull();
     expect(parseXmltvDate('2024-06-01')).toBeNull();
     expect(parseXmltvDate('not a date')).toBeNull();
+  });
+});
+
+describe('parseXmltvOffsetMinutes', () => {
+  it('extracts the offset in minutes east of UTC', () => {
+    expect(parseXmltvOffsetMinutes('20240601120000 +0100')).toBe(60);
+    expect(parseXmltvOffsetMinutes('20240601120000 -0500')).toBe(-300);
+    expect(parseXmltvOffsetMinutes('20240601120000 +0530')).toBe(330);
+  });
+
+  it('returns null when the stamp carries no offset', () => {
+    expect(parseXmltvOffsetMinutes('20240601120000')).toBeNull();
+    expect(parseXmltvOffsetMinutes(null)).toBeNull();
+  });
+});
+
+describe('feed time mode', () => {
+  // 00:17 at +0100 is 23:17 UTC the previous day.
+  const d = parseXmltvDate('20240310001700 +0100')!;
+
+  it('formatTime renders the feed wall clock, not the device clock', () => {
+    setDisplayTz('feed', 60);
+    expect(formatTime(d)).toBe('00:17');
+  });
+
+  it('formatDayLabel and displayDayKey use the feed day', () => {
+    setDisplayTz('feed', 60);
+    expect(displayDayKey(d)).toBe('2024-03-10');
+    expect(formatDayLabel(d)).toEqual({ weekday: 'Sun', date: '03/10' });
+  });
+
+  it('startOfDisplayDay floors to feed midnight and addDisplayDays steps 24h', () => {
+    setDisplayTz('feed', 60);
+    const dayStart = startOfDisplayDay(d);
+    // 2024-03-10 00:00 +0100 == 2024-03-09 23:00 UTC
+    expect(dayStart.getTime()).toBe(Date.parse('2024-03-09T23:00:00Z'));
+    expect(addDisplayDays(dayStart, 1).getTime()).toBe(Date.parse('2024-03-10T23:00:00Z'));
+    expect(displayDayKey(dayStart)).toBe('2024-03-10');
+  });
+
+  it('falls back to device rendering when no feed offset is known', () => {
+    setDisplayTz('feed', null);
+    // With no offset, feed mode must render exactly as the device would.
+    expect(formatTime(d)).toBe(
+      `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`,
+    );
+    expect(displayDayKey(d)).toBe(
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`,
+    );
   });
 });
 

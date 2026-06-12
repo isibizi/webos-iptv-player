@@ -11,6 +11,7 @@ import { Settings } from './components/settings';
 import { Sidebar } from './components/sidebar';
 import { PlayerMenu } from './components/player-menu';
 import { showToast } from './components/toast';
+import { setDisplayTz } from './utils/time';
 import { $, show, hide } from './utils/dom';
 import { createLogger, installGlobalErrorHandlers, logEnvironment } from './utils/logger';
 import type { Action, NumberEvent, CatchupInfo } from './types';
@@ -232,9 +233,25 @@ class App {
     }
   }
 
+  /**
+   * Push the saved display-timezone mode + the EPG's source offset into the
+   * time formatter. Display only; safe to re-run any time. Prefers the offset
+   * from the freshly-loaded feed, persists it, and falls back to the last-known
+   * value — so feed mode renders correctly before the EPG has reloaded. The
+   * formatter degrades 'feed' to 'device' while the offset is still unknown.
+   */
+  private applyDisplayTz(): void {
+    const offset = EpgService.tzOffsetMinutes ?? StorageService.getEpgTzOffset();
+    if (EpgService.tzOffsetMinutes != null) StorageService.setEpgTzOffset(EpgService.tzOffsetMinutes);
+    setDisplayTz(StorageService.getTzMode(), offset);
+  }
+
   private async loadData(): Promise<void> {
     const done = log.time('loadData');
     show(this.views.loading);
+
+    this.applyDisplayTz();
+    this.epgGrid.resetDay(); // re-pick today; a tz change invalidates the remembered day index
 
     try {
       // Pull in uploaded playlists from the local upload service before we
@@ -290,10 +307,10 @@ class App {
 
       if (epgUrl) {
         EpgService.load()
-          .then(() => this.channelList.render())
+          .then(() => { this.applyDisplayTz(); this.channelList.render(); })
           .catch(err => log.error('EPG load failed:', err));
         setInterval(() => EpgService.refresh()
-          .then(() => this.channelList.render())
+          .then(() => { this.applyDisplayTz(); this.channelList.render(); })
           .catch(err => log.error('EPG refresh failed:', err)),
           CONFIG.EPG_REFRESH_INTERVAL);
       }
@@ -342,7 +359,7 @@ class App {
       this.showView('epg');
       this.epgGrid.render();
       // Refresh EPG data in background, then re-render
-      EpgService.refresh().then(() => this.epgGrid.render());
+      EpgService.refresh().then(() => { this.applyDisplayTz(); this.epgGrid.render(); });
       return;
     }
     if (action === 'blue' && currentView !== 'settings') {
@@ -505,7 +522,6 @@ class App {
   private async onSettingsSaved(reload: boolean): Promise<void> {
     if (reload) {
       StorageService.remove('cached_playlist');
-      StorageService.remove('cached_epg');
       this.showView('channels');
       await this.loadData();
     } else {

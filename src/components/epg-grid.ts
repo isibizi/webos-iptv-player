@@ -3,24 +3,9 @@ import { html, raw } from '../utils/dom';
 import { morph } from '../utils/morph';
 import { PlaylistService } from '../services/playlist-service';
 import { EpgService } from '../services/epg-service';
-import { formatTime, isNow } from '../utils/time';
-
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-function todayMidnight(): Date {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
+import { formatTime, formatDayLabel, displayDayKey, startOfDisplayDay, addDisplayDays, isNow } from '../utils/time';
 
 type FocusCol = 'channels' | 'dates' | 'programmes';
-
-function formatDateLabel(d: Date): { weekday: string; date: string } {
-  return {
-    weekday: WEEKDAYS[d.getDay()],
-    date: `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`,
-  };
-}
 
 export class EpgGrid {
   private container: HTMLElement;
@@ -37,35 +22,45 @@ export class EpgGrid {
     this.bindEvents();
   }
 
+  /** Re-snap the day selection to "today". Called on a full reload: the display
+   *  timezone may have changed, which shifts the day boundaries and makes the
+   *  remembered day *index* point at the wrong day. */
+  resetDay(): void {
+    this.dayInitialized = false;
+    this.selectedDay = 0;
+    this.focusProg = 0;
+  }
+
   private getDateOptions(): Date[] {
+    // Day columns span the earliest..latest programme START. Using start (not
+    // stop) means a programme that merely runs past midnight doesn't add an
+    // empty day column for the day it spills into — it belongs to its start day.
     let minStart = Infinity;
-    let maxStop = -Infinity;
+    let maxStart = -Infinity;
     for (const progs of Object.values(EpgService.programmes)) {
       if (!progs.length) continue;
       const first = progs[0].start.getTime();
-      const last = progs[progs.length - 1].stop.getTime();
+      const last = progs[progs.length - 1].start.getTime();
       if (first < minStart) minStart = first;
-      if (last > maxStop) maxStop = last;
+      if (last > maxStart) maxStart = last;
     }
     if (minStart === Infinity) return [];
 
-    const firstDay = new Date(minStart);
-    firstDay.setHours(0, 0, 0, 0);
-    const lastDay = new Date(maxStop);
-    lastDay.setHours(0, 0, 0, 0);
+    const firstDay = startOfDisplayDay(new Date(minStart));
+    const lastDay = startOfDisplayDay(new Date(maxStart));
 
     const opts: Date[] = [];
-    const cur = new Date(firstDay);
+    let cur = firstDay;
     while (cur.getTime() <= lastDay.getTime()) {
-      opts.push(new Date(cur));
-      cur.setDate(cur.getDate() + 1);
+      opts.push(cur);
+      cur = addDisplayDays(cur, 1);
     }
     return opts;
   }
 
   private findTodayIndex(options: Date[]): number {
     if (!options.length) return 0;
-    const todayMs = todayMidnight().getTime();
+    const todayMs = startOfDisplayDay(new Date()).getTime();
     for (let i = 0; i < options.length; i++) {
       if (options[i].getTime() === todayMs) return i;
     }
@@ -80,9 +75,12 @@ export class EpgGrid {
     const options = this.getDateOptions();
     const dayStart = options[this.selectedDay];
     if (!dayStart) return [];
-    const dayEnd = new Date(dayStart);
-    dayEnd.setDate(dayEnd.getDate() + 1);
-    return EpgService.getProgrammesInRange(epgId, dayStart, dayEnd);
+    const dayEnd = addDisplayDays(dayStart, 1).getTime();
+    const from = dayStart.getTime();
+    // Bucket each programme by the day it STARTS, so one spanning midnight shows
+    // on its start day only — not as a stray previous-day entry atop the next day.
+    return (EpgService.programmes[epgId] ?? [])
+      .filter(p => p.start.getTime() >= from && p.start.getTime() < dayEnd);
   }
 
   render(): void {
@@ -97,7 +95,7 @@ export class EpgGrid {
         this.selectedDay = Math.max(0, Math.min(this.selectedDay, dateOptions.length - 1));
       }
     }
-    const todayMs = todayMidnight().getTime();
+    const todayMs = startOfDisplayDay(new Date()).getTime();
     const programmes = this.getCurrentProgrammes();
 
     morph(this.container, html`
@@ -127,10 +125,10 @@ export class EpgGrid {
                 const sel = i === this.selectedDay;
                 const foc = sel && this.focusCol === 'dates';
                 const isToday = d.getTime() === todayMs;
-                const lbl = formatDateLabel(d);
+                const lbl = formatDayLabel(d);
                 return html`
                   <div class="epg-date-item ${sel ? 'selected' : ''} ${foc ? 'focused' : ''} ${isToday ? 'today' : ''}"
-                       data-key="${d.toISOString().slice(0, 10)}"
+                       data-key="${displayDayKey(d)}"
                        data-day-index="${i}">
                     <span class="epg-date-weekday">${lbl.weekday}</span>
                     <span class="epg-date-date">${lbl.date}</span>

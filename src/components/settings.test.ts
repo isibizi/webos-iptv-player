@@ -1,11 +1,14 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import type { TzMode } from '../types';
 
 const { state, storageMock, toastMock, uploadMock } = vi.hoisted(() => {
   const state = {
     playlists: [] as { name: string; url: string; source?: 'upload' | 'url' }[],
     epg: '',
     autoPlay: false,
+    tzMode: 'device' as TzMode,
+    tzOffset: null as number | null,
   };
   return {
     state,
@@ -13,9 +16,12 @@ const { state, storageMock, toastMock, uploadMock } = vi.hoisted(() => {
       getPlaylists: vi.fn(() => state.playlists),
       getEpgUrl: vi.fn(() => state.epg),
       getAutoPlay: vi.fn(() => state.autoPlay),
+      getTzMode: vi.fn(() => state.tzMode),
+      getEpgTzOffset: vi.fn(() => state.tzOffset),
       setPlaylists: vi.fn(),
       setEpgUrl: vi.fn(),
       setAutoPlay: vi.fn(),
+      setTzMode: vi.fn(),
       remove: vi.fn(),
     },
     toastMock: { showToast: vi.fn() },
@@ -31,6 +37,7 @@ const { state, storageMock, toastMock, uploadMock } = vi.hoisted(() => {
 });
 
 vi.mock('../services/storage-service', () => ({ StorageService: storageMock }));
+vi.mock('../services/idb-cache', () => ({ clearCachedEpg: vi.fn(async () => {}) }));
 vi.mock('./toast', () => ({ showToast: toastMock.showToast }));
 vi.mock('../services/upload-client', () => ({
   UploadClient: uploadMock,
@@ -41,6 +48,7 @@ vi.mock('../services/upload-client', () => ({
 }));
 
 import { Settings } from './settings';
+import { clearCachedEpg } from '../services/idb-cache';
 
 let container: HTMLElement;
 let onSave: ReturnType<typeof vi.fn>;
@@ -149,10 +157,10 @@ describe('Settings editing', () => {
     expect(toggle.textContent?.trim()).toBe('ON');
   });
 
-  it('clears the cache and shows a toast', () => {
+  it('clears the playlist and EPG caches and shows a toast', () => {
     click('#clear-cache');
     expect(storageMock.remove).toHaveBeenCalledWith('cached_playlist');
-    expect(storageMock.remove).toHaveBeenCalledWith('cached_epg');
+    expect(clearCachedEpg).toHaveBeenCalled();
     expect(toastMock.showToast).toHaveBeenCalledWith('Cache cleared');
   });
 
@@ -193,6 +201,15 @@ describe('Settings.save', () => {
     urls[0].value = 'http://only';
     click('#save-settings');
     expect(storageMock.setPlaylists).toHaveBeenCalledWith([{ name: 'Playlist 1', url: 'http://only', source: 'url' }]);
+  });
+
+  it('toggling the time-zone control persists the feed mode', () => {
+    const toggle = container.querySelector<HTMLButtonElement>('#tz-mode-toggle')!;
+    expect(toggle.textContent!.trim()).toBe('Device');
+    click('#tz-mode-toggle');
+    expect(toggle.textContent!.trim()).toBe('Feed');
+    click('#save-settings');
+    expect(storageMock.setTzMode).toHaveBeenCalledWith('feed');
   });
 });
 

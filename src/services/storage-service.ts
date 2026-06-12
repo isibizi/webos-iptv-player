@@ -1,5 +1,5 @@
 import { CONFIG } from '../config';
-import type { Channel, PlaylistEntry } from '../types';
+import type { Channel, PlaylistEntry, TzMode } from '../types';
 
 const PREFIX = CONFIG.STORAGE_PREFIX;
 
@@ -86,6 +86,23 @@ export const StorageService = {
   },
   setAutoPlay(val: boolean): void {
     set('auto_play', val);
+  },
+
+  // 'device' = the device's timezone (default), 'feed' = the EPG feed's timezone.
+  getTzMode(): TzMode {
+    return get<TzMode>('tz_mode', 'device');
+  },
+  setTzMode(mode: TzMode): void {
+    set('tz_mode', mode);
+  },
+
+  // Last-known feed UTC offset (minutes), captured from the EPG feed so
+  // feed-time display works before the EPG has reloaded.
+  getEpgTzOffset(): number | null {
+    return get<number | null>('epg_tz_offset', null);
+  },
+  setEpgTzOffset(min: number): void {
+    set('epg_tz_offset', min);
   },
 
   getCachedPlaylist(): { channels: Channel[]; epgUrls: string[] } | null {

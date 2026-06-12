@@ -3,6 +3,7 @@ import { $, $$, html, raw } from '../utils/dom';
 import { morph } from '../utils/morph';
 import { SpatialNav } from '../navigation/spatial-nav';
 import { StorageService } from '../services/storage-service';
+import { clearCachedEpg } from '../services/idb-cache';
 import { UploadClient, uploadIdFromUrl } from '../services/upload-client';
 import { CONFIG } from '../config';
 import { showToast } from './toast';
@@ -14,6 +15,14 @@ function qrDataUrl(text: string): string {
   qr.addData(text);
   qr.make();
   return qr.createDataURL(6, 4);
+}
+
+/** "UTC+08:00" / "UTC-05:00" / "UTC" for a feed offset in minutes. */
+function formatOffset(min: number): string {
+  if (!min) return 'UTC';
+  const sign = min > 0 ? '+' : '-';
+  const abs = Math.abs(min);
+  return `UTC${sign}${String(Math.floor(abs / 60)).padStart(2, '0')}:${String(abs % 60).padStart(2, '0')}`;
 }
 
 /** "MyList — 12 channels" when count is known, otherwise just the name. */
@@ -63,6 +72,8 @@ export class Settings {
     const uploads = allPlaylists.filter(pl => pl.source === 'upload');
     const epgUrl = StorageService.getEpgUrl();
     const autoPlay = StorageService.getAutoPlay();
+    const feedTime = StorageService.getTzMode() === 'feed';
+    const tzOffset = StorageService.getEpgTzOffset();
 
     this.container.innerHTML = String(html`
       <div class="settings-view">
@@ -132,6 +143,22 @@ export class Settings {
         </div>
 
         <div class="settings-section">
+          <h3>Display</h3>
+          <div class="settings-row settings-toggle-row">
+            <label for="tz-mode-toggle">Programme time zone</label>
+            <button class="btn toggle-btn ${feedTime ? 'active' : ''}"
+                    data-focusable id="tz-mode-toggle">
+              ${feedTime ? 'Feed' : 'Device'}
+            </button>
+          </div>
+          <div class="empty-hint">
+            ${tzOffset === null
+              ? 'Device uses your device’s time zone. Feed uses the EPG feed’s time zone (load EPG to detect it).'
+              : `Device uses your device’s time zone. Feed uses the EPG feed’s time zone (${formatOffset(tzOffset)}).`}
+          </div>
+        </div>
+
+        <div class="settings-section">
           <h3>Playback</h3>
           <div class="settings-row settings-toggle-row">
             <label for="auto-play-toggle">Auto-play last channel on startup</label>
@@ -197,6 +224,9 @@ export class Settings {
     } else if (el.id === 'auto-play-toggle') {
       el.classList.toggle('active');
       el.textContent = el.classList.contains('active') ? 'ON' : 'OFF';
+    } else if (el.id === 'tz-mode-toggle') {
+      el.classList.toggle('active');
+      el.textContent = el.classList.contains('active') ? 'Feed' : 'Device';
     } else if (el.id === 'save-settings') {
       this.save();
     } else if (el.id === 'cancel-settings') {
@@ -205,7 +235,7 @@ export class Settings {
       this.onSave(true);
     } else if (el.id === 'clear-cache') {
       StorageService.remove('cached_playlist');
-      StorageService.remove('cached_epg');
+      void clearCachedEpg();
       showToast('Cache cleared');
     } else if (el.tagName === 'INPUT') {
       (el as HTMLInputElement).focus();
@@ -297,6 +327,11 @@ export class Settings {
 
     const autoPlayBtn = $('#auto-play-toggle', this.container);
     if (autoPlayBtn) StorageService.setAutoPlay(autoPlayBtn.classList.contains('active'));
+
+    const tzModeBtn = $('#tz-mode-toggle', this.container);
+    if (tzModeBtn) {
+      StorageService.setTzMode(tzModeBtn.classList.contains('active') ? 'feed' : 'device');
+    }
 
     this.onSave(true);
   }
