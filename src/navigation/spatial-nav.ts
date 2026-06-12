@@ -77,6 +77,13 @@ export class SpatialNav {
       const dx = ix - cx;
       const dy = iy - cy;
 
+      // Off-axis distance measured as the gap between the rects (0 when they
+      // overlap on that axis), not centre-to-centre — so a vertical move can
+      // reach a wide or right-aligned item that shares the travel column,
+      // rather than always favouring a narrow left-aligned one.
+      const gapX = Math.max(r.left - rect.right, rect.left - r.right, 0);
+      const gapY = Math.max(r.top - rect.bottom, rect.top - r.bottom, 0);
+
       let valid = false;
       let primary = 0;
       let secondary = 0;
@@ -85,22 +92,22 @@ export class SpatialNav {
         case 'up':
           valid = dy < -5;
           primary = Math.abs(dy);
-          secondary = Math.abs(dx);
+          secondary = gapX;
           break;
         case 'down':
           valid = dy > 5;
           primary = Math.abs(dy);
-          secondary = Math.abs(dx);
+          secondary = gapX;
           break;
         case 'left':
           valid = dx < -5;
           primary = Math.abs(dx);
-          secondary = Math.abs(dy);
+          secondary = gapY;
           break;
         case 'right':
           valid = dx > 5;
           primary = Math.abs(dx);
-          secondary = Math.abs(dy);
+          secondary = gapY;
           break;
       }
 
