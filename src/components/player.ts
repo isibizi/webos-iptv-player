@@ -4,7 +4,7 @@ import { PlaylistService } from '../services/playlist-service';
 import { EpgService } from '../services/epg-service';
 import { StorageService } from '../services/storage-service';
 import { CONFIG } from '../config';
-import { formatTime, formatDuration, getProgress } from '../utils/time';
+import { formatTime, formatPosition, formatDuration, getProgress } from '../utils/time';
 import { createLogger } from '../utils/logger';
 
 const log = createLogger('Player');
@@ -24,6 +24,8 @@ export class Player {
   private currentIndex = -1;
   private catchupInfo: CatchupInfo | null = null;
   private osdVisible = false;
+  private pointerX: number | null = null;
+  private pointerY: number | null = null;
   private osdTimer: ReturnType<typeof setTimeout> | null = null;
   private wasPlayingBeforeHide = false;
   constructor(container: HTMLElement, onBack: () => void) {
@@ -33,14 +35,21 @@ export class Player {
 
   init(videoEl: HTMLVideoElement): void {
     this.videoEl = videoEl;
-    this.videoEl.addEventListener('error', () => this.onError());
-    this.videoEl.addEventListener('loadedmetadata', () => {
-      log.info('loadedmetadata', this.videoEl?.videoWidth + 'x' + this.videoEl?.videoHeight,
-        '| duration:', this.videoEl?.duration);
+    this.bindVideoEvents(videoEl);
+
+    // Pointer seeking. The Magic Remote OK over the bar may arrive as a click
+    // (whose target can be the native video plane, not the bar) or as a keydown
+    // 'select' — so seek by pointer COORDINATES over the bar, not the event target.
+    this.container.addEventListener('mousemove', (e: MouseEvent) => {
+      this.pointerX = e.clientX;
+      this.pointerY = e.clientY;
+      // An active cursor reveals the OSD (and its seek bar) so there's something
+      // to aim at; keep it up while the cursor keeps moving.
+      if (this.osdVisible) this.resetOsdTimer(); else this.showOSD();
     });
-    this.videoEl.addEventListener('playing', () => log.info('playing'));
-    this.videoEl.addEventListener('waiting', () => log.debug('waiting (buffering)'));
-    this.videoEl.addEventListener('stalled', () => log.warn('stalled'));
+    // The Magic Remote OK over the bar fires mousedown/up (and pointer events)
+    // but NOT a synthesized click — so seek on mouseup, by coordinates.
+    this.container.addEventListener('mouseup', (e: MouseEvent) => this.seekAtPointer(e.clientX, e.clientY));
 
     // Suspend/resume playback when the app goes to background.
     // webOS needs multiple event sources — blur/focus is what actually
@@ -57,6 +66,16 @@ export class Player {
     });
     window.addEventListener('blur', () => onHidden('blur'));
     window.addEventListener('focus', () => onVisible('focus'));
+  }
+
+  private bindVideoEvents(el: HTMLVideoElement): void {
+    el.addEventListener('error', () => this.onError());
+    el.addEventListener('loadedmetadata', () =>
+      log.info('loadedmetadata', el.videoWidth + 'x' + el.videoHeight, '| duration:', el.duration));
+    el.addEventListener('playing', () => log.info('playing'));
+    el.addEventListener('waiting', () => log.debug('waiting (buffering)'));
+    el.addEventListener('stalled', () => log.warn('stalled'));
+    el.addEventListener('timeupdate', () => this.refreshProgress());
   }
 
   suspend(): void {
@@ -83,7 +102,7 @@ export class Player {
       const fresh = document.createElement('video');
       fresh.id = old.id;
       fresh.autoplay = true;
-      fresh.addEventListener('error', () => this.onError());
+      this.bindVideoEvents(fresh);
       old.parentNode!.replaceChild(fresh, old);
       this.videoEl = fresh;
     }
@@ -281,8 +300,62 @@ export class Player {
     this.osdVisible = true;
     this.renderOSD();
     show($('#player-osd', this.container));
+    this.resetOsdTimer();
+  }
+
+  private resetOsdTimer(): void {
     if (this.osdTimer) clearTimeout(this.osdTimer);
     this.osdTimer = setTimeout(() => this.hideOSD(), CONFIG.PLAYER.OSD_TIMEOUT);
+  }
+
+  /** Catch-up VOD is seekable while the OSD (the seek UI) is showing. */
+  canSeek(): boolean {
+    const v = this.videoEl;
+    return this.osdVisible && !!this.catchupInfo && !!v
+      && Number.isFinite(v.duration) && v.duration > 0;
+  }
+
+  seekBy(seconds: number): void {
+    this.seekTo((this.videoEl?.currentTime ?? 0) + seconds);
+  }
+
+  /** Seek to a fraction (0..1) of the duration. */
+  private seekToFraction(fraction: number): void {
+    const v = this.videoEl;
+    if (v && Number.isFinite(v.duration)) this.seekTo(Math.max(0, Math.min(1, fraction)) * v.duration);
+  }
+
+  /** Seek to the bar position under (x, y) when it's over the seek bar; returns
+   *  whether it seeked. Used by both pointer clicks and OK over the bar. */
+  private seekAtPointer(x: number | null, y: number | null): boolean {
+    const v = this.videoEl;
+    if (x === null || y === null || !v || !this.canSeek()) return false;
+    const bar = $('[data-seekbar]', this.container) as HTMLElement | null;
+    if (!bar) return false;
+    const r = bar.getBoundingClientRect();
+    const M = 20; // vertical slack so a near-miss with the imprecise cursor still counts
+    const hit = r.width > 0 && x >= r.left && x <= r.right && y >= r.top - M && y <= r.bottom + M;
+    if (!hit) return false;
+    this.seekToFraction((x - r.left) / r.width);
+    return true;
+  }
+
+  private seekTo(time: number): void {
+    const v = this.videoEl;
+    if (!v || !Number.isFinite(v.duration) || v.duration <= 0) return;
+    v.currentTime = Math.max(0, Math.min(v.duration, time));
+    if (this.osdVisible) this.resetOsdTimer(); else this.showOSD();
+    this.refreshProgress();
+  }
+
+  /** Live-update the bar + elapsed label in place (on timeupdate / after a seek). */
+  private refreshProgress(): void {
+    const v = this.videoEl;
+    if (!this.osdVisible || !this.catchupInfo || !v || !Number.isFinite(v.duration) || v.duration <= 0) return;
+    const bar = $('.osd-progress-bar', this.container) as HTMLElement | null;
+    if (bar) bar.style.width = `${(Math.min(v.currentTime, v.duration) / v.duration) * 100}%`;
+    const cur = $('.osd-time-current', this.container);
+    if (cur) cur.textContent = formatPosition(v.currentTime);
   }
 
   hideOSD(): void {
@@ -305,10 +378,14 @@ export class Player {
 
     let programmeHtml: string | Safe = '';
     if (catchup) {
-      // Catch-up playback: show the selected programme's info
+      // Catch-up playback: show the selected programme's info. The bar tracks the
+      // video's playback position (a seekable VOD), not wall-clock time.
       const start = new Date(catchup.start * 1000);
       const end = new Date(catchup.end * 1000);
-      const progress = getProgress(start, end);
+      const v = this.videoEl;
+      const dur = v && Number.isFinite(v.duration) && v.duration > 0 ? v.duration : (catchup.end - catchup.start);
+      const pos = v ? Math.min(v.currentTime || 0, dur) : 0;
+      const progress = dur > 0 ? pos / dur : 0;
       const duration = formatDuration(end.getTime() - start.getTime());
       programmeHtml = html`
         <div class="osd-programme">
@@ -324,11 +401,11 @@ export class Player {
             </div>
           </div>
           <div class="osd-progress-row">
-            <span class="osd-time-current">${formatTime(start)}</span>
-            <div class="osd-progress">
+            <span class="osd-time-current">${formatPosition(pos)}</span>
+            <div class="osd-progress" data-seekbar>
               <div class="osd-progress-bar" style="width: ${progress * 100}%"></div>
             </div>
-            <span class="osd-time-end">${formatTime(end)}</span>
+            <span class="osd-time-end">${formatPosition(dur)}</span>
           </div>
           ${catchup.description ? html`<div class="osd-description">${catchup.description}</div>` : ''}
         </div>
@@ -411,6 +488,9 @@ export class Player {
   }
 
   handleAction(action: Action): void {
+    // Any non-OK button means 5-way/button input, so a tracked cursor position
+    // is stale — drop it so OK toggles the OSD rather than seeking.
+    if (action !== 'select') { this.pointerX = null; this.pointerY = null; }
     switch (action) {
       case 'back':
       case 'stop':
@@ -418,7 +498,13 @@ export class Player {
         this.onBack();
         break;
       case 'select':
-        this.toggleOSD();
+        if (!this.seekAtPointer(this.pointerX, this.pointerY)) this.toggleOSD();
+        break;
+      case 'left':
+        this.seekBy(-CONFIG.PLAYER.SEEK_STEP);
+        break;
+      case 'right':
+        this.seekBy(CONFIG.PLAYER.SEEK_STEP);
         break;
       case 'up':
       case 'channel_up':

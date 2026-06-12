@@ -417,6 +417,13 @@ class App {
         this.channelList.handleAction(action, event);
         break;
       case 'player':
+        // While the OSD is up on seekable catch-up, Left/Right seek instead of
+        // opening the sidebar/menu (which stay reachable once the OSD hides).
+        if ((action === 'left' || action === 'right')
+            && !this.sidebar.visible && !this.menu.visible && this.player.canSeek()) {
+          this.player.handleAction(action);
+          break;
+        }
         if (action === 'left') {
           if (this.menu.visible) this.menu.hide();
           else if (this.sidebar.visible) this.sidebar.hide();

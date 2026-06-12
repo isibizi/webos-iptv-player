@@ -15,6 +15,7 @@ export const CONFIG = {
     OSD_TIMEOUT: 5000,
     BUFFER_LENGTH: 30,
     CHANNEL_NUMBER_TIMEOUT: 2000,
+    SEEK_STEP: 30, // seconds per Left/Right press while seeking catch-up
   },
 
   EPG: {

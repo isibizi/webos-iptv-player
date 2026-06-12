@@ -7,6 +7,7 @@ import {
   displayDayKey,
   startOfDisplayDay,
   addDisplayDays,
+  formatPosition,
   formatDuration,
   getTimeSlots,
   isNow,
@@ -103,6 +104,23 @@ describe('formatTime', () => {
   it('renders midnight as 00:xx, never 24:xx', () => {
     expect(formatTime(new Date(2024, 0, 2, 0, 0))).toBe('00:00');
     expect(formatTime(new Date(2024, 0, 2, 0, 30))).toBe('00:30');
+  });
+});
+
+describe('formatPosition', () => {
+  it('formats a position under an hour as m:ss', () => {
+    expect(formatPosition(0)).toBe('0:00');
+    expect(formatPosition(65)).toBe('1:05');
+    expect(formatPosition(1810)).toBe('30:10');
+  });
+
+  it('includes hours past 60 minutes and zero-pads minutes', () => {
+    expect(formatPosition(3905)).toBe('1:05:05');
+  });
+
+  it('floors fractional seconds and clamps negatives to 0:00', () => {
+    expect(formatPosition(9.9)).toBe('0:09');
+    expect(formatPosition(-5)).toBe('0:00');
   });
 });
 

@@ -1,0 +1,139 @@
+// @vitest-environment jsdom
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+
+const { playlistMock } = vi.hoisted(() => ({
+  playlistMock: { channels: [] as unknown[], getByIndex: vi.fn() },
+}));
+
+vi.mock('../services/playlist-service', () => ({ PlaylistService: playlistMock }));
+vi.mock('../services/epg-service', () => ({
+  EpgService: { findChannelId: () => null, getNowPlaying: () => null, getUpcoming: () => [] },
+}));
+vi.mock('../services/storage-service', () => ({ StorageService: { setLastChannel: vi.fn() } }));
+
+import { Player } from './player';
+
+const CHANNEL = {
+  id: 'c1', name: 'Chan', logo: '', group: '', url: 'http://host/play/c1', extras: null,
+  playlist: '', catchup: 'default', catchupSource: 'http://host/catchup/c1?start={utc}&end={utcend}', catchupDays: 7,
+};
+// 120-second catch-up programme.
+const CATCHUP = { start: 1_000_000, end: 1_000_120, title: 'Prog', description: '', icon: '' };
+
+// A stand-in <video> with controllable duration/currentTime — jsdom's real one
+// reports duration NaN and ignores currentTime without a media source.
+function fakeVideo(duration: number): HTMLVideoElement {
+  let currentTime = 0;
+  return {
+    duration,
+    get currentTime() { return currentTime; },
+    set currentTime(t: number) { currentTime = t; },
+    classList: { add() {}, remove() {} },
+    canPlayType: () => '',
+    play: () => Promise.resolve(),
+    load() {}, removeAttribute() {}, appendChild() {}, set innerHTML(_: string) {},
+    addEventListener() {},
+  } as unknown as HTMLVideoElement;
+}
+
+let container: HTMLElement;
+let player: Player;
+let video: HTMLVideoElement;
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  document.body.innerHTML = '';
+  container = document.createElement('div');
+  const osd = document.createElement('div');
+  osd.id = 'player-osd';
+  container.appendChild(osd);
+  document.body.appendChild(container);
+  playlistMock.getByIndex.mockReturnValue(CHANNEL);
+  player = new Player(container, vi.fn());
+  video = fakeVideo(120);
+  player.init(video);
+});
+afterEach(() => vi.useRealTimers());
+
+const bar = () => container.querySelector('.osd-progress-bar') as HTMLElement;
+const elapsed = () => container.querySelector('.osd-time-current')!.textContent;
+
+describe('Player catch-up seeking', () => {
+  beforeEach(() => player.play(0, CATCHUP)); // catch-up → OSD shown, seekable
+
+  it('renders a seek bar showing the playback position and total', () => {
+    expect(container.querySelector('[data-seekbar]')).not.toBeNull();
+    expect(elapsed()).toBe('0:00');
+    expect(container.querySelector('.osd-time-end')!.textContent).toBe('2:00');
+    expect(player.canSeek()).toBe(true);
+  });
+
+  it('Right seeks forward by the step, Left back; the bar + label follow', () => {
+    player.handleAction('right');
+    expect(video.currentTime).toBe(30);
+    expect(bar().style.width).toBe('25%');
+    expect(elapsed()).toBe('0:30');
+
+    player.handleAction('right');
+    expect(video.currentTime).toBe(60);
+    expect(bar().style.width).toBe('50%');
+
+    player.handleAction('left');
+    expect(video.currentTime).toBe(30);
+  });
+
+  it('clamps seeks to [0, duration]', () => {
+    player.handleAction('left'); // 0 - 30 → 0
+    expect(video.currentTime).toBe(0);
+    for (let i = 0; i < 5; i++) player.handleAction('right'); // 150 → clamp 120
+    expect(video.currentTime).toBe(120);
+  });
+
+  const stubBar = () => {
+    const seekbar = container.querySelector('[data-seekbar]') as HTMLElement;
+    seekbar.getBoundingClientRect = () => ({ left: 0, right: 1000, width: 1000, top: 0, bottom: 36 }) as DOMRect;
+  };
+
+  it('a pointer release over the bar seeks to that fraction of the duration', () => {
+    stubBar();
+    container.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: 750, clientY: 18 }));
+    expect(video.currentTime).toBe(90); // 0.75 * 120
+  });
+
+  it('OK while the cursor is over the bar seeks to the pointer position', () => {
+    stubBar();
+    container.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 250, clientY: 18 }));
+    player.handleAction('select');
+    expect(video.currentTime).toBe(30); // 0.25 * 120
+  });
+
+  it('OK away from the bar toggles the OSD instead of seeking', () => {
+    stubBar();
+    container.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 250, clientY: 500 })); // off the bar
+    player.handleAction('select');
+    expect(video.currentTime).toBe(0);
+    expect(player.canSeek()).toBe(false); // OSD hidden
+  });
+
+  it('a d-pad press clears the cursor so OK toggles the OSD', () => {
+    stubBar();
+    container.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 250, clientY: 18 }));
+    player.handleAction('right'); // d-pad seek clears the tracked cursor
+    expect(video.currentTime).toBe(30);
+    player.handleAction('select');
+    expect(player.canSeek()).toBe(false); // toggled (hidden), not seeked
+  });
+
+  it('is no longer seekable once the OSD hides', () => {
+    player.hideOSD();
+    expect(player.canSeek()).toBe(false);
+  });
+});
+
+describe('Player live playback', () => {
+  it('has no seek bar and is not seekable', () => {
+    player.play(0); // live, no catch-up
+    expect(player.canSeek()).toBe(false);
+    expect(container.querySelector('[data-seekbar]')).toBeNull();
+  });
+});

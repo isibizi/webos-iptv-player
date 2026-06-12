@@ -133,6 +133,33 @@
   transition: width 1s linear;
 }
 
+.osd-progress[data-seekbar] {
+  cursor: pointer;
+  height: 36px;
+  padding: 15px 0;
+  background-clip: content-box;
+  overflow: visible;
+}
+
+.osd-progress[data-seekbar] .osd-progress-bar {
+  position: relative;
+  overflow: visible;
+  transition: width 0.12s linear;
+}
+
+.osd-progress[data-seekbar] .osd-progress-bar::after {
+  content: '';
+  position: absolute;
+  right: -9px;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  transform: translateY(-50%);
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+
 .osd-description {
   font-size: 24px;
   color: var(--text-secondary);
