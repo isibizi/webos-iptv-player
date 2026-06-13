@@ -76,6 +76,7 @@ export class Player {
     el.addEventListener('waiting', () => log.debug('waiting (buffering)'));
     el.addEventListener('stalled', () => log.warn('stalled'));
     el.addEventListener('timeupdate', () => this.refreshProgress());
+    el.addEventListener('ended', () => this.onEnded());
   }
 
   suspend(): void {
@@ -143,6 +144,15 @@ export class Player {
     this.loadStream(url, channel.extras);
     this.showOSD();
     show(this.container);
+  }
+
+  // A finished catch-up VOD would otherwise freeze on its last frame; fall back
+  // to the channel's live stream instead.
+  private onEnded(): void {
+    if (this.catchupInfo && this.currentIndex >= 0) {
+      log.info('catch-up ended — resuming live');
+      this.play(this.currentIndex);
+    }
   }
 
   stop(): void {

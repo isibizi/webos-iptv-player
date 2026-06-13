@@ -24,15 +24,20 @@ const CATCHUP = { start: 1_000_000, end: 1_000_120, title: 'Prog', description: 
 // reports duration NaN and ignores currentTime without a media source.
 function fakeVideo(duration: number): HTMLVideoElement {
   let currentTime = 0;
+  let src = '';
+  const listeners: Record<string, Array<() => void>> = {};
   return {
     duration,
     get currentTime() { return currentTime; },
     set currentTime(t: number) { currentTime = t; },
+    get src() { return src; },
+    set src(v: string) { src = v; },
     classList: { add() {}, remove() {} },
     canPlayType: () => '',
     play: () => Promise.resolve(),
     load() {}, removeAttribute() {}, appendChild() {}, set innerHTML(_: string) {},
-    addEventListener() {},
+    addEventListener(type: string, fn: () => void) { (listeners[type] ||= []).push(fn); },
+    dispatchEvent(e: Event) { (listeners[e.type] || []).forEach((fn) => fn()); return true; },
   } as unknown as HTMLVideoElement;
 }
 
@@ -127,6 +132,19 @@ describe('Player catch-up seeking', () => {
   it('is no longer seekable once the OSD hides', () => {
     player.hideOSD();
     expect(player.canSeek()).toBe(false);
+  });
+});
+
+describe('Player catch-up completion', () => {
+  it('resumes the channel live stream when the catch-up programme ends', () => {
+    player.play(0, CATCHUP);
+    expect((video as unknown as { src: string }).src).toContain('/catchup/');
+    expect(player.canSeek()).toBe(true);
+
+    video.dispatchEvent(new Event('ended'));
+
+    expect((video as unknown as { src: string }).src).toContain('/play/'); // live URL
+    expect(player.canSeek()).toBe(false); // live, not seekable
   });
 });
 
