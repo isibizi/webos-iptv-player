@@ -9,6 +9,9 @@ import { createLogger } from '../utils/logger';
 
 const log = createLogger('Player');
 
+// True on the TV's webOS WebView; false in desktop preview / tests.
+const isWebOS = /webOS|Web0S/i.test(navigator.userAgent);
+
 // hls.js and mpegts.js are loaded as globals via preview-libs.js (desktop only)
 const win = window as unknown as Record<string, unknown>;
 type HlsType = typeof import('hls.js').default;
@@ -64,8 +67,10 @@ export class Player {
       if ((document as unknown as Record<string, boolean>).webkitHidden) onHidden('webkitvisibilitychange');
       else onVisible('webkitvisibilitychange');
     });
-    window.addEventListener('blur', () => onHidden('blur'));
-    window.addEventListener('focus', () => onVisible('focus'));
+    if (isWebOS) {
+      window.addEventListener('blur', () => onHidden('blur'));
+      window.addEventListener('focus', () => onVisible('focus'));
+    }
   }
 
   private bindVideoEvents(el: HTMLVideoElement): void {
@@ -190,7 +195,6 @@ export class Player {
     const isHls = url.includes('.m3u8');
     const isTs = url.endsWith('.ts') || url.includes('.ts?');
     const isFlv = url.endsWith('.flv') || url.includes('.flv?');
-    const isWebOS = /webOS|Web0S/i.test(navigator.userAgent);
     log.info('loadStream url=', url, '| webOS:', isWebOS, '| isHls:', isHls, '| isTs:', isTs, '| isFlv:', isFlv);
 
     // On webOS, prefer native playback — the TV has hardware HLS/TS decoders
