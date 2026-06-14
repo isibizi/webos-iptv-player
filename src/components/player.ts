@@ -97,21 +97,30 @@ export class Player {
         this.mpegtsPlayer.destroy();
         this.mpegtsPlayer = null;
       }
-      // On webOS, the native media pipeline runs in a separate process.
-      // Removing src/innerHTML isn't enough — we must destroy the video
-      // element entirely and create a fresh one to kill the pipeline.
-      const old = this.videoEl;
-      old.pause();
-      old.removeAttribute('src');
-      old.innerHTML = '';
-      old.load();
-      const fresh = document.createElement('video');
-      fresh.id = old.id;
-      fresh.autoplay = true;
-      this.bindVideoEvents(fresh);
-      old.parentNode!.replaceChild(fresh, old);
-      this.videoEl = fresh;
+      this.recreateVideoEl();
     }
+  }
+
+  /**
+   * Destroy the native media pipeline by swapping in a fresh <video> element.
+   * On webOS the pipeline runs in a separate process and survives src changes —
+   * and after a VOD reaches `ended` it stays terminal *and* keeps its whole
+   * buffer, so the next stream won't start on the same element. A fresh element
+   * kills the pipeline and frees it.
+   */
+  private recreateVideoEl(): void {
+    const old = this.videoEl;
+    if (!old) return;
+    old.pause();
+    old.removeAttribute('src');
+    old.innerHTML = '';
+    old.load();
+    const fresh = document.createElement('video');
+    fresh.id = old.id;
+    fresh.autoplay = true;
+    this.bindVideoEvents(fresh);
+    old.parentNode!.replaceChild(fresh, old);
+    this.videoEl = fresh;
   }
 
   resume(): void {
@@ -156,6 +165,7 @@ export class Player {
   private onEnded(): void {
     if (this.catchupInfo && this.currentIndex >= 0) {
       log.info('catch-up ended — resuming live');
+      this.recreateVideoEl();
       this.play(this.currentIndex);
     }
   }
@@ -195,7 +205,8 @@ export class Player {
     const isHls = url.includes('.m3u8');
     const isTs = url.endsWith('.ts') || url.includes('.ts?');
     const isFlv = url.endsWith('.flv') || url.includes('.flv?');
-    log.info('loadStream url=', url, '| webOS:', isWebOS, '| isHls:', isHls, '| isTs:', isTs, '| isFlv:', isFlv);
+    log.info('loadStream url=', url, '| webOS:', isWebOS, '| catchup:', !!this.catchupInfo,
+      '| isHls:', isHls, '| isTs:', isTs, '| isFlv:', isFlv);
 
     // On webOS, prefer native playback — the TV has hardware HLS/TS decoders
     // that work better than MSE-based libraries
