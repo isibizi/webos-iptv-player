@@ -3,7 +3,7 @@ import { html, raw } from '../utils/dom';
 import { morph } from '../utils/morph';
 import { PlaylistService } from '../services/playlist-service';
 import { EpgService } from '../services/epg-service';
-import { formatTime, formatDayLabel, displayDayKey, startOfDisplayDay, addDisplayDays, isNow } from '../utils/time';
+import { formatTime, formatDayLabel, displayDayKey, startOfDisplayDay, addDisplayDays, formatDuration } from '../utils/time';
 
 type FocusCol = 'channels' | 'dates' | 'programmes';
 
@@ -103,6 +103,12 @@ export class EpgGrid {
         <div class="epg-header">
           <h2>Programme Guide</h2>
           <span class="epg-page-info">${channel?.name ?? ''}${programmes.length ? html` · ${programmes.length} programmes` : ''}</span>
+          ${raw(`
+            <div class="epg-legend">
+              <span class="epg-legend-item state-past"><i class="epg-legend-dot"></i>Aired</span>
+              <span class="epg-legend-item state-future"><i class="epg-legend-dot"></i>Upcoming</span>
+            </div>
+          `)}
         </div>
         <div class="epg-main">
           <div class="epg-channels-pane ${this.focusCol === 'channels' ? 'pane-focused' : ''}" id="epg-channels">
@@ -125,9 +131,10 @@ export class EpgGrid {
                 const sel = i === this.selectedDay;
                 const foc = sel && this.focusCol === 'dates';
                 const isToday = d.getTime() === todayMs;
+                const dayState = d.getTime() < todayMs ? 'day-past' : d.getTime() > todayMs ? 'day-future' : '';
                 const lbl = formatDayLabel(d);
                 return html`
-                  <div class="epg-date-item ${sel ? 'selected' : ''} ${foc ? 'focused' : ''} ${isToday ? 'today' : ''}"
+                  <div class="epg-date-item ${sel ? 'selected' : ''} ${foc ? 'focused' : ''} ${isToday ? 'today' : ''} ${dayState}"
                        data-key="${displayDayKey(d)}"
                        data-day-index="${i}">
                     <span class="epg-date-weekday">${lbl.weekday}</span>
@@ -141,15 +148,24 @@ export class EpgGrid {
                 ? raw('<div class="epg-no-data">No programme data</div>')
                 : programmes.map((p, i) => {
                     const foc = i === this.focusProg && this.focusCol === 'programmes';
-                    const current = isNow(p.start, p.stop);
+                    const now = Date.now();
+                    const startMs = p.start.getTime();
+                    const stopMs = p.stop.getTime();
+                    // Three temporal states drive the row's colour: aired (replayable
+                    // via catch-up), live (airing now), and upcoming.
+                    const state = stopMs <= now ? 'past' : startMs > now ? 'future' : 'live';
+                    const current = state === 'live';
                     return html`
-                      <div class="epg-programme-item ${foc ? 'focused' : ''} ${current ? 'current' : ''}"
+                      <div class="epg-programme-item state-${state} ${current ? 'current' : ''} ${foc ? 'focused' : ''}"
                            data-key="${String(p.start.getTime())}"
                            data-prog-idx="${i}">
-                        <span class="epg-prog-time">${formatTime(p.start)}</span>
+                        <div class="epg-prog-time-col">
+                          <span class="epg-prog-time">${formatTime(p.start)}</span>
+                          <span class="epg-prog-dur">${state === 'past' ? raw('<span class="epg-replay-glyph">↺</span>') : ''}${formatDuration(stopMs - startMs)}</span>
+                        </div>
                         <div class="epg-prog-body">
                           <div class="epg-prog-title">
-                            ${current ? raw('<span class="epg-now-badge">NOW</span>') : ''}
+                            ${current ? raw('<span class="epg-now-badge"><span class="epg-now-dot"></span>LIVE</span>') : ''}
                             ${p.title}
                           </div>
                           ${p.description ? html`<div class="epg-prog-desc">${p.description.slice(0, 200)}</div>` : ''}
