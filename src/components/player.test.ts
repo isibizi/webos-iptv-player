@@ -137,13 +137,21 @@ describe('Player catch-up seeking', () => {
 
 describe('Player catch-up completion', () => {
   it('resumes the channel live stream when the catch-up programme ends', () => {
+    HTMLMediaElement.prototype.play = vi.fn().mockResolvedValue(undefined);
+    HTMLMediaElement.prototype.pause = vi.fn();
+    HTMLMediaElement.prototype.load = vi.fn();
+    const v = document.createElement('video');
+    Object.defineProperty(v, 'duration', { value: 120, configurable: true });
+    container.appendChild(v);
+    player.init(v);
+
     player.play(0, CATCHUP);
-    expect((video as unknown as { src: string }).src).toContain('/catchup/');
+    expect(container.querySelector('video')!.src).toContain('/catchup/');
     expect(player.canSeek()).toBe(true);
 
-    video.dispatchEvent(new Event('ended'));
+    container.querySelector('video')!.dispatchEvent(new Event('ended'));
 
-    expect((video as unknown as { src: string }).src).toContain('/play/'); // live URL
+    expect(container.querySelector('video')!.src).toContain('/play/'); // live URL on the fresh element
     expect(player.canSeek()).toBe(false); // live, not seekable
   });
 });
