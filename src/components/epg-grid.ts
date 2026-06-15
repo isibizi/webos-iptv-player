@@ -1,6 +1,7 @@
 import type { Action, NumberEvent, CatchupInfo, Programme } from '../types';
 import { html, raw } from '../utils/dom';
 import { morph } from '../utils/morph';
+import { channelKey } from '../utils/channel';
 import { PlaylistService } from '../services/playlist-service';
 import { EpgService } from '../services/epg-service';
 import { formatTime, formatDayLabel, displayDayKey, startOfDisplayDay, addDisplayDays, formatDuration } from '../utils/time';
@@ -117,7 +118,7 @@ export class EpgGrid {
               const foc = sel && this.focusCol === 'channels';
               return html`
                 <div class="epg-channel-item ${sel ? 'selected' : ''} ${foc ? 'focused' : ''}"
-                     data-key="${ch.id || ch.name || String(i)}"
+                     data-key="${channelKey(ch)}"
                      data-channel-idx="${i}">
                   <span class="epg-ch-num">${i + 1}</span>
                   <span class="epg-ch-name">${ch.name}</span>

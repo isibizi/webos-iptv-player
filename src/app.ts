@@ -12,6 +12,7 @@ import { Sidebar } from './components/sidebar';
 import { PlayerMenu } from './components/player-menu';
 import { showToast } from './components/toast';
 import { setDisplayTz } from './utils/time';
+import { channelKey } from './utils/channel';
 import { $, show, hide } from './utils/dom';
 import { createLogger, installGlobalErrorHandlers, logEnvironment } from './utils/logger';
 import type { Action, NumberEvent, CatchupInfo } from './types';
@@ -518,8 +519,9 @@ class App {
     if (idx < 0) return;
     const ch = PlaylistService.getByIndex(idx);
     if (!ch) return;
-    StorageService.toggleFavorite(ch.id || ch.name);
-    showToast(StorageService.getFavorites().includes(ch.id || ch.name)
+    const key = channelKey(ch);
+    StorageService.toggleFavorite(key);
+    showToast(StorageService.getFavorites().includes(key)
       ? `Added "${ch.name}" to favorites`
       : `Removed "${ch.name}" from favorites`);
     this.channelList.render();

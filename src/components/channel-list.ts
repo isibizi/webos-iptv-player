@@ -2,6 +2,7 @@ import type { Action, NumberEvent } from '../types';
 import { SpatialNav } from '../navigation/spatial-nav';
 import { html, raw } from '../utils/dom';
 import { morph } from '../utils/morph';
+import { channelKey } from '../utils/channel';
 import { PlaylistService } from '../services/playlist-service';
 import { EpgService } from '../services/epg-service';
 import { StorageService } from '../services/storage-service';
@@ -140,7 +141,7 @@ export class ChannelList {
                   const epgId = EpgService.findChannelId(ch);
                   const nowPlaying = epgId ? EpgService.getNowPlaying(epgId) : null;
                   const isPlaying = globalIdx === this.playingIndex;
-                  const isFav = favs.includes(ch.id || ch.name);
+                  const isFav = favs.includes(channelKey(ch));
 
                   return html`
                     <div class="channel-item ${isPlaying ? 'playing' : ''}"
@@ -239,7 +240,7 @@ export class ChannelList {
           const idx = parseInt(focused.dataset.channelIndex, 10);
           const ch = PlaylistService.getByIndex(idx);
           if (ch) {
-            StorageService.toggleFavorite(ch.id || ch.name);
+            StorageService.toggleFavorite(channelKey(ch));
             this.render();
           }
         }

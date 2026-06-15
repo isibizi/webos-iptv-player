@@ -1,5 +1,6 @@
 import { CONFIG } from '../config';
 import type { Channel, PlaylistEntry, TzMode } from '../types';
+import { channelKey } from '../utils/channel';
 
 const PREFIX = CONFIG.STORAGE_PREFIX;
 
@@ -79,6 +80,26 @@ export const StorageService = {
     }
     this.setFavorites(favs);
     return idx < 0; // true = added
+  },
+
+  // Favorites were originally keyed by `id || name`; re-key them once to the
+  // per-stream channelKey. Needs the loaded channels to map old keys to URLs, so
+  // it no-ops (without marking done) until channels are available.
+  //
+  // TODO(cleanup, post-1.2.0): one-time migration. A couple of releases after the
+  // one that ships it, delete this method, its two PlaylistService call sites, and
+  // its tests. (The `fav_url_keyed` flag then just lingers harmlessly in storage.)
+  migrateFavoriteKeys(channels: Channel[]): void {
+    if (get<boolean>('fav_url_keyed', false)) return;
+    if (!channels.length) return;
+    const old = new Set(this.getFavorites());
+    if (old.size) {
+      const migrated = channels
+        .filter(ch => old.has(ch.id || ch.name))
+        .map(ch => channelKey(ch));
+      this.setFavorites([...new Set(migrated)]);
+    }
+    set('fav_url_keyed', true);
   },
 
   getAutoPlay(): boolean {

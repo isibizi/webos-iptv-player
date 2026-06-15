@@ -8,9 +8,9 @@ const { data, playlistMock, epgMock, storageMock } = vi.hoisted(() => {
     playlist: '', catchup: '', catchupSource: '', catchupDays: 0, ...o,
   });
   const channels: Channel[] = [
-    mk({ id: 'a', name: 'Alpha', group: 'News' }),
-    mk({ id: 'b', name: 'Bravo', group: 'Sports' }),
-    mk({ id: 'c', name: 'Charlie', group: 'News' }),
+    mk({ id: 'a', name: 'Alpha', group: 'News', url: 'http://host/a' }),
+    mk({ id: 'b', name: 'Bravo', group: 'Sports', url: 'http://host/b' }),
+    mk({ id: 'c', name: 'Charlie', group: 'News', url: 'http://host/c' }),
   ];
   const data = { channels, favorites: [] as string[] };
 
@@ -51,6 +51,7 @@ vi.mock('../services/epg-service', () => ({ EpgService: epgMock }));
 vi.mock('../services/storage-service', () => ({ StorageService: storageMock }));
 
 import { ChannelList } from './channel-list';
+import { channelKey } from '../utils/channel';
 
 let container: HTMLElement;
 let onSelect: ReturnType<typeof vi.fn>;
@@ -109,7 +110,7 @@ describe('ChannelList.render', () => {
   });
 
   it('marks favorites with a star', () => {
-    data.favorites = ['a'];
+    data.favorites = [channelKey(data.channels[0])];
     list.render();
     const alpha = channelItems()[0].querySelector('.channel-name')!;
     expect(alpha.textContent).toContain('★');
@@ -169,7 +170,7 @@ describe('ChannelList interaction', () => {
   it('green toggles the focused channel as a favorite', () => {
     hover(channelItems()[0]);
     list.handleAction('green');
-    expect(storageMock.toggleFavorite).toHaveBeenCalledWith('a');
+    expect(storageMock.toggleFavorite).toHaveBeenCalledWith(channelKey(data.channels[0]));
   });
 
   it('a number action plays that channel (1-based)', () => {

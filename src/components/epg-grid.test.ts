@@ -44,7 +44,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date(Y, M, D, 12, 0, 0));
   Element.prototype.scrollIntoView = vi.fn();
-  state.channels = [{ name: 'Chan A' }, { name: 'Chan B' }];
+  state.channels = [{ name: 'Chan A', url: 'http://host/a' }, { name: 'Chan B', url: 'http://host/b' }];
   state.programmes = {
     'Chan A': [
       prog(10, 0, 11, 0, 'Morning'),

@@ -7,6 +7,7 @@ const { storageMock, fetchTextMock } = vi.hoisted(() => ({
     getPlaylists: vi.fn(),
     setCachedPlaylist: vi.fn(),
     getFavorites: vi.fn(() => [] as string[]),
+    migrateFavoriteKeys: vi.fn(),
   },
   fetchTextMock: vi.fn(),
 }));
@@ -15,6 +16,7 @@ vi.mock('./storage-service', () => ({ StorageService: storageMock }));
 vi.mock('../utils/fetch-helper', () => ({ fetchText: fetchTextMock }));
 
 import { PlaylistService } from './playlist-service';
+import { channelKey } from '../utils/channel';
 
 function channel(over: Partial<Channel>): Channel {
   return {
@@ -162,9 +164,9 @@ describe('PlaylistService.indexOf', () => {
 describe('PlaylistService.getByGroup', () => {
   beforeEach(() => {
     PlaylistService.channels = [
-      channel({ id: 'a', name: 'Alpha', group: 'News', playlist: 'P1' }),
-      channel({ id: 'b', name: 'Bravo', group: 'Sports', playlist: 'P1' }),
-      channel({ id: 'c', name: 'Charlie', group: 'News', playlist: 'P2' }),
+      channel({ id: 'a', name: 'Alpha', group: 'News', playlist: 'P1', url: 'http://host/a' }),
+      channel({ id: 'b', name: 'Bravo', group: 'Sports', playlist: 'P1', url: 'http://host/b' }),
+      channel({ id: 'c', name: 'Charlie', group: 'News', playlist: 'P2', url: 'http://host/c' }),
     ];
   });
 
@@ -181,8 +183,8 @@ describe('PlaylistService.getByGroup', () => {
     expect(PlaylistService.getByGroup('News', 'P2').map(c => c.name)).toEqual(['Charlie']);
   });
 
-  it('resolves "Favorites" against StorageService, keyed by id or name', () => {
-    storageMock.getFavorites.mockReturnValue(['b']);
+  it('resolves "Favorites" against StorageService, keyed by channelKey', () => {
+    storageMock.getFavorites.mockReturnValue([channelKey(PlaylistService.channels[1])]);
     expect(PlaylistService.getByGroup('Favorites').map(c => c.name)).toEqual(['Bravo']);
   });
 });

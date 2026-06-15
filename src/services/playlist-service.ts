@@ -1,6 +1,7 @@
 import type { Channel } from '../types';
 import { parseM3U } from '../parsers/m3u-parser';
 import { fetchText } from '../utils/fetch-helper';
+import { channelKey } from '../utils/channel';
 import { createLogger } from '../utils/logger';
 import { StorageService } from './storage-service';
 
@@ -34,6 +35,7 @@ class PlaylistServiceImpl {
       log.info('Cache hit:', this.channels.length, 'channels,', this.epgUrls.length, 'epg urls');
       this.buildGroups();
       this.buildPlaylistNames();
+      StorageService.migrateFavoriteKeys(this.channels);
       return this.channels;
     }
     log.info('Cache miss — refreshing from network');
@@ -97,6 +99,7 @@ class PlaylistServiceImpl {
     this.epgUrls = epgUrls;
     this.buildGroups();
     this.buildPlaylistNames();
+    StorageService.migrateFavoriteKeys(this.channels);
     StorageService.setCachedPlaylist(allChannels, epgUrls);
     log.info('Refresh complete:', allChannels.length, 'total channels,', epgUrls.length, 'epg urls');
     done();
@@ -130,7 +133,7 @@ class PlaylistServiceImpl {
     if (!group || group === 'All') return filtered;
     if (group === 'Favorites') {
       const favs = StorageService.getFavorites();
-      return filtered.filter(ch => favs.includes(ch.id || ch.name));
+      return filtered.filter(ch => favs.includes(channelKey(ch)));
     }
     return filtered.filter(ch => ch.group === group);
   }
