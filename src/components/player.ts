@@ -54,23 +54,25 @@ export class Player {
     // but NOT a synthesized click — so seek on mouseup, by coordinates.
     this.container.addEventListener('mouseup', (e: MouseEvent) => this.seekAtPointer(e.clientX, e.clientY));
 
-    // Suspend/resume playback when the app goes to background.
-    // webOS needs multiple event sources — blur/focus is what actually
-    // fires on Home press, but we also listen for visibility events.
+    // Suspend/resume playback when the app is actually backgrounded so the
+    // native media pipeline (a separate process) stops pulling segments off the
+    // network. Drive this off visibilitychange ONLY: a real background (Home /
+    // app switch) flips visibilityState to 'hidden', whereas the TV's Quick
+    // Settings overlay merely blurs the window — we stay 'visible' behind it.
+    // Suspending on blur is what blacked the app out when settings opened, and
+    // getForegroundAppInfo (the precise signal) is a privileged Luna method this
+    // app isn't allowed to call.
     const onHidden = (src: string) => { log.debug('suspend trigger:', src); this.suspend(); };
     const onVisible = (src: string) => { log.debug('resume trigger:', src); this.resume(); };
 
     document.addEventListener('visibilitychange', () => {
+      log.debug('visibilitychange →', document.visibilityState);
       if (document.hidden) onHidden('visibilitychange'); else onVisible('visibilitychange');
     });
     document.addEventListener('webkitvisibilitychange', () => {
       if ((document as unknown as Record<string, boolean>).webkitHidden) onHidden('webkitvisibilitychange');
       else onVisible('webkitvisibilitychange');
     });
-    if (isWebOS) {
-      window.addEventListener('blur', () => onHidden('blur'));
-      window.addEventListener('focus', () => onVisible('focus'));
-    }
   }
 
   private bindVideoEvents(el: HTMLVideoElement): void {
