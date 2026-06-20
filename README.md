@@ -109,6 +109,7 @@ Open with the **Blue** key or click the gear icon in the channel list. Sections:
 - **Playlists** — add, edit, or remove M3U URLs. Re-applied on Save.
 - **Upload Playlist** — QR code + LAN URL on the left, list of currently uploaded playlists on the right. Scan the QR from a phone/laptop on the same network to upload `.m3u` files; they appear in this list within milliseconds via Luna push.
 - **EPG (Electronic Program Guide)** — set the XMLTV URL (also auto-detected from `x-tvg-url` in M3U).
+- **Display** — *Programme time zone*: show EPG times in your **Device** time zone (default), or the **Feed**'s own time zone (auto-detected from the EPG feed when it loads).
 - **Playback** — toggle auto-play (resume last watched channel on launch).
 - **Data Management** — *Refresh All Data* re-fetches playlists and EPG; *Clear Cache* drops the cached playlist + EPG.
 - **Save & Apply** reloads channels from the new sources. **Cancel** discards edits.
