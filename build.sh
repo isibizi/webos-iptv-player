@@ -56,6 +56,12 @@ if [ "$1" = "--install" ]; then
   fi
   info "Installing on $DEVICE..."
   ares-install --device "$DEVICE" "$IPK"
+  # webOS keeps the old instance suspended through an in-place upgrade; a plain
+  # relaunch resumes that stale in-memory copy — so close after installing, then
+  # cold-start so the new bundle loads.
+  info "Terminating stale instance..."
+  ares-launch --device "$DEVICE" --close com.lennylxx.iptv 2>/dev/null || true
+  sleep 1
   info "Launching..."
   ares-launch --device "$DEVICE" com.lennylxx.iptv
   info "Done! App is running on $DEVICE"
