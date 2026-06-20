@@ -6,7 +6,7 @@ vi.mock('../parsers/xmltv-parser', () => ({ parseXMLTV: vi.fn() }));
 vi.mock('./storage-service', () => ({ StorageService: { getEpgUrl: vi.fn(() => 'http://epg') } }));
 
 import { EpgService } from './epg-service';
-import { getCachedEpg } from './idb-cache';
+import { getCachedEpg, setCachedEpg } from './idb-cache';
 import { parseXMLTV } from '../parsers/xmltv-parser';
 import { fetchText } from '../utils/fetch-helper';
 import type { Channel, Programme, ParsedEpg } from '../types';
@@ -118,6 +118,37 @@ describe('EpgService.load — timezone offset capture', () => {
 
     expect(fetchText).not.toHaveBeenCalled(); // trusted the cache
     expect(EpgService.tzOffsetMinutes).toBeNull();
+  });
+});
+
+describe('EpgService.refresh — empty-EPG caching', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    EpgService.reset();
+    vi.mocked(getCachedEpg).mockResolvedValue(null); // force a network refresh
+  });
+
+  it('caches an EPG that has programmes', async () => {
+    vi.mocked(parseXMLTV).mockReturnValue({
+      channels: { c1: { name: 'C1', icon: '' } },
+      programmes: { c1: [prog({})] },
+      tzOffsetMinutes: null,
+    });
+    await EpgService.refresh();
+    expect(setCachedEpg).toHaveBeenCalled();
+  });
+
+  it('does NOT cache an EPG with zero programmes, so it refetches next load', async () => {
+    vi.mocked(parseXMLTV).mockReturnValue({ channels: { c1: { name: 'C1', icon: '' } }, programmes: {}, tzOffsetMinutes: null });
+    await EpgService.refresh();
+    expect(setCachedEpg).not.toHaveBeenCalled();
+    expect(EpgService.loaded).toBe(true); // still usable in-memory this session
+  });
+
+  it('treats present-but-empty programme arrays as empty (not cached)', async () => {
+    vi.mocked(parseXMLTV).mockReturnValue({ channels: {}, programmes: { c1: [] }, tzOffsetMinutes: null });
+    await EpgService.refresh();
+    expect(setCachedEpg).not.toHaveBeenCalled();
   });
 });
 

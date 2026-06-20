@@ -91,10 +91,18 @@ class EpgServiceImpl {
       this.tzOffsetMinutes = result.tzOffsetMinutes ?? null;
       this.loaded = true;
       this.lastFetchTime = Date.now();
+      const programmeCount = Object.values(result.programmes).reduce((n, p) => n + p.length, 0);
       log.info('Loaded', Object.keys(result.channels).length, 'channels,',
-        Object.keys(result.programmes).length, 'channels with programmes');
+        Object.keys(result.programmes).length, 'channels with programmes,', programmeCount, 'programmes');
 
-      setCachedEpg(url, result).catch(err => log.warn('Cache write failed:', err));
+      // Don't cache an empty EPG: a transient upstream failure can return channels
+      // with zero programmes, and caching that would mask real data until the TTL
+      // expires. Skipping the write lets the next load refetch.
+      if (programmeCount > 0) {
+        setCachedEpg(url, result).catch(err => log.warn('Cache write failed:', err));
+      } else {
+        log.warn('EPG has 0 programmes — not caching so it refetches next load');
+      }
     } catch (err) {
       log.error('Failed to load EPG:', err);
     }
