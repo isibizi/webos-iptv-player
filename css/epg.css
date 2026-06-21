@@ -281,9 +281,11 @@
 }
 
 .epg-replay-glyph {
+  width: 14px;
+  height: 14px;
   color: var(--past);
-  font-size: 14px;
-  line-height: 1;
+  vertical-align: -2px;
+  margin-right: 3px;
 }
 
 .epg-prog-body {
