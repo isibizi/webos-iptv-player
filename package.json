@@ -12,7 +12,7 @@
     "build": "tsc --noEmit && node esbuild.config.mjs",
     "watch": "node esbuild.config.mjs --watch",
     "package": "bash build.sh",
-    "clean": "rm -rf dist *.ipk",
+    "clean": "rm -rf dist build test-output *.ipk",
     "preview": "npm run build && node serve.mjs",
     "screenshots": "node scripts/generate-screenshots.mjs",
     "lint": "npm run lint:css && npm run lint:js",
@@ -21,7 +21,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "test:all": "vitest run && playwright test",
+    "test:all": "npm run lint && vitest run && playwright test",
     "version": "node scripts/sync-version.mjs && git add appinfo.json"
   },
   "devDependencies": {

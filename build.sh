@@ -22,13 +22,12 @@ if [ ! -d node_modules ]; then
   npm install
 fi
 
-# Type check
-info "Type checking..."
-npx tsc --noEmit
+# Lint (webOS 5 / Chromium 68 compat gate), then build (type-check + bundle)
+info "Linting (webOS 5 / Chromium 68 compat gate)..."
+npm run lint
 
-# Bundle
-info "Bundling with esbuild..."
-node esbuild.config.mjs
+info "Building app (type-check + esbuild bundle)..."
+npm run build
 
 # Compile the upload service (TypeScript -> Node CommonJS)
 info "Building upload service..."

@@ -45,12 +45,12 @@ npm run lint
 
 if [ "$MODE" = "unit" ] || [ "$MODE" = "all" ]; then
   info "Running unit tests (Vitest)..."
-  npx vitest run
+  npm run test
 fi
 
 if [ "$MODE" = "e2e" ] || [ "$MODE" = "all" ]; then
   info "Running end-to-end tests (Playwright)..."
-  npx playwright test
+  npm run test:e2e
 fi
 
 info "All tests passed."
