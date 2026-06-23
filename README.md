@@ -30,7 +30,27 @@ An IPTV player for LG webOS TVs. Supports M3U playlists, XMLTV programme guides,
 - **On-Screen Display** — Channel info bar with programme title, progress timeline, and timestamps
 - **Favorites** — Mark and filter favorite channels
 - **Auto-play** — Resume last watched channel on startup
+- **HDR & Dolby passthrough (native pipeline)** — On the TV, playback hands the stream straight to the native `<video>` element instead of a JavaScript player, so the set's hardware decoder handles it end-to-end. HDR10, HLG, Dolby Vision®, and Dolby Atmos® therefore pass through untouched whenever the stream carries them and your TV supports them — the app neither adds nor strips them; it gets this for free by staying out of the media path. (Desktop preview uses software HLS/TS players and won't.)
 - **Desktop Preview** — Browser-based preview with HLS.js and mpegts.js fallbacks
+
+## Supported webOS versions
+
+The app runs on **webOS 5.0 (2020) and newer**. Its baseline is the Chromium 68
+engine on webOS 5; every later release ships a newer Chromium, so the app is
+forward-compatible. Features only newer engines support natively (flex `gap`,
+`backdrop-filter`, …) get feature-detected fallbacks on the older ones.
+
+| webOS version | Released | Chromium engine | Supported |
+| --- | --- | --- | --- |
+| webOS 5.0 | 2020 | 68 | ✅ (minimum) |
+| webOS 6.0 | 2021 | 79 | ✅ |
+| webOS 22 | 2022 | 87 | ✅ |
+| webOS 23 | 2023 | 94 | ✅ |
+| webOS 24 | 2024 | 108 | ✅ |
+| webOS 25 | 2025 | 120 | ✅ |
+
+webOS 4.x and older (Chromium 53 and earlier) lack JavaScript and CSS features
+the app relies on, and are not supported.
 
 ## Install on your TV
 
