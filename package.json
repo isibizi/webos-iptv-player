@@ -3,6 +3,10 @@
   "version": "1.2.1",
   "private": true,
   "license": "Apache-2.0",
+  "comment:browserslist": "The gate's target = the FLOOR of the supported fleet: webOS 5 = Chromium 68. Drives stylelint/doiuse (CSS) and eslint-plugin-compat (JS APIs); esbuild uses its own 'chrome68' syntax target. A static gate can only check the floor (eslint-plugin-compat flags not-yet-added APIs, NOT ones removed by newer engines), so forward-compat on newer TVs (up to webOS 10.3 / Chromium 120) is left to the Playwright e2e, which runs on a current Chromium.",
+  "browserslist": [
+    "chrome 68"
+  ],
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit && node esbuild.config.mjs",
@@ -11,6 +15,9 @@
     "clean": "rm -rf dist *.ipk",
     "preview": "npm run build && node serve.mjs",
     "screenshots": "node scripts/generate-screenshots.mjs",
+    "lint": "npm run lint:css && npm run lint:js",
+    "lint:css": "stylelint \"css/**/*.css\"",
+    "lint:js": "eslint src",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
@@ -20,10 +27,16 @@
   "devDependencies": {
     "@playwright/test": "^1.60.0",
     "@types/node": "^22.19.19",
+    "@typescript-eslint/parser": "^8.62.0",
     "esbuild": "^0.27.4",
+    "eslint": "^9.39.4",
+    "eslint-plugin-compat": "^7.0.2",
     "hls.js": "^1.6.15",
     "jsdom": "^29.1.1",
     "mpegts.js": "^1.8.0",
+    "postcss": "^8.5.15",
+    "stylelint": "^17.13.0",
+    "stylelint-no-unsupported-browser-features": "^8.1.1",
     "typescript": "^5.7.0",
     "vitest": "^4.1.8"
   },

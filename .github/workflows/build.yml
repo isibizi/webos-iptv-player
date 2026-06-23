@@ -31,6 +31,9 @@ jobs:
       - name: Type check
         run: npx tsc --noEmit && npx tsc -p upload-service/tsconfig.json
 
+      - name: Lint (webOS 5 / Chromium 68 compat gate)
+        run: npm run lint
+
       - name: Unit tests
         run: npx vitest run
 
