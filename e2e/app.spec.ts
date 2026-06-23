@@ -428,3 +428,51 @@ test('player sidebar highlights its search box on open; OK then filters', async 
   await search.fill('alpha');
   await expect(sidebar.locator('.sidebar-ch-item')).toHaveCount(2);
 });
+
+test('the right-edge player menu opens and lists its colour actions', async ({ page }) => {
+  // Smoke-exercises player-menu.ts at runtime (it has no other e2e coverage).
+  await routePlaylist(page);
+  await seedPlaylist(page);
+  await page.goto('/');
+  await expect(page.locator('#view-channels')).toBeVisible();
+
+  // Enter the list and start playback, then ArrowRight opens the action menu.
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#view-player')).toBeVisible();
+  await page.keyboard.press('ArrowRight');
+
+  const menu = page.locator('#player-menu');
+  await expect(menu).toBeVisible();
+  await expect(menu.locator('.menu-item')).toHaveCount(4);
+  await expect(menu).toContainText('Programme Guide');
+  await expect(menu).toContainText('Settings');
+
+  // The first item is focused on open; Down moves focus to the second.
+  await expect(menu.locator('.menu-item.focused')).toHaveCount(1);
+  await page.keyboard.press('ArrowDown');
+  await expect(menu.locator('.menu-item').nth(1)).toHaveClass(/focused/);
+});
+
+test('starting playback shows the OSD with channel info; the yellow key re-opens it', async ({ page }) => {
+  // Smoke-exercises the player OSD render path (player.ts renderOSD) at runtime.
+  await routePlaylist(page);
+  await seedPlaylist(page);
+  await page.goto('/');
+  await expect(page.locator('#view-channels')).toBeVisible();
+
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#view-player')).toBeVisible();
+
+  // play() auto-shows the OSD; with no EPG it still renders the channel header.
+  const osd = page.locator('#player-osd');
+  await expect(osd).toBeVisible();
+  await expect(osd.locator('.osd-channel-name')).toHaveText('Channel One');
+  await expect(osd.locator('.osd-channel-number')).toHaveText('1');
+
+  // The yellow remote key (Channel Info) re-renders/re-shows the OSD.
+  await page.evaluate(() => document.dispatchEvent(new KeyboardEvent('keydown', { keyCode: 405, bubbles: true })));
+  await expect(osd).toBeVisible();
+  await expect(osd.locator('.osd-channel-name')).toHaveText('Channel One');
+});
