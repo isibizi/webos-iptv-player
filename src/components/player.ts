@@ -5,6 +5,7 @@ import { EpgService } from '../services/epg-service';
 import { StorageService } from '../services/storage-service';
 import { CONFIG } from '../config';
 import { formatTime, formatPosition, formatDuration, getProgress } from '../utils/time';
+import { getLenientLoaders } from '../utils/hls-stable-loader';
 import { createLogger } from '../utils/logger';
 
 const log = createLogger('Player');
@@ -31,6 +32,8 @@ export class Player {
   private pointerY: number | null = null;
   private osdTimer: ReturnType<typeof setTimeout> | null = null;
   private wasPlayingBeforeHide = false;
+  private loadToken = 0;
+  private hlsRecoveries = 0; // fatal hls.js errors recovered since the last good fragment
   constructor(container: HTMLElement, onBack: () => void) {
     this.container = container;
     this.onBack = onBack;
@@ -204,39 +207,73 @@ export class Player {
       this.mpegtsPlayer = null;
     }
 
-    const isHls = url.includes('.m3u8');
-    const isTs = url.endsWith('.ts') || url.includes('.ts?');
-    const isFlv = url.endsWith('.flv') || url.includes('.flv?');
-    log.info('loadStream url=', url, '| webOS:', isWebOS, '| catchup:', !!this.catchupInfo,
-      '| isHls:', isHls, '| isTs:', isTs, '| isFlv:', isFlv);
+    const isTsUrl = url.endsWith('.ts') || url.includes('.ts?');
+    const isFlvUrl = url.endsWith('.flv') || url.includes('.flv?');
 
-    // On webOS, prefer native playback — the TV has hardware HLS/TS decoders
-    // that work better than MSE-based libraries
-    if (isWebOS || this.videoEl.canPlayType('application/vnd.apple.mpegurl')) {
-      // Use a <source> element with explicit MIME type so the browser
-      // knows the format even when the URL has no file extension
-      this.videoEl.removeAttribute('src');
-      this.videoEl.innerHTML = '';
-      const source = document.createElement('source');
-      source.src = url;
-      source.type = isFlv ? 'video/x-flv'
-        : isTs ? 'video/mp2t'
-        : 'application/vnd.apple.mpegurl';
-      log.info('Using native playback with MIME', source.type);
-      this.videoEl.appendChild(source);
-      this.videoEl.load();
-      this.videoEl.play().catch(e => log.warn('Native play() rejected:', e));
-    } else if (isHls) {
-      log.info('Using hls.js');
-      this.loadWithHls(url, extras);
-    } else if (isTs || isFlv) {
-      log.info('Using mpegts.js');
-      this.loadWithMpegts(url, isFlv);
-    } else {
-      log.info('Using direct video src');
-      this.videoEl.src = url;
-      this.videoEl.play().catch(e => log.warn('Direct play() rejected:', e));
+    // webOS: the TV's hardware HLS/TS decoders beat MSE libraries, so play
+    // natively. The URL is enough to pick the <source> MIME (extension-less
+    // proxied streams default to HLS) and it avoids an extra round-trip per zap.
+    if (isWebOS) {
+      const mime = isFlvUrl ? 'video/x-flv' : isTsUrl ? 'video/mp2t' : 'application/vnd.apple.mpegurl';
+      log.info('loadStream url=', url, '| webOS native | catchup:', !!this.catchupInfo, '| MIME', mime);
+      this.playNative(url, mime);
+      return;
     }
+
+    // Desktop preview: native HLS is unreliable across Chrome/Firefox/Linux, so
+    // always route through hls.js/mpegts.js. URL extensions lie — some providers
+    // serve HLS with no .m3u8 suffix — so classify by the server's Content-Type,
+    // falling back to the URL and defaulting to HLS.
+    const token = ++this.loadToken;
+    this.detectContentType(url).then(ct => {
+      if (token !== this.loadToken || !this.videoEl) return; // superseded by a newer load
+      const isFlv = isFlvUrl || ct.includes('flv');
+      const isTs = isTsUrl || ct.includes('mp2t');
+      const isDirect = !isTs && !isFlv && /^(?:video|audio)\//.test(ct);
+      const isHls = !isTs && !isFlv && !isDirect; // proxied / extension-less ⇒ HLS
+      log.info('loadStream url=', url, '| content-type:', ct || '(none)', '| catchup:', !!this.catchupInfo,
+        '| isHls:', isHls, '| isTs:', isTs, '| isFlv:', isFlv);
+      if (isTs || isFlv) {
+        log.info('Using mpegts.js');
+        this.loadWithMpegts(url, isFlv);
+      } else if (isDirect) {
+        log.info('Using direct video src');
+        this.videoEl.src = url;
+        this.videoEl.play().catch(e => log.warn('Direct play() rejected:', e));
+      } else {
+        log.info('Using hls.js');
+        this.loadWithHls(url, extras);
+      }
+    });
+  }
+
+  // Classify a stream by the server's Content-Type — URL extensions are
+  // unreliable for proxied/extension-less streams, so the response header is the
+  // real signal. Headers are enough, so cancel the body. Returns '' on a
+  // CORS/network failure, leaving the caller on its URL heuristic (default HLS).
+  private async detectContentType(url: string): Promise<string> {
+    try {
+      const res = await fetch(url);
+      const ct = (res.headers.get('content-type') || '').toLowerCase();
+      res.body?.cancel().catch(() => {});
+      return ct;
+    } catch {
+      return '';
+    }
+  }
+
+  private playNative(url: string, mime: string): void {
+    if (!this.videoEl) return;
+    // A <source> with an explicit MIME tells the player the format even when the
+    // URL has no file extension.
+    this.videoEl.removeAttribute('src');
+    this.videoEl.innerHTML = '';
+    const source = document.createElement('source');
+    source.src = url;
+    source.type = mime;
+    this.videoEl.appendChild(source);
+    this.videoEl.load();
+    this.videoEl.play().catch(e => log.warn('Native play() rejected:', e));
   }
 
   private loadWithHls(url: string, extras: Record<string, string> | null): void {
@@ -254,12 +291,18 @@ export class Player {
         enableWorker: false,
       };
 
+      // Stable-URI loaders so a rotating-URL live window doesn't trip hls.js.
+      const loaders = getLenientLoaders(Hls);
+      hlsConfig.pLoader = loaders.pLoader;
+      hlsConfig.fLoader = loaders.fLoader;
+
       if (extras?.['http-user-agent']) {
         hlsConfig.xhrSetup = (xhr: XMLHttpRequest) => {
           xhr.setRequestHeader('User-Agent', extras['http-user-agent']);
         };
       }
 
+      this.hlsRecoveries = 0;
       this.hls = new Hls(hlsConfig);
       this.hls.loadSource(url);
       this.hls.attachMedia(this.videoEl);
@@ -267,18 +310,25 @@ export class Player {
         log.info('hls.js MANIFEST_PARSED — starting playback');
         this.videoEl?.play().catch(e => log.warn('hls play() rejected:', e));
       });
+      // A good fragment played: the stream recovered, so refill the retry budget.
+      this.hls.on(Hls.Events.FRAG_BUFFERED, () => { this.hlsRecoveries = 0; });
+      // Bounded recovery: retry transient network/media errors (and rotating-URL
+      // re-fetches) a few times, but give up on a genuinely dead stream so it
+      // zaps to the next channel instead of retrying forever.
       this.hls.on(Hls.Events.ERROR, (_event, data) => {
         log.warn('hls.js error', { type: data.type, details: data.details, fatal: data.fatal });
-        if (data.fatal) {
-          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-            log.info('hls.js fatal network error — restarting load');
-            this.hls?.startLoad();
-          } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-            log.info('hls.js fatal media error — recovering');
-            this.hls?.recoverMediaError();
-          } else {
-            this.onError();
-          }
+        if (!data.fatal) return;
+        if (this.hlsRecoveries >= CONFIG.PLAYER.HLS_MAX_RECOVERIES) { this.onError(); return; }
+        this.hlsRecoveries++;
+        const n = `${this.hlsRecoveries}/${CONFIG.PLAYER.HLS_MAX_RECOVERIES}`;
+        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+          log.info(`hls.js fatal network error — restarting load (${n})`);
+          this.hls?.startLoad();
+        } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+          log.info(`hls.js fatal media error — recovering (${n})`);
+          this.hls?.recoverMediaError();
+        } else {
+          this.onError();
         }
       });
     } catch {

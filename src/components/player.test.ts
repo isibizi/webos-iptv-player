@@ -45,8 +45,16 @@ let container: HTMLElement;
 let player: Player;
 let video: HTMLVideoElement;
 
+// The desktop path probes the stream's Content-Type before routing; stub it so
+// tests stay offline and deterministic (HLS → hls.js fallback sets video.src).
+const flush = async () => { for (let i = 0; i < 5; i++) await Promise.resolve(); };
+
 beforeEach(() => {
   vi.useFakeTimers();
+  vi.stubGlobal('fetch', vi.fn(async () => ({
+    headers: { get: () => 'application/vnd.apple.mpegurl' },
+    body: { cancel: async () => {} },
+  })));
   document.body.innerHTML = '';
   container = document.createElement('div');
   const osd = document.createElement('div');
@@ -58,7 +66,10 @@ beforeEach(() => {
   video = fakeVideo(120);
   player.init(video);
 });
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
 
 const bar = () => container.querySelector('.osd-progress-bar') as HTMLElement;
 const elapsed = () => container.querySelector('.osd-time-current')!.textContent;
@@ -136,7 +147,7 @@ describe('Player catch-up seeking', () => {
 });
 
 describe('Player catch-up completion', () => {
-  it('resumes the channel live stream when the catch-up programme ends', () => {
+  it('resumes the channel live stream when the catch-up programme ends', async () => {
     HTMLMediaElement.prototype.play = vi.fn().mockResolvedValue(undefined);
     HTMLMediaElement.prototype.pause = vi.fn();
     HTMLMediaElement.prototype.load = vi.fn();
@@ -146,10 +157,12 @@ describe('Player catch-up completion', () => {
     player.init(v);
 
     player.play(0, CATCHUP);
+    await flush();
     expect(container.querySelector('video')!.src).toContain('/catchup/');
     expect(player.canSeek()).toBe(true);
 
     container.querySelector('video')!.dispatchEvent(new Event('ended'));
+    await flush();
 
     expect(container.querySelector('video')!.src).toContain('/play/'); // live URL on the fresh element
     expect(player.canSeek()).toBe(false); // live, not seekable

@@ -457,6 +457,15 @@ test('the right-edge player menu opens and lists its colour actions', async ({ p
 test('starting playback shows the OSD with channel info; the yellow key re-opens it', async ({ page }) => {
   // Smoke-exercises the player OSD render path (player.ts renderOSD) at runtime.
   await routePlaylist(page);
+  // Serve a minimal segment-less *live* manifest for the stream so hls.js reaches
+  // MANIFEST_PARSED and just polls for live segments — no fatal error. Otherwise
+  // the unreachable stream fatals, onError swaps the OSD to the error message,
+  // and the channel-info assertions below fail.
+  await page.route('**/*.m3u8', route => route.fulfill({
+    status: 200,
+    contentType: 'application/vnd.apple.mpegurl',
+    body: '#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:6\n#EXT-X-MEDIA-SEQUENCE:0\n',
+  }));
   await seedPlaylist(page);
   await page.goto('/');
   await expect(page.locator('#view-channels')).toBeVisible();

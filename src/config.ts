@@ -16,6 +16,7 @@ export const CONFIG = {
     BUFFER_LENGTH: 30,
     CHANNEL_NUMBER_TIMEOUT: 2000,
     SEEK_STEP: 30, // seconds per Left/Right press while seeking catch-up
+    HLS_MAX_RECOVERIES: 3, // bounded hls.js fatal-error retries before giving up → next channel
   },
 
   EPG: {

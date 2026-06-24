@@ -41,4 +41,14 @@ export default [
       ],
     },
   },
+  {
+    // Tests run in Node under vitest, never on the webOS 5 WebView, so the
+    // Chromium-68 compatibility gates don't apply to them.
+    files: ['src/**/*.test.ts'],
+    plugins: { compat },
+    rules: {
+      'compat/compat': 'off',
+      'no-restricted-syntax': 'off',
+    },
+  },
 ];
