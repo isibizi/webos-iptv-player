@@ -1,6 +1,6 @@
 import type { Channel, ParsedPlaylist } from '../types';
 
-export function parseM3U(text: string): ParsedPlaylist {
+export function parseM3U(text: string, sourceUrl = ''): ParsedPlaylist {
   const lines = text.split(/\r?\n/);
   const channels: Channel[] = [];
   const groupSet = new Set<string>();
@@ -36,11 +36,39 @@ export function parseM3U(text: string): ParsedPlaylist {
     }
   }
 
+  // An HLS stream playlist (master OR media) carries #EXT-X-* tags and is NOT a
+  // channel list: a master parses to nothing, while a media playlist parses each
+  // *segment* as a bogus "channel". When a stream URL is configured as a playlist,
+  // wrap the source URL as a single channel so it plays — discarding any segment
+  // entries — instead of an empty or junk list.
+  if (sourceUrl && /(^|\n)#EXT-X-/.test(text)) {
+    return {
+      channels: [{
+        id: '', name: nameFromUrl(sourceUrl), logo: '', group: 'Uncategorized',
+        url: sourceUrl, extras: null, playlist: '', catchup: '', catchupSource: '', catchupDays: 0,
+      }],
+      groups: ['Uncategorized'],
+      epgUrl,
+    };
+  }
+
   return {
     channels,
     groups: Array.from(groupSet),
     epgUrl,
   };
+}
+
+/** Derive a display name from a stream URL: its filename without extension,
+ *  falling back to the host, then a generic label. */
+function nameFromUrl(url: string): string {
+  try {
+    const { pathname, hostname } = new URL(url);
+    const base = pathname.split('/').filter(Boolean).pop() || '';
+    return decodeURIComponent(base.replace(/\.[^./]+$/, '')) || hostname || 'Stream';
+  } catch {
+    return 'Stream';
+  }
 }
 
 function parseExtInf(line: string): Channel {

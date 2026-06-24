@@ -60,7 +60,7 @@ class PlaylistServiceImpl {
       try {
         const text = await fetchText(pl.url, 60000);
         log.info('Fetched', pl.name || pl.url, '|', text.length, 'bytes');
-        const parsed = parseM3U(text);
+        const parsed = parseM3U(text, pl.url);
         log.info('Parsed', parsed.channels.length, 'channels,', parsed.groups.length, 'groups',
           parsed.epgUrl ? `| epg: ${parsed.epgUrl}` : '');
         let added = 0, dupes = 0;

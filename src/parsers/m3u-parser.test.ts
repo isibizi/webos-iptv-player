@@ -83,4 +83,38 @@ describe('parseM3U', () => {
     expect(result.channels).toEqual([]);
     expect(result.groups).toEqual([]);
   });
+
+  it('wraps a bare HLS stream (HLS tags, no #EXTINF) as a single channel from the source URL', () => {
+    const hls = ['#EXTM3U', '#EXT-X-VERSION:3', '#EXT-X-STREAM-INF:BANDWIDTH=1000000', 'https://cdn/inner.m3u8'].join('\n');
+    const result = parseM3U(hls, 'https://example.com/hls/news.m3u8');
+    expect(result.channels).toHaveLength(1);
+    expect(result.channels[0].url).toBe('https://example.com/hls/news.m3u8'); // the stream URL itself, not the inner variant
+    expect(result.channels[0].name).toBe('news');
+    expect(result.groups).toEqual(['Uncategorized']);
+  });
+
+  it('wraps a bare HLS *media* playlist (segments, not channels) as one channel — no "no desc" rows', () => {
+    const media = [
+      '#EXTM3U', '#EXT-X-VERSION:3', '#EXT-X-MEDIA-SEQUENCE:100', '#EXT-X-TARGETDURATION:10',
+      '#EXTINF:10.000, no desc', 'seg-100.ts',
+      '#EXTINF:10.000, no desc', 'seg-101.ts',
+      '#EXTINF:10.000, no desc', 'seg-102.ts',
+    ].join('\n');
+    const result = parseM3U(media, 'https://example.com/live/stream_hd.m3u8');
+    expect(result.channels).toHaveLength(1); // the whole stream, not one channel per segment
+    expect(result.channels[0].name).toBe('stream_hd');
+    expect(result.channels[0].url).toBe('https://example.com/live/stream_hd.m3u8');
+  });
+
+  it('does not wrap an HLS stream when no source URL is supplied', () => {
+    const hls = ['#EXTM3U', '#EXT-X-STREAM-INF:BANDWIDTH=1', 'https://cdn/inner.m3u8'].join('\n');
+    expect(parseM3U(hls).channels).toEqual([]);
+  });
+
+  it('does not wrap a normal channel list (no HLS tags) even with a source URL', () => {
+    const m3u = ['#EXTM3U', '#EXTINF:-1,Ch', 'http://e/1'].join('\n');
+    const result = parseM3U(m3u, 'http://host/list.m3u');
+    expect(result.channels).toHaveLength(1);
+    expect(result.channels[0].name).toBe('Ch');
+  });
 });
