@@ -127,8 +127,14 @@ export const KeyHandler = {
       // "OK" action). Without this, the deferred select fires a second time on
       // whatever view we navigated to, e.g. Cancel in settings → channels view
       // → plays the focused channel and ends up on the player.
-      if ((e.target as HTMLElement).closest('.player-sidebar, .player-menu, .settings-view')) return;
-      const target = (e.target as HTMLElement).closest<HTMLElement>('[data-focusable]');
+      //
+      // A detached target means a handler that ran earlier in this same click
+      // already consumed it by removing the element (e.g. settings "Remove"
+      // deletes its row) — its `.settings-view` ancestor is gone, so the guard
+      // below would miss it and fire a spurious select that deletes a second row.
+      const t = e.target as HTMLElement;
+      if (!t.isConnected || t.closest('.player-sidebar, .player-menu, .settings-view')) return;
+      const target = t.closest<HTMLElement>('[data-focusable]');
       if (target && activeHandler) {
         target.dispatchEvent(new CustomEvent('nav:hover', { bubbles: true }));
         // Small delay to let focus settle before firing select

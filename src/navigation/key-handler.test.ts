@@ -206,6 +206,21 @@ describe('KeyHandler', () => {
       vi.advanceTimersByTime(0);
       expect(handler).not.toHaveBeenCalled();
     });
+
+    it('does not fire a deferred select when the click already removed its target', () => {
+      // The clicked control deletes itself mid-click (see key-handler.ts).
+      const view = document.createElement('div');
+      view.className = 'settings-view';
+      const btn = document.createElement('button');
+      btn.setAttribute('data-focusable', '');
+      btn.addEventListener('click', () => btn.remove());
+      view.appendChild(btn);
+      document.body.appendChild(view);
+
+      btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      vi.advanceTimersByTime(0);
+      expect(handler).not.toHaveBeenCalled();
+    });
   });
 
   describe('Magic Remote scroll wheel', () => {
