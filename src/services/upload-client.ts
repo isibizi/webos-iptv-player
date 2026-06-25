@@ -2,6 +2,7 @@ import type { PlaylistEntry } from '../types';
 import { CONFIG } from '../config';
 import { fetchWithTimeout } from '../utils/fetch-helper';
 import { createLogger } from '../utils/logger';
+import { genPlaylistId } from '../utils/playlist-id';
 import { StorageService } from './storage-service';
 
 const log = createLogger('Upload');
@@ -133,6 +134,9 @@ class UploadClientImpl {
     const manual = existing.filter((p) => p.source !== 'upload');
     const prevUpload = existing.filter((p) => p.source === 'upload');
     const uploadEntries: PlaylistEntry[] = uploads.map((u) => ({
+      // Keep the same id across reconciles (match by URL) so the upload's tab and
+      // channel membership stay stable; mint one for a newly-seen upload.
+      id: prevUpload.find((p) => p.url === u.url)?.id ?? genPlaylistId(),
       name: u.name,
       url: u.url,
       source: 'upload',

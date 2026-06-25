@@ -138,7 +138,7 @@ export class Sidebar {
     if (q) {
       const result: SidebarEntry[] = [];
       for (let i = 0; i < all.length; i++) {
-        if (this.playlist && all[i].playlist !== this.playlist) continue;
+        if (this.playlist && !all[i].playlistIds.includes(this.playlist)) continue;
         if (all[i].name.toLowerCase().includes(q)) {
           result.push({ ch: all[i], globalIdx: i });
         }
@@ -150,7 +150,7 @@ export class Sidebar {
     }
     const result: SidebarEntry[] = [];
     for (let i = 0; i < all.length; i++) {
-      if (all[i].playlist === this.playlist) {
+      if (all[i].playlistIds.includes(this.playlist)) {
         result.push({ ch: all[i], globalIdx: i });
       }
     }
@@ -197,11 +197,14 @@ export class Sidebar {
     const el = this.el;
     if (!el) return;
 
-    const plNames = PlaylistService.playlistNames;
-    const showTabs = plNames.length > 1;
+    const tabs = PlaylistService.playlistTabs;
+    // The selected playlist may have just been deleted in settings — fall back to All.
+    if (this.playlist && !tabs.some(t => t.id === this.playlist)) this.playlist = '';
+    const showTabs = tabs.length > 1;
     const entries = this.getChannels();
     const currentIdx = this.getCurrentIndex();
-    const searchPlaceholder = this.playlist ? `Search ${this.playlist}...` : 'Search all channels...';
+    const currentTab = tabs.find(t => t.id === this.playlist);
+    const searchPlaceholder = currentTab ? `Search ${currentTab.name}...` : 'Search all channels...';
 
     morph(el, html`
       <div class="sidebar-title">Channels</div>
@@ -213,10 +216,10 @@ export class Sidebar {
           <div class="sidebar-tab ${!this.playlist ? 'active' : ''}"
                data-key="tab:"
                data-sidebar-playlist="">All</div>
-          ${plNames.map(name => html`
-            <div class="sidebar-tab ${name === this.playlist ? 'active' : ''}"
-                 data-key="tab:${name}"
-                 data-sidebar-playlist="${name}">${name}</div>
+          ${tabs.map(t => html`
+            <div class="sidebar-tab ${t.id === this.playlist ? 'active' : ''}"
+                 data-key="tab:${t.id}"
+                 data-sidebar-playlist="${t.id}">${t.name}</div>
           `)}
         </div>
       ` : ''}

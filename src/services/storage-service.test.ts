@@ -6,7 +6,7 @@ import { channelKey } from '../utils/channel';
 
 const ch = (over: Partial<Channel>): Channel => ({
   id: '', name: '', logo: '', group: '', url: '', extras: null,
-  playlist: '', catchup: '', catchupSource: '', catchupDays: 0, ...over,
+  playlistIds: [], catchup: '', catchupSource: '', catchupDays: 0, ...over,
 });
 
 describe('StorageService', () => {
@@ -18,10 +18,16 @@ describe('StorageService', () => {
     expect(StorageService.getPlaylists()).toEqual([]);
   });
 
-  it('round-trips playlists through localStorage', () => {
-    const entries = [{ name: 'Test', url: 'http://example.com/p.m3u' }];
-    StorageService.setPlaylists(entries);
-    expect(StorageService.getPlaylists()).toEqual(entries);
+  it('round-trips playlists and backfills a stable id for legacy entries', () => {
+    StorageService.setPlaylists([{ id: 'keep', name: 'A', url: 'http://a' }]);
+    expect(StorageService.getPlaylists()).toEqual([{ id: 'keep', name: 'A', url: 'http://a' }]);
+
+    // A playlist saved before stable ids existed (no id field) gets one
+    // backfilled and persisted, so a second read returns the same id.
+    StorageService.set('playlists', [{ name: 'B', url: 'http://b' }]);
+    const got = StorageService.getPlaylists();
+    expect(got).toEqual([{ name: 'B', url: 'http://b', id: expect.any(String) }]);
+    expect(StorageService.getPlaylists()[0].id).toBe(got[0].id);
   });
 
   it('defaults the EPG url to an empty string and round-trips it', () => {

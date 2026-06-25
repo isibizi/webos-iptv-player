@@ -1,8 +1,13 @@
 import { CONFIG } from '../config';
 import type { AudioPref, Channel, PlaylistEntry, TzMode } from '../types';
 import { channelKey } from '../utils/channel';
+import { genPlaylistId } from '../utils/playlist-id';
 
 const PREFIX = CONFIG.STORAGE_PREFIX;
+
+// Versioned cache schema. Bump when the cached Channel shape changes so an older
+// payload (lower/absent version) is treated as a miss and re-fetched.
+const CACHE_VERSION = 1;
 
 function get<T>(key: string, defaultValue: T): T {
   try {
@@ -43,7 +48,15 @@ export const StorageService = {
   remove,
 
   getPlaylists(): PlaylistEntry[] {
-    return get<PlaylistEntry[]>('playlists', []);
+    const list = get<PlaylistEntry[]>('playlists', []);
+    // A legacy entry predates the stable id; backfill one and persist so it
+    // sticks (a fresh random id on every read would defeat the purpose).
+    let changed = false;
+    for (const pl of list) {
+      if (!pl.id) { pl.id = genPlaylistId(); changed = true; }
+    }
+    if (changed) set('playlists', list);
+    return list;
   },
   setPlaylists(playlists: PlaylistEntry[]): void {
     set('playlists', playlists);
@@ -139,14 +152,15 @@ export const StorageService = {
   },
 
   getCachedPlaylist(): { channels: Channel[]; epgUrls: string[] } | null {
-    const data = get<{ channels: Channel[]; epgUrls?: string[]; timestamp: number } | null>('cached_playlist', null);
-    if (!data || Date.now() - data.timestamp > CONFIG.PLAYLIST_REFRESH_INTERVAL) return null;
+    const data = get<{ version?: number; channels: Channel[]; epgUrls?: string[]; timestamp: number } | null>('cached_playlist', null);
+    if (!data || data.version !== CACHE_VERSION) return null;
+    if (Date.now() - data.timestamp > CONFIG.PLAYLIST_REFRESH_INTERVAL) return null;
     if (!data.channels || data.channels.length === 0) return null;
     return { channels: data.channels, epgUrls: data.epgUrls ?? [] };
   },
   setCachedPlaylist(channels: Channel[], epgUrls: string[] = []): void {
     if (!channels.length) return;
-    set('cached_playlist', { channels, epgUrls, timestamp: Date.now() });
+    set('cached_playlist', { version: CACHE_VERSION, channels, epgUrls, timestamp: Date.now() });
   },
 
 };

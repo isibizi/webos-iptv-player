@@ -1,4 +1,4 @@
-import type { Channel } from '../types';
+import type { Channel, PlaylistTab } from '../types';
 import { parseM3U } from '../parsers/m3u-parser';
 import { fetchText } from '../utils/fetch-helper';
 import { channelKey } from '../utils/channel';
@@ -10,7 +10,7 @@ const log = createLogger('Playlist');
 class PlaylistServiceImpl {
   channels: Channel[] = [];
   groups: string[] = [];
-  playlistNames: string[] = [];
+  playlistTabs: PlaylistTab[] = [];
   epgUrls: string[] = [];
   private indexMap = new Map<Channel, number>(); // channel -> global index, O(1) indexOf
 
@@ -22,7 +22,7 @@ class PlaylistServiceImpl {
   reset(): void {
     this.channels = [];
     this.groups = [];
-    this.playlistNames = [];
+    this.playlistTabs = [];
     this.epgUrls = [];
     this.indexMap = new Map();
   }
@@ -34,7 +34,7 @@ class PlaylistServiceImpl {
       this.epgUrls = cached.epgUrls ?? [];
       log.info('Cache hit:', this.channels.length, 'channels,', this.epgUrls.length, 'epg urls');
       this.buildGroups();
-      this.buildPlaylistNames();
+      this.buildPlaylistTabs();
       StorageService.migrateFavoriteKeys(this.channels);
       return this.channels;
     }
@@ -52,10 +52,14 @@ class PlaylistServiceImpl {
     }
 
     const allChannels: Channel[] = [];
-    const seenUrls = new Set<string>();
+    const byUrl = new Map<string, Channel>();
     const epgUrls: string[] = [];
 
     for (const pl of playlists) {
+      // Tag channels by the playlist's stable id, not its name or position, so
+      // two playlists sharing a name/URL stay distinct and deleting/reordering
+      // one never re-points another's channels.
+      const plKey = pl.id;
       const plDone = log.time(`fetch '${pl.name || pl.url}'`);
       try {
         const text = await fetchText(pl.url, 60000);
@@ -65,13 +69,18 @@ class PlaylistServiceImpl {
           parsed.epgUrl ? `| epg: ${parsed.epgUrl}` : '');
         let added = 0, dupes = 0;
         for (const ch of parsed.channels) {
-          if (!seenUrls.has(ch.url)) {
-            seenUrls.add(ch.url);
-            ch.playlist = pl.name || pl.url;
+          const existing = byUrl.get(ch.url);
+          if (existing) {
+            // Same stream in an earlier playlist: keep the one channel object
+            // (so "All" stays de-duplicated), but record this playlist too so
+            // its own tab still appears and shows the channel.
+            if (!existing.playlistIds.includes(plKey)) existing.playlistIds.push(plKey);
+            dupes++;
+          } else {
+            ch.playlistIds = [plKey];
+            byUrl.set(ch.url, ch);
             allChannels.push(ch);
             added++;
-          } else {
-            dupes++;
           }
         }
         log.debug(`Added ${added} channels (${dupes} duplicates skipped)`);
@@ -98,7 +107,7 @@ class PlaylistServiceImpl {
     this.channels = allChannels;
     this.epgUrls = epgUrls;
     this.buildGroups();
-    this.buildPlaylistNames();
+    this.buildPlaylistTabs();
     StorageService.migrateFavoriteKeys(this.channels);
     StorageService.setCachedPlaylist(allChannels, epgUrls);
     log.info('Refresh complete:', allChannels.length, 'total channels,', epgUrls.length, 'epg urls');
@@ -117,18 +126,19 @@ class PlaylistServiceImpl {
     this.groups = Array.from(groupSet);
   }
 
-  private buildPlaylistNames(): void {
-    const nameSet = new Set<string>();
-    for (const ch of this.channels) {
-      if (ch.playlist) nameSet.add(ch.playlist);
-    }
-    this.playlistNames = Array.from(nameSet);
+  private buildPlaylistTabs(): void {
+    // One tab per configured playlist, in config order, keyed by its stable id —
+    // including a playlist that loaded zero channels (empty/unreachable feed), so
+    // it stays visible. Derived from the registry, not the cached channels, so a
+    // stale/desynced channel cache can never blank out the tab bar.
+    const configured = StorageService.getPlaylists() || [];
+    this.playlistTabs = configured.map(pl => ({ id: pl.id, name: pl.name || pl.url }));
   }
 
   getByGroup(group: string, playlist?: string): Channel[] {
     let filtered = this.channels;
     if (playlist) {
-      filtered = filtered.filter(ch => ch.playlist === playlist);
+      filtered = filtered.filter(ch => ch.playlistIds.includes(playlist));
     }
     if (!group || group === 'All') return filtered;
     if (group === 'Favorites') {
@@ -142,13 +152,13 @@ class PlaylistServiceImpl {
   search(query: string, playlist?: string): Channel[] {
     const q = query.trim().toLowerCase();
     if (!q) return [];
-    const pool = playlist ? this.channels.filter(ch => ch.playlist === playlist) : this.channels;
+    const pool = playlist ? this.channels.filter(ch => ch.playlistIds.includes(playlist)) : this.channels;
     return pool.filter(ch => ch.name.toLowerCase().includes(q));
   }
 
   getGroupsForPlaylist(playlist?: string): string[] {
     const channels = playlist
-      ? this.channels.filter(ch => ch.playlist === playlist)
+      ? this.channels.filter(ch => ch.playlistIds.includes(playlist))
       : this.channels;
     const groupSet = new Set<string>();
     for (const ch of channels) {

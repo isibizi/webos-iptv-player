@@ -5,10 +5,19 @@ export interface Channel {
   group: string;
   url: string;
   extras: Record<string, string> | null;
-  playlist: string;
+  /** The stable `id` of every configured playlist this channel appears in (dedup
+   *  keeps one channel object, but it can belong to several overlapping playlists). */
+  playlistIds: string[];
   catchup: string;
   catchupSource: string;
   catchupDays: number;
+}
+
+/** One playlist tab. `id` is the configured playlist's stable id (so two
+ *  playlists sharing a name stay distinct); `name` is the display label. */
+export interface PlaylistTab {
+  id: string;
+  name: string;
 }
 
 export interface ParsedPlaylist {
@@ -39,6 +48,11 @@ export interface ParsedEpg {
 }
 
 export interface PlaylistEntry {
+  /** Stable identity assigned once at creation. Keys channel membership and the
+   *  playlist tabs, so deleting/reordering/renaming never shifts the others and
+   *  two playlists sharing a URL or name stay independent. StorageService
+   *  backfills it for any legacy entry read from storage. */
+  id: string;
   name: string;
   url: string;
   /** 'upload' entries are auto-managed by the local upload service; absent/'url' are user-entered. */

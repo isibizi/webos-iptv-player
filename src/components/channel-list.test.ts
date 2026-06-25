@@ -5,7 +5,7 @@ import type { Channel } from '../types';
 const { data, playlistMock, epgMock, storageMock } = vi.hoisted(() => {
   const mk = (o: Partial<Channel>): Channel => ({
     id: '', name: '', logo: '', group: '', url: '', extras: null,
-    playlist: '', catchup: '', catchupSource: '', catchupDays: 0, ...o,
+    playlistIds: [], catchup: '', catchupSource: '', catchupDays: 0, ...o,
   });
   const channels: Channel[] = [
     mk({ id: 'a', name: 'Alpha', group: 'News', url: 'http://host/a' }),
@@ -23,7 +23,7 @@ const { data, playlistMock, epgMock, storageMock } = vi.hoisted(() => {
   const search = (q: string, playlist?: string): Channel[] => {
     const needle = q.trim().toLowerCase();
     if (!needle) return [];
-    const pool = playlist ? channels.filter(c => c.playlist === playlist) : channels;
+    const pool = playlist ? channels.filter(c => c.playlistIds.includes(playlist)) : channels;
     return pool.filter(c => c.name.toLowerCase().includes(needle));
   };
 
@@ -31,7 +31,7 @@ const { data, playlistMock, epgMock, storageMock } = vi.hoisted(() => {
     data,
     playlistMock: {
       channels,
-      playlistNames: [] as string[],
+      playlistTabs: [] as { id: string; name: string }[],
       getGroupsForPlaylist: () => ['News', 'Sports'],
       getByGroup,
       search,
@@ -61,6 +61,7 @@ let list: ChannelList;
 beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn();
   data.favorites = [];
+  playlistMock.playlistTabs = [];
   storageMock.toggleFavorite.mockClear();
   container = document.createElement('div');
   document.body.appendChild(container);
@@ -267,6 +268,18 @@ describe('ChannelList search', () => {
 });
 
 describe('ChannelList listener lifecycle', () => {
+  it('falls back to the All tab when the selected playlist was removed', () => {
+    playlistMock.playlistTabs = [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }, { id: 'c', name: 'C' }];
+    list.render();
+    hover(container.querySelector<HTMLElement>('[data-playlist="b"]')!);
+    list.handleAction('select');
+    expect(container.querySelector('.playlist-tab.active')?.getAttribute('data-playlist')).toBe('b');
+
+    playlistMock.playlistTabs = [{ id: 'a', name: 'A' }, { id: 'c', name: 'C' }]; // 'b' deleted
+    list.render();
+    expect(container.querySelector('.playlist-tab.active')?.getAttribute('data-playlist')).toBe('');
+  });
+
   it('binds the nav:hover listener once, not per render', () => {
     const c = document.createElement('div');
     document.body.appendChild(c);

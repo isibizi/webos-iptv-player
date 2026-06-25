@@ -113,6 +113,73 @@ describe('Settings editing', () => {
     expect(container.querySelectorAll('#playlist-entries .settings-row:not(.playlist-header-row)')).toHaveLength(0);
   });
 
+  it('keeps each survivor\'s name and stable id when a middle row is removed', () => {
+    // Reproduces: add 5 with blank names, delete the 3rd, save. The 5th must
+    // keep its "Playlist 5" name AND its original id — no positional renumber,
+    // no re-id — so its tab/channels stay put.
+    const urls = ['http://a', 'http://b', 'http://c', 'http://d', 'http://e'];
+    for (let i = 0; i < 5; i++) {
+      click('#add-playlist');
+      const urlInputs = container.querySelectorAll<HTMLInputElement>('.playlist-url');
+      urlInputs[urlInputs.length - 1].value = urls[i];
+    }
+    const rows = () => Array.from(container.querySelectorAll<HTMLElement>(
+      '#playlist-entries .settings-row:not(.playlist-header-row)'));
+    const idBefore = rows().map(r => r.dataset.id);
+    expect(rows().map(r => r.querySelector<HTMLInputElement>('.playlist-name')!.value))
+      .toEqual(['Playlist 1', 'Playlist 2', 'Playlist 3', 'Playlist 4', 'Playlist 5']);
+
+    container.querySelectorAll<HTMLElement>('.remove-playlist')[2]
+      .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    click('#save-settings');
+
+    const saved = storageMock.setPlaylists.mock.calls.at(-1)![0] as { id: string; name: string }[];
+    expect(saved.map(p => p.name)).toEqual(['Playlist 1', 'Playlist 2', 'Playlist 4', 'Playlist 5']);
+    expect(saved.map(p => p.id)).toEqual([idBefore[0], idBefore[1], idBefore[3], idBefore[4]]);
+  });
+
+  it('removes the row whose button was clicked, even after edits churn the row order', () => {
+    // Regression: removal used to key off a positional data-index that went
+    // stale/duplicate after an add-following-a-remove, so clicking one row's
+    // Remove could delete a different row. It now deletes the row the button
+    // sits in (closest), independent of ordering.
+    const addRow = (name: string) => {
+      click('#add-playlist');
+      const last = Array.from(container.querySelectorAll<HTMLElement>(
+        '#playlist-entries .settings-row:not(.playlist-header-row)')).at(-1)!;
+      last.querySelector<HTMLInputElement>('.playlist-name')!.value = name;
+      last.querySelector<HTMLInputElement>('.playlist-url')!.value = 'http://' + name;
+    };
+    const rowNames = () =>
+      Array.from(container.querySelectorAll<HTMLInputElement>('.playlist-name')).map(n => n.value);
+    const removeByName = (name: string) =>
+      Array.from(container.querySelectorAll<HTMLElement>('.settings-row'))
+        .find(r => r.querySelector<HTMLInputElement>('.playlist-name')?.value === name)!
+        .querySelector<HTMLElement>('.remove-playlist')!
+        .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    addRow('A'); addRow('B'); addRow('C');
+    removeByName('B');   // churn the middle
+    addRow('D');         // re-add: under the old scheme D reused C's stale index
+    expect(rowNames()).toEqual(['A', 'C', 'D']);
+
+    removeByName('C');   // the old positional logic deleted D here instead
+    expect(rowNames()).toEqual(['A', 'D']);
+  });
+
+  it("seeds the next-add name past the highest existing 'Playlist N'", () => {
+    const urls = ['http://a', 'http://b', 'http://c', 'http://d'];
+    for (let i = 0; i < 4; i++) {
+      click('#add-playlist');
+      container.querySelectorAll<HTMLInputElement>('.playlist-url')[i].value = urls[i];
+    }
+    container.querySelectorAll<HTMLElement>('.remove-playlist')[2] // remove 'Playlist 3'
+      .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    click('#add-playlist');
+    const names = Array.from(container.querySelectorAll<HTMLInputElement>('.playlist-name')).map(n => n.value);
+    expect(names).toEqual(['Playlist 1', 'Playlist 2', 'Playlist 4', 'Playlist 5']);
+  });
+
   it('shows Name/URL labels only once as column headers, not on every row', () => {
     state.playlists = [
       { name: 'P1', url: 'http://a' },
@@ -187,14 +254,25 @@ describe('Settings.save', () => {
 
     click('#save-settings');
 
-    expect(storageMock.setPlaylists).toHaveBeenCalledWith([{ name: 'My', url: 'http://x', source: 'url' }]);
+    expect(storageMock.setPlaylists).toHaveBeenCalledWith([{ id: expect.any(String), name: 'My', url: 'http://x', source: 'url' }]);
     expect(storageMock.setEpgUrl).toHaveBeenCalledWith('http://epg');
     expect(storageMock.setAutoPlay).toHaveBeenCalledWith(true);
     expect(onSave).toHaveBeenCalledWith('reload'); // playlist + EPG changed
   });
 
+  it("reloads when a playlist is re-id'd (same name+url, new id)", () => {
+    // Delete + re-add of the same name/url gives the row a fresh id; the
+    // signature must notice the id changed (else cache keeps the old id).
+    state.playlists = [{ id: 'a', name: 'P', url: 'http://p' }];
+    settings.render();
+    container.querySelector<HTMLElement>(
+      '#playlist-entries .settings-row:not(.playlist-header-row)')!.dataset.id = 'b';
+    click('#save-settings');
+    expect(onSave).toHaveBeenCalledWith('reload');
+  });
+
   it('applies a display-only change without a full reload', () => {
-    state.playlists = [{ name: 'P', url: 'http://p' }]; // unchanged by the form
+    state.playlists = [{ id: 'p1', name: 'P', url: 'http://p' }]; // unchanged by the form
     settings.render();
     click('#tz-mode [data-value="feed"]'); // only the time zone changes
     click('#save-settings');
@@ -206,7 +284,7 @@ describe('Settings.save', () => {
     const urls = container.querySelectorAll<HTMLInputElement>('.playlist-url');
     urls[0].value = 'http://only';
     click('#save-settings');
-    expect(storageMock.setPlaylists).toHaveBeenCalledWith([{ name: 'Playlist 1', url: 'http://only', source: 'url' }]);
+    expect(storageMock.setPlaylists).toHaveBeenCalledWith([{ id: expect.any(String), name: 'Playlist 1', url: 'http://only', source: 'url' }]);
   });
 
   it('selecting the Feed option persists the feed mode', () => {
@@ -315,7 +393,7 @@ describe('Settings uploads section', () => {
       .dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
     expect(storageMock.setPlaylists).toHaveBeenCalledWith([
-      { name: 'Manual', url: 'http://renamed', source: 'url' },
+      { id: expect.any(String), name: 'Manual', url: 'http://renamed', source: 'url' },
       { name: 'From Phone', url: 'http://127.0.0.1:8890/uploads/from-phone.m3u', source: 'upload' },
     ]);
   });

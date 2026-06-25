@@ -7,14 +7,14 @@ const { channels } = vi.hoisted(() => {
   function makeChannel(over: Partial<Channel>): Channel {
     return {
       id: '', name: '', logo: '', group: '', url: '', extras: null,
-      playlist: '', catchup: '', catchupSource: '', catchupDays: 0, ...over,
+      playlistIds: [], catchup: '', catchupSource: '', catchupDays: 0, ...over,
     };
   }
   return {
     channels: [
-      makeChannel({ id: 'a', name: 'Alpha', playlist: 'PL1' }),
-      makeChannel({ id: 'b', name: 'Bravo', playlist: 'PL1' }),
-      makeChannel({ id: 'c', name: 'Charlie', playlist: 'PL2' }),
+      makeChannel({ id: 'a', name: 'Alpha', playlistIds: ['PL1'] }),
+      makeChannel({ id: 'b', name: 'Bravo', playlistIds: ['PL1'] }),
+      makeChannel({ id: 'c', name: 'Charlie', playlistIds: ['PL2'] }),
     ] as Channel[],
   };
 });
@@ -22,7 +22,7 @@ const { channels } = vi.hoisted(() => {
 vi.mock('../services/playlist-service', () => ({
   PlaylistService: {
     channels,
-    playlistNames: ['PL1', 'PL2'],
+    playlistTabs: [{ id: 'PL1', name: 'PL1' }, { id: 'PL2', name: 'PL2' }],
     getByIndex: (i: number) => channels[i],
   },
 }));

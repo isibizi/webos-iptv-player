@@ -6,7 +6,7 @@ const { channels } = vi.hoisted(() => {
   function makeChannel(over: Partial<Channel>): Channel {
     return {
       id: '', name: '', logo: '', group: '', url: '', extras: null,
-      playlist: '', catchup: '', catchupSource: '', catchupDays: 0, ...over,
+      playlistIds: [], catchup: '', catchupSource: '', catchupDays: 0, ...over,
     };
   }
   return { channels: [makeChannel({ id: 'a', name: 'Alpha' })] as Channel[] };
@@ -15,7 +15,7 @@ const { channels } = vi.hoisted(() => {
 vi.mock('../services/playlist-service', () => ({
   PlaylistService: {
     channels,
-    playlistNames: [],
+    playlistTabs: [],
     getByIndex: (i: number) => channels[i],
   },
 }));

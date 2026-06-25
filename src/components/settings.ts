@@ -5,6 +5,7 @@ import { SpatialNav } from '../navigation/spatial-nav';
 import { StorageService } from '../services/storage-service';
 import { clearCachedEpg } from '../services/idb-cache';
 import { UploadClient, uploadIdFromUrl } from '../services/upload-client';
+import { genPlaylistId } from '../utils/playlist-id';
 import { CONFIG } from '../config';
 import { showToast } from './toast';
 import qrcode from 'qrcode-generator';
@@ -105,19 +106,19 @@ export class Settings {
                   <div class="settings-field"><label>URL</label></div>
                   <div class="playlist-header-spacer"></div>
                 </div>
-                ${playlists.map((pl, i) => html`
-                <div class="settings-row">
+                ${playlists.map((pl) => html`
+                <div class="settings-row" data-id="${pl.id}">
                   <div class="settings-field">
                     <input type="text" class="settings-input playlist-name"
                            aria-label="Playlist name" placeholder="My Playlist"
-                           data-focusable data-index="${i}" value="${pl.name || ''}">
+                           data-focusable value="${pl.name || ''}">
                   </div>
                   <div class="settings-field">
                     <input type="text" class="settings-input playlist-url"
                            aria-label="Playlist URL" placeholder="https://...m3u"
-                           data-focusable data-index="${i}" value="${pl.url || ''}">
+                           data-focusable value="${pl.url || ''}">
                   </div>
-                  <button class="btn btn-danger remove-playlist" data-focusable data-index="${i}">Remove</button>
+                  <button class="btn btn-danger remove-playlist" data-focusable>Remove</button>
                 </div>
               `)}`
               : raw('<div class="empty-hint">No playlists added yet</div>')}
@@ -228,7 +229,7 @@ export class Settings {
     if (el.id === 'add-playlist') {
       this.addPlaylistEntry();
     } else if (el.classList.contains('remove-playlist')) {
-      this.removePlaylistEntry(parseInt(el.dataset.index!, 10));
+      this.removePlaylistEntry(el);
     } else if (el.classList.contains('remove-upload')) {
       void this.removeUpload(el.dataset.url!);
     } else if (el.classList.contains('toggle-option')) {
@@ -268,21 +269,30 @@ export class Settings {
       entries.appendChild(header);
     }
 
-    const idx = entries.querySelectorAll('.settings-row:not(.playlist-header-row)').length;
+    // Seed a concrete default name so it persists as a real value (a blank name
+    // makes save() fall back to position-based numbering). Use one past the
+    // highest existing "Playlist N" (and the row count) so adding after deleting
+    // a middle row never reuses a surviving label.
+    const nameInputs = entries.querySelectorAll<HTMLInputElement>('.playlist-name');
+    const nextNum = Array.from(nameInputs).reduce((max, inp) => {
+      const m = /^Playlist (\d+)$/.exec(inp.value.trim());
+      return m ? Math.max(max, parseInt(m[1], 10)) : max;
+    }, nameInputs.length) + 1;
     const row = document.createElement('div');
     row.className = 'settings-row';
+    row.dataset.id = genPlaylistId();
     row.innerHTML = `
       <div class="settings-field">
         <input type="text" class="settings-input playlist-name"
                aria-label="Playlist name" placeholder="My Playlist"
-               data-focusable data-index="${idx}" value="">
+               data-focusable value="Playlist ${nextNum}">
       </div>
       <div class="settings-field">
         <input type="text" class="settings-input playlist-url"
                aria-label="Playlist URL" placeholder="https://...m3u"
-               data-focusable data-index="${idx}" value="">
+               data-focusable value="">
       </div>
-      <button class="btn btn-danger remove-playlist" data-focusable data-index="${idx}">Remove</button>
+      <button class="btn btn-danger remove-playlist" data-focusable>Remove</button>
     `;
     entries.appendChild(row);
 
@@ -293,11 +303,12 @@ export class Settings {
     }
   }
 
-  private removePlaylistEntry(index: number): void {
+  private removePlaylistEntry(removeBtn: HTMLElement): void {
     const entries = $('#playlist-entries', this.container);
     if (!entries) return;
-    const dataRows = entries.querySelectorAll('.settings-row:not(.playlist-header-row)');
-    if (dataRows[index]) dataRows[index].remove();
+    // Remove the row the clicked button sits in — no positional index, so it
+    // can't be thrown off by stale/duplicate row ordering.
+    removeBtn.closest('.settings-row')?.remove();
     // Drop the header row too if no data rows remain (lone header would look orphaned).
     if (entries.querySelectorAll('.settings-row:not(.playlist-header-row)').length === 0) {
       const header = entries.querySelector('.playlist-header-row');
@@ -311,19 +322,21 @@ export class Settings {
   }
 
   private save(): void {
-    const names = $$('.playlist-name', this.container) as HTMLInputElement[];
-    const urls = $$('.playlist-url', this.container) as HTMLInputElement[];
+    // Read row-by-row so each row's stable id (data-id) is preserved; a row
+    // added before this build has none, so mint one.
+    const rows = $$('#playlist-entries .settings-row:not(.playlist-header-row)', this.container) as HTMLElement[];
     const playlists: PlaylistEntry[] = [];
 
-    for (let i = 0; i < urls.length; i++) {
-      const url = urls[i].value.trim();
-      if (url) {
-        playlists.push({
-          name: names[i]?.value.trim() || `Playlist ${i + 1}`,
-          url,
-          source: 'url',
-        });
-      }
+    for (const row of rows) {
+      const url = row.querySelector<HTMLInputElement>('.playlist-url')!.value.trim();
+      if (!url) continue;
+      const name = row.querySelector<HTMLInputElement>('.playlist-name')!.value.trim();
+      playlists.push({
+        id: row.dataset.id || genPlaylistId(),
+        name: name || `Playlist ${playlists.length + 1}`,
+        url,
+        source: 'url',
+      });
     }
 
     // Preserve auto-managed uploaded playlists (not shown in the URL editor).
@@ -345,7 +358,7 @@ export class Settings {
 
     // Only a playlist or EPG-URL change needs a re-fetch; display-only settings
     // (time zone, auto-play) just re-render in place.
-    const sig = (l: PlaylistEntry[]) => JSON.stringify(l.map(pl => [pl.name, pl.url]));
+    const sig = (l: PlaylistEntry[]) => JSON.stringify(l.map(pl => [pl.id, pl.name, pl.url]));
     const dataChanged = epgUrl !== prevEpg || sig(prevUrls) !== sig(playlists);
     this.onSave(dataChanged ? 'reload' : 'apply');
   }

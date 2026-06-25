@@ -107,7 +107,7 @@ describe('UploadClient.reconcile', () => {
 
     expect(storageMock.setPlaylists).toHaveBeenCalledWith([
       { name: 'Manual', url: 'http://m', source: 'url' },
-      { name: 'Phone One', url: 'http://127.0.0.1:8890/uploads/p1.m3u', source: 'upload', count: 5 },
+      { id: expect.any(String), name: 'Phone One', url: 'http://127.0.0.1:8890/uploads/p1.m3u', source: 'upload', count: 5 },
     ]);
     expect(storageMock.remove).toHaveBeenCalledWith('cached_playlist');
   });
@@ -155,7 +155,7 @@ describe('UploadClient.reconcile', () => {
     await UploadClient.reconcile();
 
     expect(storageMock.setPlaylists).toHaveBeenCalledWith([
-      { name: 'P1', url: 'http://127.0.0.1:8890/uploads/p1.m3u', source: 'upload', count: 9 },
+      { id: expect.any(String), name: 'P1', url: 'http://127.0.0.1:8890/uploads/p1.m3u', source: 'upload', count: 9 },
     ]);
   });
 
@@ -167,7 +167,7 @@ describe('UploadClient.reconcile', () => {
     await UploadClient.reconcile();
 
     expect(storageMock.setPlaylists).toHaveBeenCalledWith([
-      { name: 'No URL', url: 'http://127.0.0.1:8890/uploads/no%20url.m3u', source: 'upload', count: 1 },
+      { id: expect.any(String), name: 'No URL', url: 'http://127.0.0.1:8890/uploads/no%20url.m3u', source: 'upload', count: 1 },
     ]);
   });
 });

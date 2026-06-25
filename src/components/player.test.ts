@@ -15,7 +15,7 @@ import { Player } from './player';
 
 const CHANNEL = {
   id: 'c1', name: 'Chan', logo: '', group: '', url: 'http://host/play/c1', extras: null,
-  playlist: '', catchup: 'default', catchupSource: 'http://host/catchup/c1?start={utc}&end={utcend}', catchupDays: 7,
+  playlistIds: [], catchup: 'default', catchupSource: 'http://host/catchup/c1?start={utc}&end={utcend}', catchupDays: 7,
 };
 // 120-second catch-up programme.
 const CATCHUP = { start: 1_000_000, end: 1_000_120, title: 'Prog', description: '', icon: '' };

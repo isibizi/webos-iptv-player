@@ -4,7 +4,7 @@ import { channelKey } from './channel';
 
 const ch = (url: string): Channel => ({
   id: '', name: '', logo: '', group: '', url, extras: null,
-  playlist: '', catchup: '', catchupSource: '', catchupDays: 0,
+  playlistIds: [], catchup: '', catchupSource: '', catchupDays: 0,
 });
 
 describe('channelKey', () => {

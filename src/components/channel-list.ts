@@ -69,16 +69,19 @@ export class ChannelList {
   }
 
   render(): void {
-    const plNames = PlaylistService.playlistNames;
-    const showTabs = plNames.length > 1;
+    const tabs = PlaylistService.playlistTabs;
+    // The selected playlist may have just been deleted in settings — fall back to All.
+    if (this.currentPlaylist && !tabs.some(t => t.id === this.currentPlaylist)) this.currentPlaylist = '';
+    const showTabs = tabs.length > 1;
     const groups = ['All', 'Favorites', ...PlaylistService.getGroupsForPlaylist(this.currentPlaylist || undefined)];
     // Search spans groups, scoped to the selected playlist tab.
     const searching = this.searchQuery.trim().length > 0;
     const filteredChannels = searching
       ? PlaylistService.search(this.searchQuery, this.currentPlaylist || undefined)
       : PlaylistService.getByGroup(this.currentGroup, this.currentPlaylist || undefined);
-    const searchPlaceholder = this.currentPlaylist
-      ? `Search ${this.currentPlaylist}...`
+    const currentTab = tabs.find(t => t.id === this.currentPlaylist);
+    const searchPlaceholder = currentTab
+      ? `Search ${currentTab.name}...`
       : 'Search all channels...';
     const totalChannels = this.currentPlaylist
       ? PlaylistService.getByGroup('All', this.currentPlaylist).length
@@ -108,10 +111,10 @@ export class ChannelList {
               <div class="playlist-tab ${!this.currentPlaylist ? 'active' : ''}"
                    data-key="tab:"
                    data-focusable data-playlist="">All</div>
-              ${plNames.map(name => html`
-                <div class="playlist-tab ${name === this.currentPlaylist ? 'active' : ''}"
-                     data-key="tab:${name}"
-                     data-focusable data-playlist="${name}">${name}</div>
+              ${tabs.map(t => html`
+                <div class="playlist-tab ${t.id === this.currentPlaylist ? 'active' : ''}"
+                     data-key="tab:${t.id}"
+                     data-focusable data-playlist="${t.id}">${t.name}</div>
               `)}
             </div>
           ` : ''}

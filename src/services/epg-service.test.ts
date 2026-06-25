@@ -21,7 +21,7 @@ function prog(over: Partial<Programme>): Programme {
 function channel(over: Partial<Channel>): Channel {
   return {
     id: '', name: '', logo: '', group: '', url: '', extras: null,
-    playlist: '', catchup: '', catchupSource: '', catchupDays: 0, ...over,
+    playlistIds: [], catchup: '', catchupSource: '', catchupDays: 0, ...over,
   };
 }
 

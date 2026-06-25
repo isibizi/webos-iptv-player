@@ -45,7 +45,7 @@ export function parseM3U(text: string, sourceUrl = ''): ParsedPlaylist {
     return {
       channels: [{
         id: '', name: nameFromUrl(sourceUrl), logo: '', group: 'Uncategorized',
-        url: sourceUrl, extras: null, playlist: '', catchup: '', catchupSource: '', catchupDays: 0,
+        url: sourceUrl, extras: null, playlistIds: [], catchup: '', catchupSource: '', catchupDays: 0,
       }],
       groups: ['Uncategorized'],
       epgUrl,
@@ -83,7 +83,7 @@ function parseExtInf(line: string): Channel {
     group: extractAttr(attrStr, 'group-title') || 'Uncategorized',
     url: '',
     extras: null,
-    playlist: '',
+    playlistIds: [],
     catchup: extractAttr(attrStr, 'catchup'),
     catchupSource: extractAttr(attrStr, 'catchup-source'),
     catchupDays: parseInt(extractAttr(attrStr, 'catchup-days') || '0', 10) || 0,
