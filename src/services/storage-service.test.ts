@@ -106,4 +106,30 @@ describe('StorageService', () => {
       expect(localStorage.getItem('iptv_audio_prefs')).toBeNull();
     });
   });
+
+  describe('subtitle preferences', () => {
+    it('returns null when no choice is saved for a channel', () => {
+      expect(StorageService.getSubtitlePref('ch1')).toBeNull();
+    });
+
+    it('remembers a choice per channel, including an explicit off, without bleeding', () => {
+      StorageService.setSubtitlePref('ch1', { off: false, name: 'Track 1', lang: 'l1' });
+      StorageService.setSubtitlePref('ch2', { off: true, name: '', lang: '' });
+      expect(StorageService.getSubtitlePref('ch1')).toEqual({ off: false, name: 'Track 1', lang: 'l1' });
+      expect(StorageService.getSubtitlePref('ch2')).toEqual({ off: true, name: '', lang: '' });
+      expect(StorageService.getSubtitlePref('ch3')).toBeNull();
+    });
+
+    it('persists through localStorage (survives a reload)', () => {
+      StorageService.setSubtitlePref('ch1', { off: false, name: 'Track 2', lang: 'l1' });
+      expect(StorageService.getSubtitlePref('ch1')).toEqual({ off: false, name: 'Track 2', lang: 'l1' });
+      expect(localStorage.getItem('iptv_subtitle_prefs')).toContain('Track 2');
+    });
+
+    it('ignores an empty channel id', () => {
+      StorageService.setSubtitlePref('', { off: true, name: '', lang: '' });
+      expect(StorageService.getSubtitlePref('')).toBeNull();
+      expect(localStorage.getItem('iptv_subtitle_prefs')).toBeNull();
+    });
+  });
 });

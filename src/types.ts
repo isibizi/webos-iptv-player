@@ -61,11 +61,6 @@ export interface PlaylistEntry {
   count?: number;
 }
 
-export interface CachedData<T> {
-  data: T;
-  timestamp: number;
-}
-
 export interface CatchupInfo {
   start: number;
   end: number;
@@ -124,6 +119,40 @@ export interface ManifestAudio {
   isDefault: boolean;
 }
 
-export interface ViewHandler {
-  handleAction(action: Action, event?: NumberEvent): void;
+/** A selectable subtitle track for the picker. `index` -1 is the synthetic "Off"
+ *  row the menu prepends; real tracks index into the player's track list. */
+export interface SubtitleTrackOption {
+  index: number;
+  label: string;
+  active: boolean;
+  /** False = shown but not switchable — a rendition the platform didn't expose
+   *  as a native textTrack. Defaults to switchable when absent. */
+  available?: boolean;
+}
+
+/** Normalized subtitle rendition, unified across the hls.js list and the native
+ *  HTMLMediaElement.textTracks list so one selection routine serves both. */
+export interface SubtitleOption {
+  index: number;
+  name: string;
+  lang: string;
+  isDefault: boolean;
+  isForced: boolean;
+  active: boolean;
+}
+
+/** A remembered subtitle choice. `off` records an explicit "no subtitles" so it
+ *  survives re-tunes; otherwise matched against future streams by name then language. */
+export interface SubtitlePref {
+  off: boolean;
+  name: string;
+  lang: string;
+}
+
+/** A subtitle rendition declared in an HLS master playlist (EXT-X-MEDIA:TYPE=SUBTITLES). */
+export interface ManifestSubtitle {
+  name: string;
+  lang: string;
+  isDefault: boolean;
+  isForced: boolean;
 }

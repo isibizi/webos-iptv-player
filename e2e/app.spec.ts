@@ -454,6 +454,51 @@ test('the right-edge player menu opens and lists its colour actions', async ({ p
   await expect(menu.locator('.menu-item').nth(1)).toHaveClass(/focused/);
 });
 
+test('a long player-menu list scrolls with the Magic-Remote wheel, not the channel', async ({ page }) => {
+  // The subtitle/audio submenus share `.menu-items`; with many tracks the list must
+  // scroll (overflow-y:auto) and the wheel handler must let it scroll natively instead
+  // of zapping the channel. A fake stream can't supply many tracks, so we stub a long
+  // list into the same container and drive a real wheel over it.
+  await page.setViewportSize({ width: 1920, height: 1080 }); // panel is 1080px tall
+  await routePlaylist(page);
+  // Minimal live manifest so hls.js doesn't fatal → no auto-zap to the next channel.
+  await page.route('**/*.m3u8', route => route.fulfill({
+    status: 200, contentType: 'application/vnd.apple.mpegurl',
+    body: '#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:6\n#EXT-X-MEDIA-SEQUENCE:0\n',
+  }));
+  await seedPlaylist(page);
+  await page.goto('/');
+  await expect(page.locator('#view-channels')).toBeVisible();
+
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#view-player')).toBeVisible();
+  await expect(page.locator('.osd-channel-number')).toHaveText('1');
+
+  await page.keyboard.press('ArrowRight');
+  const menu = page.locator('#player-menu');
+  await expect(menu).toBeVisible();
+
+  // Stub a long list (clone the first row 30×) so the container overflows.
+  const list = menu.locator('.menu-items');
+  await list.evaluate((el) => {
+    const row = el.querySelector('.menu-item');
+    for (let i = 0; i < 30 && row; i++) el.appendChild(row.cloneNode(true));
+  });
+
+  // It's a scroll container that now overflows.
+  expect(await list.evaluate(el => getComputedStyle(el).overflowY)).toBe('auto');
+  expect(await list.evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true);
+
+  // A real Magic-Remote-style wheel over the list scrolls it natively...
+  await list.hover();
+  await page.mouse.wheel(0, 600);
+  await expect.poll(() => list.evaluate(el => el.scrollTop)).toBeGreaterThan(0);
+  // ...and the channel did NOT change: native scroll means the wheel handler returned
+  // before its preventDefault/channel-zap branch (key-handler.ts hasScrollableAncestor).
+  await expect(page.locator('.osd-channel-number')).toHaveText('1');
+});
+
 test('starting playback shows the OSD with channel info; the yellow key re-opens it', async ({ page }) => {
   // Smoke-exercises the player OSD render path (player.ts renderOSD) at runtime.
   await routePlaylist(page);

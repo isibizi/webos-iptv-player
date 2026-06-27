@@ -8,6 +8,27 @@
   pointer-events: auto;
 }
 
+/* Subtitle cues — Blink draws these on both the preview and native on-device (it honours
+   ::cue). White text on a translucent dark box; ui-monospace gives the system mono (the TV
+   ignores it and uses "Droid Sans Mono"), with per-script fallback for CJK etc. */
+#video-player::cue {
+  background-color: rgba(0, 0, 0, 0.8);
+  color: #fff;
+  /* stylelint-disable-next-line plugin/no-unsupported-browser-features */
+  font-family: ui-monospace, "SFMono-Regular", "Droid Sans Mono", monospace;
+}
+
+/* WebVTT <c.class> speaker colours — the teletext palette (white default +
+   red/green/yellow/blue/magenta/cyan). Render on both paths — the desktop preview
+   and native on-device (Blink draws the cues and honours ::cue). red/blue are softened
+   from pure for legibility on the dark cue background. */
+#video-player::cue(.cyan) { color: #00ffff; }
+#video-player::cue(.yellow) { color: #ffff00; }
+#video-player::cue(.green) { color: #00ff00; }
+#video-player::cue(.magenta) { color: #ff00ff; }
+#video-player::cue(.red) { color: #ff6666; }
+#video-player::cue(.blue) { color: #6666ff; }
+
 .player-osd {
   position: absolute;
   bottom: 20px;
@@ -435,6 +456,9 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+  flex: 1;            /* fill the remaining height of the fixed-height panel */
+  min-height: 0;      /* allow the flex child to shrink so overflow-y can scroll */
+  overflow-y: auto;   /* long track lists scroll instead of running off-screen */
 }
 
 .player-menu .menu-item {
@@ -482,6 +506,13 @@
   line-height: 1;
 }
 .menu-icon.audio { color: #9b59b6; }
+.menu-icon.subtitle {
+  color: #1abc9c;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.menu-icon.subtitle svg { display: block; width: 18px; height: 18px; }
 
 /* Current audio track shown on the "Audio Track" row */
 .player-menu .menu-item-value {

@@ -72,6 +72,8 @@ class App {
       (action) => this.onMenuAction(action),
       () => this.player.getAudioTracks(),
       (index) => this.player.selectAudioTrack(index),
+      () => this.player.getSubtitleTracks(),
+      (index) => this.player.selectSubtitleTrack(index),
     );
 
     KeyHandler.init();

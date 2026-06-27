@@ -1,0 +1,248 @@
+import { describe, it, expect } from 'vitest';
+import type { SubtitleOption } from '../types';
+import {
+  subtitleLabel,
+  languageName,
+  hlsSubtitleOptions,
+  nativeSubtitleOptions,
+  chooseSubtitleIndex,
+  isSubtitlePrefMatch,
+  parseSubtitleRenditions,
+  mergeSubtitleManifestNames,
+} from './subtitle-tracks';
+
+const opt = (over: Partial<SubtitleOption>): SubtitleOption => ({
+  index: 0, name: '', lang: '', isDefault: false, isForced: false, active: false, ...over,
+});
+
+// Build a native TextTrackList-like object (the DOM type is absent in node tests).
+const nativeList = (
+  tracks: Array<{ kind?: string; label?: string; language?: string; mode?: TextTrackMode }>,
+): TextTrackList => {
+  const list: Record<number | string, unknown> = { length: tracks.length };
+  tracks.forEach((t, i) => {
+    list[i] = {
+      kind: t.kind ?? 'subtitles', label: t.label ?? '',
+      language: t.language ?? '', mode: t.mode ?? 'disabled', id: '',
+    };
+  });
+  return list as unknown as TextTrackList;
+};
+
+describe('subtitleLabel', () => {
+  it('prefers name, then language, then a positional fallback', () => {
+    expect(subtitleLabel(opt({ index: 0, name: 'Track 1', lang: 'l1' }))).toBe('Track 1');
+    expect(subtitleLabel(opt({ index: 1, name: '', lang: 'l2' }))).toBe('l2'); // unmapped code → raw
+    expect(subtitleLabel(opt({ index: 2, name: '', lang: '' }))).toBe('Subtitle 3');
+  });
+
+  it('maps a NAME-less track from its language code to an endonym', () => {
+    // Real codes are required here — the feature is the code→name map.
+    expect(subtitleLabel(opt({ index: 0, name: '', lang: 'de' }))).toBe('Deutsch');
+    expect(subtitleLabel(opt({ index: 0, name: '', lang: 'EN' }))).toBe('English'); // case-insensitive
+    expect(subtitleLabel(opt({ index: 0, name: '', lang: 'de-DE' }))).toBe('Deutsch'); // region subtag tolerated
+    expect(subtitleLabel(opt({ index: 0, name: 'Deutsch', lang: 'de' }))).toBe('Deutsch'); // an explicit name still wins
+  });
+});
+
+describe('languageName', () => {
+  it('returns the endonym for a 2-letter code (iso-639-1)', () => {
+    expect(languageName('de')).toBe('Deutsch');
+    expect(languageName('en')).toBe('English');
+    expect(languageName('zh')).toBe('中文'); // non-Latin script
+  });
+
+  it('folds 3-letter codes (iso-639-2 B and T) to the endonym', () => {
+    expect(languageName('deu')).toBe('Deutsch'); // 639-2/T
+    expect(languageName('ger')).toBe('Deutsch'); // 639-2/B
+    expect(languageName('eng')).toBe('English');
+  });
+
+  it('tolerates case and a region subtag', () => {
+    expect(languageName('EN')).toBe('English');
+    expect(languageName('pt-BR')).toBe('Português');
+  });
+
+  it('falls back to the raw code when unknown', () => {
+    expect(languageName('l1')).toBe('l1');
+    expect(languageName('zzz')).toBe('zzz');
+    expect(languageName('')).toBe('');
+  });
+});
+
+describe('hlsSubtitleOptions', () => {
+  it('normalizes name/lang/default/forced and marks the current index active', () => {
+    const opts = hlsSubtitleOptions(
+      [{ name: 'Track 1', lang: 'l1', default: true }, { name: 'Track 2', lang: 'l2', forced: true }],
+      1,
+    );
+    expect(opts).toEqual([
+      { index: 0, name: 'Track 1', lang: 'l1', isDefault: true, isForced: false, active: false },
+      { index: 1, name: 'Track 2', lang: 'l2', isDefault: false, isForced: true, active: true },
+    ]);
+  });
+
+  it('coerces missing fields and treats -1 (off) as nothing active', () => {
+    expect(hlsSubtitleOptions([{}], -1)).toEqual([
+      { index: 0, name: '', lang: '', isDefault: false, isForced: false, active: false },
+    ]);
+  });
+});
+
+describe('nativeSubtitleOptions', () => {
+  it('maps label→name, language→lang, showing→active', () => {
+    const opts = nativeSubtitleOptions(nativeList([
+      { label: 'Track 1', language: 'l1', mode: 'showing' },
+      { label: 'Track 2', language: 'l2', mode: 'disabled' },
+    ]));
+    expect(opts).toEqual([
+      { index: 0, name: 'Track 1', lang: 'l1', isDefault: false, isForced: false, active: true },
+      { index: 1, name: 'Track 2', lang: 'l2', isDefault: false, isForced: false, active: false },
+    ]);
+  });
+
+  it("treats 'und' language as empty", () => {
+    expect(nativeSubtitleOptions(nativeList([{ label: 'Track 1', language: 'und' }]))[0].lang).toBe('');
+  });
+
+  it('skips non-subtitle/caption text tracks but keeps their list index', () => {
+    const opts = nativeSubtitleOptions(nativeList([
+      { kind: 'metadata', label: 'meta' },
+      { kind: 'subtitles', label: 'Track 1', language: 'l1', mode: 'showing' },
+    ]));
+    expect(opts).toHaveLength(1);
+    expect(opts[0].index).toBe(1); // real position in textTracks, for driving .mode
+  });
+});
+
+describe('chooseSubtitleIndex', () => {
+  const opts = [
+    opt({ index: 0, name: 'Track 1', lang: 'l1' }),
+    opt({ index: 1, name: 'Track 2', lang: 'l2' }),
+    opt({ index: 2, name: 'Track 3', lang: 'l3' }),
+  ];
+
+  it('defaults to off (-1) with no pref and nothing forced', () => {
+    expect(chooseSubtitleIndex([], null)).toBe(-1);
+    expect(chooseSubtitleIndex(opts, null)).toBe(-1);
+  });
+
+  it('defaults to the forced track when one is marked', () => {
+    const forced = opts.map((o, i) => ({ ...o, isForced: i === 1 }));
+    expect(chooseSubtitleIndex(forced, null)).toBe(1);
+  });
+
+  it('honours an explicit off pref, even over a forced track', () => {
+    const forced = opts.map((o, i) => ({ ...o, isForced: i === 1 }));
+    expect(chooseSubtitleIndex(forced, { off: true, name: '', lang: '' })).toBe(-1);
+  });
+
+  it('matches a saved pref by name, case-insensitively', () => {
+    expect(chooseSubtitleIndex(opts, { off: false, name: 'track 2', lang: '' })).toBe(1);
+  });
+
+  it('matches by language when the name does not match', () => {
+    expect(chooseSubtitleIndex(opts, { off: false, name: 'gone', lang: 'l3' })).toBe(2);
+  });
+
+  it('prefers a name match over a language match', () => {
+    const collide = [
+      opt({ index: 0, name: 'Track 1', lang: 'shared' }),
+      opt({ index: 1, name: 'Track 2', lang: 'shared' }),
+    ];
+    expect(chooseSubtitleIndex(collide, { off: false, name: 'Track 2', lang: 'shared' })).toBe(1);
+  });
+
+  it('falls back to off when the pref matches nothing and nothing is forced', () => {
+    expect(chooseSubtitleIndex(opts, { off: false, name: 'gone', lang: 'gone' })).toBe(-1);
+  });
+});
+
+describe('isSubtitlePrefMatch', () => {
+  const o = opt({ index: 1, name: 'Track 2', lang: 'l2' });
+
+  it('is false without a pref or option, or when the pref is off', () => {
+    expect(isSubtitlePrefMatch(o, null)).toBe(false);
+    expect(isSubtitlePrefMatch(undefined, { off: false, name: 'Track 2', lang: 'l2' })).toBe(false);
+    expect(isSubtitlePrefMatch(o, { off: true, name: '', lang: '' })).toBe(false);
+  });
+
+  it('matches by name or language, case-insensitively', () => {
+    expect(isSubtitlePrefMatch(o, { off: false, name: 'track 2', lang: '' })).toBe(true);
+    expect(isSubtitlePrefMatch(o, { off: false, name: '', lang: 'L2' })).toBe(true);
+  });
+
+  it('does not count two empty fields as a match', () => {
+    expect(isSubtitlePrefMatch(opt({ name: '', lang: '' }), { off: false, name: '', lang: '' })).toBe(false);
+  });
+});
+
+describe('parseSubtitleRenditions', () => {
+  it('parses TYPE=SUBTITLES renditions in order with name/lang/default/forced', () => {
+    const m = [
+      '#EXTM3U',
+      '#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="s",NAME="Track 1",LANGUAGE="l1",DEFAULT=YES,FORCED=NO,URI="s1.m3u8"',
+      '#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="s",NAME="Track 2",LANGUAGE="l2",DEFAULT=NO,FORCED=YES,URI="s2.m3u8"',
+      '#EXT-X-STREAM-INF:BANDWIDTH=1,SUBTITLES="s"',
+      'v1.m3u8',
+    ].join('\n');
+    expect(parseSubtitleRenditions(m)).toEqual([
+      { name: 'Track 1', lang: 'l1', isDefault: true, isForced: false },
+      { name: 'Track 2', lang: 'l2', isDefault: false, isForced: true },
+    ]);
+  });
+
+  it('ignores non-subtitle media and dedupes renditions repeated per quality tier', () => {
+    const m = [
+      '#EXT-X-MEDIA:TYPE=AUDIO,NAME="Track 9",LANGUAGE="l9"',
+      '#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="lo",NAME="Track 1",LANGUAGE="l1"',
+      '#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="hi",NAME="Track 1",LANGUAGE="l1"',
+    ].join('\n');
+    expect(parseSubtitleRenditions(m).map(r => r.name)).toEqual(['Track 1']);
+  });
+
+  it('anchors attributes so LANGUAGE does not match ASSOC-LANGUAGE', () => {
+    const m = '#EXT-X-MEDIA:TYPE=SUBTITLES,NAME="Track 1",ASSOC-LANGUAGE="zz",LANGUAGE="l1"';
+    expect(parseSubtitleRenditions(m)[0].lang).toBe('l1');
+  });
+
+  it('returns [] when there are no subtitle renditions', () => {
+    expect(parseSubtitleRenditions('#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nv.m3u8')).toEqual([]);
+  });
+
+  it('tolerates whitespace after attribute commas (does not drop the value)', () => {
+    const m = '#EXT-X-MEDIA:TYPE=SUBTITLES, GROUP-ID="s", NAME="Track 1", LANGUAGE="l1"';
+    expect(parseSubtitleRenditions(m)[0]).toMatchObject({ name: 'Track 1', lang: 'l1' });
+  });
+});
+
+describe('mergeSubtitleManifestNames', () => {
+  const opts = [
+    opt({ index: 0, name: '', lang: 'l1', active: true }),
+    opt({ index: 1, name: '', lang: '' }),
+  ];
+
+  it('overlays names/langs and the default/forced flags by index when counts match', () => {
+    const merged = mergeSubtitleManifestNames(opts, [
+      { name: 'Track 1', lang: 'l1', isDefault: true, isForced: false },
+      { name: 'Track 2', lang: 'l2', isDefault: false, isForced: true },
+    ]);
+    expect(merged.map(o => o.name)).toEqual(['Track 1', 'Track 2']);
+    expect(merged[1].lang).toBe('l2');
+    expect(merged[1].isForced).toBe(true); // forced comes only from the manifest
+    expect(merged[0].active).toBe(true); // native live state preserved
+  });
+
+  it('leaves options untouched when counts differ', () => {
+    expect(mergeSubtitleManifestNames(opts, [{ name: 'Track 1', lang: 'l1', isDefault: true, isForced: false }]))
+      .toBe(opts);
+  });
+
+  it('keeps the native value when a manifest name/lang is empty', () => {
+    const merged = mergeSubtitleManifestNames(opts, [
+      { name: '', lang: '', isDefault: false, isForced: false },
+      { name: 'Track 2', lang: '', isDefault: false, isForced: false },
+    ]);
+    expect(merged[0].lang).toBe('l1'); // native lang kept
+  });
+});

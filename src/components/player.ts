@@ -1,11 +1,14 @@
-import type { Action, Channel, CatchupInfo, AudioTrackOption, AudioOption, AudioPref, ManifestAudio } from '../types';
+import type { Action, Channel, CatchupInfo, AudioTrackOption, AudioOption, AudioPref, ManifestAudio,
+  SubtitleTrackOption, SubtitleOption, SubtitlePref, ManifestSubtitle } from '../types';
 import { $, show, hide, html, Safe } from '../utils/dom';
 import { channelKey } from '../utils/channel';
 import { fetchText } from '../utils/fetch-helper';
 import { audioLabel, hlsAudioOptions, nativeAudioOptions, chooseAudioIndex, isPrefMatch, parseAudioRenditions, mergeManifestNames } from '../utils/audio-tracks';
+import { subtitleLabel, hlsSubtitleOptions, nativeSubtitleOptions, chooseSubtitleIndex, isSubtitlePrefMatch, parseSubtitleRenditions, mergeSubtitleManifestNames } from '../utils/subtitle-tracks';
 import { PlaylistService } from '../services/playlist-service';
 import { EpgService } from '../services/epg-service';
 import { StorageService } from '../services/storage-service';
+import { HlsSubtitles } from '../services/hls-subtitles';
 import { CONFIG } from '../config';
 import { formatTime, formatPosition, formatDuration, getProgress } from '../utils/time';
 import { getLenientLoaders } from '../utils/hls-stable-loader';
@@ -17,7 +20,7 @@ const log = createLogger('Player');
 // True on the TV's webOS WebView; false in desktop preview / tests.
 const isWebOS = /webOS|Web0S/i.test(navigator.userAgent);
 
-// hls.js and mpegts.js are loaded as globals via preview-libs.js (desktop only)
+// hls.js and mpegts.js are loaded as globals via preview-libs.js (desktop preview only)
 const win = window as unknown as Record<string, unknown>;
 type HlsType = typeof import('hls.js').default;
 type MpegtsType = typeof import('mpegts.js').default;
@@ -39,7 +42,9 @@ export class Player {
   private loadToken = 0;
   private hlsRecoveries = 0; // fatal hls.js errors recovered since the last good fragment
   private manifestAudio: ManifestAudio[] = []; // real track names parsed from the HLS master (webOS)
+  private manifestSubtitles: ManifestSubtitle[] = []; // subtitle names parsed from the HLS master (webOS)
   private manifestSeq = 0;
+  private subs = new HlsSubtitles(); // self-rendered subtitles on the webOS native path
   constructor(container: HTMLElement, onBack: () => void) {
     this.container = container;
     this.onBack = onBack;
@@ -89,9 +94,11 @@ export class Player {
     el.addEventListener('loadedmetadata', () => {
       log.info('loadedmetadata', el.videoWidth + 'x' + el.videoHeight, '| duration:', el.duration);
       this.applyNativeAudioSelection();
+      this.applyNativeSubtitleSelection();
     });
-    // Some platforms populate audioTracks asynchronously, after loadedmetadata.
+    // Some platforms populate audio/text tracks asynchronously, after loadedmetadata.
     el.audioTracks?.addEventListener?.('addtrack', () => this.applyNativeAudioSelection());
+    el.textTracks?.addEventListener?.('addtrack', () => this.applyNativeSubtitleSelection());
     el.addEventListener('playing', () => log.info('playing'));
     el.addEventListener('waiting', () => log.debug('waiting (buffering)'));
     el.addEventListener('stalled', () => log.warn('stalled'));
@@ -104,6 +111,7 @@ export class Player {
     if (this.wasPlayingBeforeHide) return; // already suspended
     this.wasPlayingBeforeHide = !this.videoEl.paused;
     if (this.wasPlayingBeforeHide) {
+      this.subs.stop();
       if (this.hls) {
         this.hls.destroy();
         this.hls = null;
@@ -186,6 +194,7 @@ export class Player {
   }
 
   stop(): void {
+    this.subs.stop();
     if (this.hls) {
       this.hls.destroy();
       this.hls = null;
@@ -208,6 +217,8 @@ export class Player {
   private loadStream(url: string, extras: Record<string, string> | null): void {
     if (!this.videoEl) return;
     this.manifestAudio = [];
+    this.manifestSubtitles = [];
+    this.subs.stop();
 
     if (this.hls) {
       this.hls.destroy();
@@ -227,9 +238,9 @@ export class Player {
     if (isWebOS) {
       const mime = isFlvUrl ? 'video/x-flv' : isTsUrl ? 'video/mp2t' : 'application/vnd.apple.mpegurl';
       log.info('loadStream url=', url, '| webOS native | catchup:', !!this.catchupInfo, '| MIME', mime);
-      // HLS only: read the master's EXT-X-MEDIA audio names — native audioTracks
-      // expose them with empty name/language on webOS.
-      if (!isTsUrl && !isFlvUrl) void this.loadManifestAudio(url, ++this.manifestSeq);
+      // HLS only: read the master's EXT-X-MEDIA audio/subtitle names — native
+      // audio/text tracks expose them with empty name/language on webOS.
+      if (!isTsUrl && !isFlvUrl) void this.loadManifestTracks(url, ++this.manifestSeq);
       this.playNative(url, mime);
       return;
     }
@@ -320,9 +331,11 @@ export class Player {
       this.hls = new Hls(hlsConfig);
       this.hls.loadSource(url);
       this.hls.attachMedia(this.videoEl);
-      // The audio track list isn't ready at MANIFEST_PARSED — hls.js fills it
-      // and fires AUDIO_TRACKS_UPDATED separately, so apply the saved pick there.
+      // The audio/subtitle track lists aren't ready at MANIFEST_PARSED — hls.js
+      // fills them and fires their *_TRACKS_UPDATED events separately, so apply
+      // the saved picks there.
       this.hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, () => this.applyHlsAudioSelection());
+      this.hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, () => this.applyHlsSubtitleSelection());
       this.hls.on(Hls.Events.MANIFEST_PARSED, () => {
         log.info('hls.js MANIFEST_PARSED — starting playback');
         this.videoEl?.play().catch(e => log.warn('hls play() rejected:', e));
@@ -594,20 +607,30 @@ export class Player {
     return mergeManifestNames(nativeAudioOptions(list), this.manifestAudio);
   }
 
-  // Fetch the HLS master and parse its audio-rendition names so the picker,
-  // toast and per-channel memory show real labels instead of "Audio 2". Native
-  // audioTracks carry no usable name/language on webOS, so this is the only
-  // source. Re-applies a saved pick once names are known; degrades to generic
-  // labels on a fetch/parse failure.
-  private async loadManifestAudio(url: string, seq: number): Promise<void> {
+  // Fetch the HLS master once and parse its audio + subtitle rendition names so
+  // the pickers, toasts and per-channel memory show real labels instead of
+  // "Audio 2" / "Subtitle 2". Native audio/text tracks carry no usable
+  // name/language on webOS, so this is the only source. Re-applies the saved
+  // picks once names are known; degrades to generic labels on a fetch failure.
+  private async loadManifestTracks(url: string, seq: number): Promise<void> {
     try {
-      const renditions = parseAudioRenditions(await fetchText(url));
-      if (seq !== this.manifestSeq || renditions.length < 2) return;
-      this.manifestAudio = renditions;
-      log.info('manifest audio:', renditions.map(r => r.name || r.lang || '?').join(', '));
-      this.applyNativeAudioSelection();
+      const text = await fetchText(url);
+      if (seq !== this.manifestSeq) return;
+      const audio = parseAudioRenditions(text);
+      if (audio.length >= 2) {
+        this.manifestAudio = audio;
+        log.info('manifest audio:', audio.map(r => r.name || r.lang || '?').join(', '));
+        this.applyNativeAudioSelection();
+      }
+      const subs = parseSubtitleRenditions(text);
+      if (subs.length) {
+        this.manifestSubtitles = subs;
+        log.info('manifest subtitles:', subs.map(r => r.name || r.lang || '?').join(', '));
+        // Self-render the default subtitle so sync can be judged on-device.
+        if (this.videoEl) void this.subs.start(this.videoEl, url);
+      }
     } catch (e) {
-      log.warn('manifest audio fetch failed:', e);
+      log.warn('manifest tracks fetch failed:', e);
     }
   }
 
@@ -650,12 +673,12 @@ export class Player {
     showToast(`Switching audio track to ${audioLabel(opt)}`);
   }
 
-  private audioPrefKey(): string {
+  private channelPrefKey(): string {
     return this.currentChannel ? channelKey(this.currentChannel) : '';
   }
 
   private rememberAudio(opt: AudioOption): void {
-    const key = this.audioPrefKey();
+    const key = this.channelPrefKey();
     if (key) StorageService.setAudioPref(key, { name: opt.name, lang: opt.lang });
     log.info('audio: user picked', opt.index, audioLabel(opt), key ? '— saved to storage' : '(no channel key, not saved)');
   }
@@ -677,7 +700,7 @@ export class Player {
     if (!this.hls) return;
     const options = this.audioOptions();
     if (options.length < 2) return;
-    const pref = StorageService.getAudioPref(this.audioPrefKey());
+    const pref = StorageService.getAudioPref(this.channelPrefKey());
     const idx = chooseAudioIndex(options, pref);
     this.logAudioChoice('hls', options, pref, idx);
     if (idx >= 0 && idx !== this.hls.audioTrack) this.hls.audioTrack = idx;
@@ -688,11 +711,129 @@ export class Player {
     const list = this.videoEl?.audioTracks;
     if (!list || list.length < 2) return;
     const options = this.audioOptions();
-    const pref = StorageService.getAudioPref(this.audioPrefKey());
+    const pref = StorageService.getAudioPref(this.channelPrefKey());
     const idx = chooseAudioIndex(options, pref);
     this.logAudioChoice('native', options, pref, idx);
     if (idx < 0 || list[idx].enabled) return; // already active — don't disturb playback
     for (let i = 0; i < list.length; i++) list[i].enabled = (i === idx);
+  }
+
+  /**
+   * Normalized subtitle renditions of the active stream — from hls.js in the
+   * desktop preview, or the native `HTMLMediaElement.textTracks` on webOS (whose
+   * tracks can come back empty-named, so real labels are overlaid from the parsed
+   * manifest — see `loadManifestTracks`).
+   */
+  private subtitleOptions(): SubtitleOption[] {
+    if (this.hls) return hlsSubtitleOptions(this.hls.subtitleTracks || [], this.hls.subtitleTrack);
+    const list = this.videoEl?.textTracks;
+    if (!list) return [];
+    return mergeSubtitleManifestNames(nativeSubtitleOptions(list), this.manifestSubtitles);
+  }
+
+  // Picker-facing options. When the platform exposes fewer native text tracks
+  // than the manifest declares, surface every manifest rendition but mark the
+  // unexposed ones unavailable — they can't be switched on, so the picker greys
+  // them rather than pretending.
+  private displaySubtitleOptions(): Array<SubtitleOption & { available: boolean }> {
+    const opts = this.subtitleOptions();
+    if (this.manifestSubtitles.length > opts.length) {
+      return this.manifestSubtitles.map((m, i) => ({
+        index: i < opts.length ? opts[i].index : i,
+        name: m.name, lang: m.lang, isDefault: m.isDefault, isForced: m.isForced,
+        active: i < opts.length ? opts[i].active : false,
+        available: i < opts.length,
+      }));
+    }
+    return opts.map(o => ({ ...o, available: true }));
+  }
+
+  /** Subtitle tracks for the picker (the menu prepends its own "Off" row). */
+  getSubtitleTracks(): SubtitleTrackOption[] {
+    return this.displaySubtitleOptions().map(o => ({
+      index: o.index, label: subtitleLabel(o), active: o.active, available: o.available,
+    }));
+  }
+
+  /** Switch the active subtitle (index -1 = off) and remember it for this channel.
+   *  No-op for a greyed (unavailable) track the platform didn't expose. */
+  selectSubtitleTrack(index: number): void {
+    if (index < 0) {
+      this.setNativeSubtitleMode(-1);
+      this.rememberSubtitle({ off: true, name: '', lang: '' });
+      showToast('Subtitles off');
+      return;
+    }
+    const opt = this.displaySubtitleOptions().find(o => o.index === index);
+    if (!opt || !opt.available) return;
+    this.setNativeSubtitleMode(index);
+    this.rememberSubtitle({ off: false, name: opt.name, lang: opt.lang });
+    showToast(`Subtitles: ${subtitleLabel(opt)}`);
+  }
+
+  // Apply a subtitle selection to whichever engine is active. hls.js owns its own
+  // rendition (set subtitleTrack/-1); the native path toggles textTrack `.mode`.
+  private setNativeSubtitleMode(index: number): void {
+    if (this.hls) {
+      this.hls.subtitleDisplay = index >= 0;
+      if (index < (this.hls.subtitleTracks?.length || 0)) this.hls.subtitleTrack = index;
+      return;
+    }
+    const list = this.videoEl?.textTracks;
+    if (!list) return;
+    for (let i = 0; i < list.length; i++) {
+      const t = list[i];
+      if (t.kind && t.kind !== 'subtitles' && t.kind !== 'captions') continue;
+      t.mode = i === index ? 'showing' : 'disabled';
+    }
+  }
+
+  private rememberSubtitle(pref: SubtitlePref): void {
+    const key = this.channelPrefKey();
+    if (key) StorageService.setSubtitlePref(key, pref);
+    log.info('subtitle: user picked', pref.off ? 'Off' : (pref.name || pref.lang || '(unnamed)'),
+      key ? '— saved to storage' : '(no channel key, not saved)');
+  }
+
+  private logSubtitleChoice(path: string, options: SubtitleOption[], pref: SubtitlePref | null, idx: number): void {
+    const opt = options.find(o => o.index === idx);
+    const label = idx < 0 ? 'Off' : opt ? subtitleLabel(opt) : `Subtitle ${idx + 1}`;
+    const src = pref?.off ? '(off pref)' : isSubtitlePrefMatch(opt, pref) ? '(saved pref)' : '(stream default)';
+    log.info(`subtitle: ${path} | tracks:`, options.length,
+      '| storage pref:', pref ? (pref.off ? 'off' : (pref.name || pref.lang || '(unnamed)')) : 'none',
+      '| using:', idx, label, src);
+  }
+
+  // Re-apply the remembered choice on tune-in. With no saved pick subtitles stay
+  // off unless the stream marks one forced. hls.js drives its own rendition, so
+  // the two paths are split like audio.
+  private applyHlsSubtitleSelection(): void {
+    if (!this.hls) return;
+    const options = this.subtitleOptions();
+    if (!options.length) return;
+    const pref = StorageService.getSubtitlePref(this.channelPrefKey());
+    const idx = chooseSubtitleIndex(options, pref);
+    this.logSubtitleChoice('hls', options, pref, idx);
+    this.hls.subtitleDisplay = idx >= 0;
+    if (this.hls.subtitleTrack !== idx) this.hls.subtitleTrack = idx;
+  }
+
+  private applyNativeSubtitleSelection(): void {
+    if (this.hls) return; // hls.js owns the rendition and its native text tracks
+    if (this.subs.active) return; // the self-rendered controller owns subtitles
+    const list = this.videoEl?.textTracks;
+    if (!list || !list.length) return;
+    const options = this.subtitleOptions();
+    if (!options.length) return;
+    const pref = StorageService.getSubtitlePref(this.channelPrefKey());
+    const idx = chooseSubtitleIndex(options, pref);
+    this.logSubtitleChoice('native', options, pref, idx);
+    for (let i = 0; i < list.length; i++) {
+      const t = list[i];
+      if (t.kind && t.kind !== 'subtitles' && t.kind !== 'captions') continue;
+      const want = i === idx ? 'showing' : 'disabled';
+      if (t.mode !== want) t.mode = want;
+    }
   }
 
   handleAction(action: Action): void {

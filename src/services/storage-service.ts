@@ -1,5 +1,5 @@
 import { CONFIG } from '../config';
-import type { AudioPref, Channel, PlaylistEntry, TzMode } from '../types';
+import type { AudioPref, Channel, PlaylistEntry, SubtitlePref, TzMode } from '../types';
 import { channelKey } from '../utils/channel';
 import { genPlaylistId } from '../utils/playlist-id';
 
@@ -132,6 +132,19 @@ export const StorageService = {
     const all = get<Record<string, AudioPref>>('audio_prefs', {});
     all[channelId] = pref;
     set('audio_prefs', all);
+  },
+
+  // Preferred subtitle per channel (keyed by channelKey). Absent = follow the
+  // stream's default (forced subtitle, else off); a stored `off` keeps them off.
+  getSubtitlePref(channelId: string): SubtitlePref | null {
+    if (!channelId) return null;
+    return get<Record<string, SubtitlePref>>('subtitle_prefs', {})[channelId] ?? null;
+  },
+  setSubtitlePref(channelId: string, pref: SubtitlePref): void {
+    if (!channelId) return;
+    const all = get<Record<string, SubtitlePref>>('subtitle_prefs', {});
+    all[channelId] = pref;
+    set('subtitle_prefs', all);
   },
 
   // 'device' = the device's timezone (default), 'feed' = the EPG feed's timezone.

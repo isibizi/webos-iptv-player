@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import type { Channel, AudioTrackOption } from '../types';
+import type { Channel, AudioTrackOption, SubtitleTrackOption } from '../types';
 
 const { channels } = vi.hoisted(() => {
   function makeChannel(over: Partial<Channel>): Channel {
@@ -32,6 +32,9 @@ let onAction: ReturnType<typeof vi.fn>;
 let getAudioTracks: ReturnType<typeof vi.fn>;
 let selectAudioTrack: ReturnType<typeof vi.fn>;
 let audioTracks: AudioTrackOption[];
+let getSubtitleTracks: ReturnType<typeof vi.fn>;
+let selectSubtitleTrack: ReturnType<typeof vi.fn>;
+let subtitleTracks: SubtitleTrackOption[];
 let menu: PlayerMenu;
 
 beforeEach(() => {
@@ -48,7 +51,14 @@ beforeEach(() => {
   audioTracks = [];
   getAudioTracks = vi.fn(() => audioTracks);
   selectAudioTrack = vi.fn();
-  menu = new PlayerMenu(container, getCurrentIndex, onAction, getAudioTracks, selectAudioTrack);
+  subtitleTracks = [];
+  getSubtitleTracks = vi.fn(() => subtitleTracks);
+  selectSubtitleTrack = vi.fn();
+  menu = new PlayerMenu(
+    container, getCurrentIndex, onAction,
+    getAudioTracks, selectAudioTrack,
+    getSubtitleTracks, selectSubtitleTrack,
+  );
 });
 
 afterEach(() => {
@@ -163,7 +173,7 @@ describe('PlayerMenu', () => {
       menu.handleAction('select');
       const rows = items();
       expect(rows).toHaveLength(4);
-      expect(rows[0].dataset.menuAction).toBe('__audio_back__');
+      expect(rows[0].dataset.menuAction).toBe('__menu_back__');
       expect(rows.slice(1).map(r => r.dataset.trackIndex)).toEqual(['0', '1', '2']);
       expect(rows[1].textContent).toContain('Track 1');
       expect(rows[1].querySelector('.menu-check')!.textContent).toBe('✓'); // active marked
@@ -223,6 +233,91 @@ describe('PlayerMenu', () => {
       expect(el.querySelector('[data-menu-action="__audio_open__"]')).not.toBeNull();
       // on the main menu it no longer consumes Back
       expect(menu.handleBack()).toBe(false);
+    });
+  });
+
+  describe('subtitle sub-menu', () => {
+    // audioTracks stays empty, so the Subtitles row sits right after the colours.
+    const SUBS: SubtitleTrackOption[] = [
+      { index: 0, label: 'Track 1', active: false },
+      { index: 1, label: 'Track 2', active: true },
+    ];
+
+    it('omits the Subtitles row when the stream has no subtitle tracks', () => {
+      subtitleTracks = [];
+      menu.show();
+      expect(el.querySelector('[data-menu-action="__subs_open__"]')).toBeNull();
+    });
+
+    it('shows the Subtitles row with the active label, falling back to Off', () => {
+      subtitleTracks = SUBS;
+      menu.show();
+      expect(el.querySelector('[data-menu-action="__subs_open__"] .menu-item-value')!.textContent).toBe('Track 2');
+
+      menu.hide();
+      subtitleTracks = [{ index: 0, label: 'Track 1', active: false }];
+      menu.show();
+      expect(el.querySelector('[data-menu-action="__subs_open__"] .menu-item-value')!.textContent).toBe('Off');
+    });
+
+    it('opens the picker with Back, Off, then tracks, focusing the active one', () => {
+      subtitleTracks = SUBS;
+      menu.show();
+      for (let i = 0; i < MENU_ACTIONS; i++) menu.handleAction('down'); // reach Subtitles row
+      menu.handleAction('select');
+      const rows = items();
+      expect(rows).toHaveLength(4);
+      expect(rows[0].dataset.menuAction).toBe('__menu_back__');
+      expect(rows[1].dataset.trackIndex).toBe('-1'); // Off
+      expect(rows[1].textContent).toContain('Off');
+      expect(rows.slice(2).map(r => r.dataset.trackIndex)).toEqual(['0', '1']);
+      expect(rows[3].querySelector('.menu-check')!.textContent).toBe('✓'); // active (Track 2) marked
+      expect(rows[1].querySelector('.menu-check')!.textContent).toBe('');  // Off not marked
+      expect(rows[3].classList.contains('focused')).toBe(true);            // active track focused
+    });
+
+    it('marks Off as active and focuses it when no subtitle is showing', () => {
+      subtitleTracks = [{ index: 0, label: 'Track 1', active: false }];
+      menu.show();
+      for (let i = 0; i < MENU_ACTIONS; i++) menu.handleAction('down');
+      menu.handleAction('select');
+      const rows = items();
+      expect(rows[1].querySelector('.menu-check')!.textContent).toBe('✓'); // Off marked
+      expect(rows[1].classList.contains('focused')).toBe(true);            // Off focused
+    });
+
+    it('selecting Off turns subtitles off (index -1) and returns to the main menu', () => {
+      subtitleTracks = SUBS;
+      menu.show();
+      for (let i = 0; i < MENU_ACTIONS; i++) menu.handleAction('down');
+      menu.handleAction('select');     // open picker (Track 2 focused at idx 3)
+      menu.handleAction('up');         // → Track 1 (idx 2)
+      menu.handleAction('up');         // → Off (idx 1)
+      menu.handleAction('select');
+      expect(selectSubtitleTrack).toHaveBeenCalledWith(-1);
+      expect(el.querySelector('[data-menu-action="__subs_open__"]')).not.toBeNull();
+      expect(menu.visible).toBe(true);
+    });
+
+    it('selecting a track switches to it and returns to the main menu', () => {
+      subtitleTracks = SUBS;
+      menu.show();
+      for (let i = 0; i < MENU_ACTIONS; i++) menu.handleAction('down');
+      menu.handleAction('select');     // open picker (Track 2 focused at idx 3)
+      menu.handleAction('up');         // focus Track 1 (idx 2)
+      menu.handleAction('select');
+      expect(selectSubtitleTrack).toHaveBeenCalledWith(0);
+      expect(menu.visible).toBe(true);
+    });
+
+    it('greys a subtitle track marked unavailable, but never the Off row', () => {
+      subtitleTracks = [{ index: 0, label: 'Track 1', active: false, available: false }];
+      menu.show();
+      for (let i = 0; i < MENU_ACTIONS; i++) menu.handleAction('down');
+      menu.handleAction('select');
+      const rows = items();
+      expect(rows[1].classList.contains('unavailable')).toBe(false); // Off always selectable
+      expect(rows[2].classList.contains('unavailable')).toBe(true);  // the track greyed
     });
   });
 });

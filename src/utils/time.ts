@@ -116,10 +116,6 @@ export function addDisplayDays(date: Date, n: number): Date {
   return d;
 }
 
-export function formatDate(date: Date): string {
-  return date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
-}
-
 // Playback position as "m:ss" (or "h:mm:ss" past an hour).
 export function formatPosition(seconds: number): string {
   const s = Math.max(0, Math.floor(seconds));
