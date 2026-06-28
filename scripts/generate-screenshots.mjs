@@ -98,6 +98,30 @@ function m3u(slice, withTvg) {
 const M3U_1 = m3u(CHANNELS.slice(0, SPLIT), true);
 const M3U_2 = m3u(CHANNELS.slice(SPLIT), false);
 
+// Fake HLS master with alternate audio + subtitle renditions, served for the played
+// channel so hls.js (the desktop preview path) exposes real tracks to the player
+// menu — that's what makes renderMain emit the Audio Track / Subtitles rows. Only the
+// master is served; the media playlists it points to are aborted (the menu needs just
+// the track lists, which come from these EXT-X-MEDIA tags). Labels are illustrative.
+const MASTER_HLS = [
+  '#EXTM3U',
+  '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="English",LANGUAGE="en",DEFAULT=YES,AUTOSELECT=YES,URI="audio-en.m3u8"',
+  '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="English 5.1",LANGUAGE="en",CHANNELS="6",URI="audio-en51.m3u8"',
+  '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="Español",LANGUAGE="es",URI="audio-es.m3u8"',
+  '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="Français",LANGUAGE="fr",URI="audio-fr.m3u8"',
+  '#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="sub",NAME="English",LANGUAGE="en",FORCED=YES,AUTOSELECT=YES,URI="sub-en.m3u8"',
+  '#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="sub",NAME="Español",LANGUAGE="es",URI="sub-es.m3u8"',
+  '#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="sub",NAME="Français",LANGUAGE="fr",URI="sub-fr.m3u8"',
+  '#EXT-X-STREAM-INF:BANDWIDTH=2000000,CODECS="avc1.4d401f,mp4a.40.2",AUDIO="aud",SUBTITLES="sub"',
+  'video.m3u8',
+].join('\n');
+
+// Empty *live* media playlist (no ENDLIST, no segments) for the variant/audio/
+// subtitle renditions hls.js loads after the master. It keeps polling for a live
+// edge rather than fatally erroring — which would make the player flash "Stream
+// error - trying next channel" and zap mid-screenshot.
+const EMPTY_LIVE = '#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:10\n#EXT-X-MEDIA-SEQUENCE:0\n';
+
 // ---------------------------------------------------------------------------
 // EPG (XMLTV)
 // ---------------------------------------------------------------------------
@@ -195,7 +219,7 @@ function startServer() {
 const fulfill = (body, type) => (route) =>
   route.fulfill({ status: 200, contentType: type, headers: { 'access-control-allow-origin': '*' }, body });
 
-async function setupPage(page, { upload = false } = {}) {
+async function setupPage(page, { upload = false, fakeStream = false } = {}) {
   // Freeze the clock before any app code runs (real timers keep working).
   await page.addInitScript((fixed) => {
     const RealDate = Date;
@@ -241,7 +265,26 @@ async function setupPage(page, { upload = false } = {}) {
   await page.route('**/playlist1.m3u', fulfill(M3U_1, 'application/x-mpegurl'));
   await page.route('**/playlist2.m3u', fulfill(M3U_2, 'application/x-mpegurl'));
   await page.route('**/epg.xml', fulfill(EPG_XML, 'application/xml'));
-  await page.route('**/stream/**', (r) => r.abort());
+  // By default abort the played channel's stream — the list/OSD shots don't need
+  // video and are captured before hls.js's error escalates. The menu collage opts in
+  // (fakeStream) to a fake master with audio/subtitle renditions so hls.js surfaces
+  // real tracks; the rest of its (empty) playlists keep it from erroring instantly.
+  if (fakeStream) {
+    await page.route('**/stream/**', (route) => {
+      const url = route.request().url();
+      if (/\/stream\/ch\d+\.m3u8(?:[?#]|$)/.test(url)) {
+        return route.fulfill({ status: 200, contentType: 'application/vnd.apple.mpegurl',
+          headers: { 'access-control-allow-origin': '*' }, body: MASTER_HLS });
+      }
+      if (/\.m3u8(?:[?#]|$)/.test(url)) {
+        return route.fulfill({ status: 200, contentType: 'application/vnd.apple.mpegurl',
+          headers: { 'access-control-allow-origin': '*' }, body: EMPTY_LIVE });
+      }
+      return route.abort();
+    });
+  } else {
+    await page.route('**/stream/**', (r) => r.abort());
+  }
   await page.route('http://127.0.0.1:8890/**', (r) => r.abort());
 
   if (upload) {
@@ -351,13 +394,19 @@ try {
 
   // 4) Playback overlays — channel switcher (left) + action menu (right), no OSD.
   {
-    const { context, page } = await newPage();
+    const { context, page } = await newPage({ fakeStream: true });
     await gotoChannels(page, base);
     await page.keyboard.press('ArrowDown');
+    // hls.js requests the (aborted) media playlists only after parsing the master, so
+    // this confirms the audio/subtitle track lists are populated before the menu opens
+    // — it renders once, on open, and isn't re-rendered when tracks arrive later.
+    const tracksReady = page.waitForRequest(/\/stream\/(?:video|audio-|sub-)/, { timeout: 10_000 }).catch(() => {});
     await page.keyboard.press('Enter');
     await page.locator('#player-osd .osd-programme-title').waitFor({ state: 'visible' });
-    // The app shows these one at a time. Open the menu so it renders, then open
-    // the sidebar; the menu's content persists and is forced back on below.
+    await tracksReady;
+    // The app shows these one at a time. Open the menu so it renders (with the real
+    // Audio Track / Subtitles rows), then open the sidebar; the menu's content
+    // persists and is forced back on below.
     await page.keyboard.press('ArrowRight'); // open menu (renders content)
     await page.locator('#player-menu.visible').waitFor({ state: 'visible' });
     await page.keyboard.press('ArrowLeft');  // hide menu...
@@ -367,8 +416,12 @@ try {
     await page.evaluate(() => {
       const v = document.getElementById('video-player');
       if (v) { v.classList.remove('active'); try { v.pause(); } catch { /* ignore */ } }
-      const osd = document.getElementById('player-osd');
-      if (osd) { osd.classList.add('hidden'); osd.style.display = 'none'; }
+      // hls.js can't play the fake stream, so onError() re-shows #player-osd with a
+      // "Stream error" message shortly after a plain hide. An !important rule beats
+      // that show(), keeping the OSD out of this collage (channelUp won't fire in time).
+      const hideOsd = document.createElement('style');
+      hideOsd.textContent = '#player-osd{display:none !important}';
+      document.head.appendChild(hideOsd);
       // Force the menu back alongside the sidebar (collage of both overlays).
       // Inline !important beats both the .hidden rule and the pending hide
       // transition's transitionend, which would otherwise re-add .hidden.

@@ -14,7 +14,7 @@ An IPTV player for LG webOS TVs. Supports M3U playlists, XMLTV programme guides,
 
 | Playback overlays | Channel info |
 | --- | --- |
-| ![Playback overlays](https://github.com/user-attachments/assets/c6209a19-2faf-41fe-bcd0-e3bceecbefe0) | ![Channel info](https://github.com/user-attachments/assets/bd3401d9-728c-499b-b7d1-bb8b057b5786) |
+| ![Playback overlays](https://github.com/user-attachments/assets/f48d7a56-33d1-4d5b-ab44-dbcfa1769930) | ![Channel info](https://github.com/user-attachments/assets/bd3401d9-728c-499b-b7d1-bb8b057b5786) |
 
 ## Features
 
@@ -31,6 +31,8 @@ An IPTV player for LG webOS TVs. Supports M3U playlists, XMLTV programme guides,
 - **Favorites** — Mark and filter favorite channels
 - **Auto-play** — Resume last watched channel on startup
 - **HDR & Dolby passthrough (native pipeline)** — On the TV, playback hands the stream straight to the native `<video>` element instead of a JavaScript player, so the set's hardware decoder handles it end-to-end. HDR10, HLG, Dolby Vision®, and Dolby Atmos® therefore pass through untouched whenever the stream carries them and your TV supports them — the app neither adds nor strips them; it gets this for free by staying out of the media path. (Desktop preview uses software HLS/TS players and won't.)
+- **Audio tracks** — Pick an audio track from the player menu; your choice is remembered per channel and re-matched by name or language on future streams, with track names read from the stream's master playlist
+- **Subtitles** — Pick a subtitle track from the player menu; your choice — including an explicit *off* — is remembered per channel. On the TV the app self-renders in-manifest WebVTT subtitles (webOS won't expose them as selectable tracks), time-synced to the video, with track names read from the stream
 - **Desktop Preview** — Browser-based preview with HLS.js and mpegts.js fallbacks
 
 ## Supported webOS versions
