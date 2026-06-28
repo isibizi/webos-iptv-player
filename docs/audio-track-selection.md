@@ -20,7 +20,7 @@ binaries.
   `.m3u8`.
 
 ```ts
-// Safe switch — valid only for the tracks webOS actually exposed (see the rule below).
+// Safe switch — valid only for the tracks webOS actually exposed (see the collapse bug below).
 function selectAudioTrack(video: HTMLVideoElement, index: number) {
   const list = video.audioTracks;
   if (!list || index < 0 || index >= list.length) return;
@@ -28,11 +28,16 @@ function selectAudioTrack(video: HTMLVideoElement, index: number) {
 }
 ```
 
-## How many tracks you actually get — the LANGUAGE-collapse rule
+## How many tracks you actually get — the LANGUAGE-collapse bug
 
 webOS surfaces **one HTML5 `AudioTrack` per distinct `LANGUAGE`** in the master playlist.
 Renditions that share a language code collapse to one — the pipeline loads only the `DEFAULT`
-among them. Verified on-device:
+among them. This isn't an LG design choice but an **upstream GStreamer `hlsdemux2` bug**: the demuxer
+merges audio renditions by `LANGUAGE` before any track is created, ignoring their distinct `NAME`
+([freedesktop issue #2636](https://gitlab.freedesktop.org/gstreamer/gstreamer/-/issues/2636),
+[fix !10218](https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/10218)). The fix
+shipped in GStreamer 1.26.9 / 1.28.0, but webOS ships the unpatched 1.24.0, so it's effectively
+permanent on-device. Verified on-device:
 
 | Master playlist | distinct `LANGUAGE` | native `audioTracks.length` |
 |---|---|---|
