@@ -644,7 +644,11 @@ export class Player {
     if (this.manifestAudio.length > opts.length) {
       return this.manifestAudio.map((m, i) => ({
         index: i, name: m.name, lang: m.lang, isDefault: m.isDefault,
-        active: m.isDefault, available: i < opts.length,
+        // Mark the playing native track, not the manifest DEFAULT flag — a
+        // non-conformant playlist can carry >1 DEFAULT=YES (collapsed alternates),
+        // which would otherwise check several rows at once.
+        active: i < opts.length ? opts[i].active : false,
+        available: i < opts.length,
       }));
     }
     return opts.map(o => ({ ...o, available: true }));

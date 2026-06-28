@@ -176,3 +176,29 @@ describe('Player live playback', () => {
     expect(container.querySelector('[data-seekbar]')).toBeNull();
   });
 });
+
+describe('Player audio track picker', () => {
+  // Native path with a collapsed manifest: 3 declared renditions but the TV
+  // exposes only 2 tracks (two share a language). The manifest non-conformantly
+  // tags two renditions DEFAULT=YES; the picker must still check exactly one row
+  // — the track actually enabled — not every manifest default.
+  it('checks only the playing track, not every manifest DEFAULT', () => {
+    (player as unknown as { hls: unknown }).hls = null;
+    (player as unknown as { videoEl: unknown }).videoEl = {
+      audioTracks: {
+        length: 2,
+        0: { label: '', language: 'l1', enabled: true },
+        1: { label: '', language: 'l2', enabled: false },
+      },
+    };
+    (player as unknown as { manifestAudio: unknown }).manifestAudio = [
+      { name: 'Track 1', lang: 'l1', isDefault: true },
+      { name: 'Track 2', lang: 'l2', isDefault: true },
+      { name: 'Track 3', lang: 'l1', isDefault: false },
+    ];
+
+    const tracks = player.getAudioTracks();
+    expect(tracks.map((t) => t.active)).toEqual([true, false, false]);
+    expect(tracks[2].available).toBe(false); // collapsed alternate greyed out
+  });
+});
