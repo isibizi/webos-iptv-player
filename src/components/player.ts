@@ -13,6 +13,7 @@ import { CONFIG } from '../config';
 import { formatTime, formatPosition, formatDuration, getProgress } from '../utils/time';
 import { getLenientLoaders } from '../utils/hls-stable-loader';
 import { StallWatchdog, type StallProbe } from '../utils/stall-watchdog';
+import { resolutionBadge, parseVariants, pickVariant, codecName, audioSummary, subtitleSummary, type StreamVariant } from '../utils/stream-info';
 import { createLogger } from '../utils/logger';
 import { showToast } from './toast';
 
@@ -44,6 +45,7 @@ export class Player {
   private hlsRecoveries = 0; // fatal hls.js errors recovered since the last good fragment
   private manifestAudio: ManifestAudio[] = []; // real track names parsed from the HLS master (webOS)
   private manifestSubtitles: ManifestSubtitle[] = []; // subtitle names parsed from the HLS master (webOS)
+  private manifestVariants: StreamVariant[] = []; // HLS master variants for best-effort codec readout
   private manifestSeq = 0;
   private subs = new HlsSubtitles(); // self-rendered subtitles on the webOS native path
   private stallWatchdog: StallWatchdog;
@@ -110,6 +112,7 @@ export class Player {
       log.info('loadedmetadata', el.videoWidth + 'x' + el.videoHeight, '| duration:', el.duration);
       this.applyNativeAudioSelection();
       this.applyNativeSubtitleSelection();
+      if (this.osdVisible) this.renderOSD();
     });
     // Some platforms populate audio/text tracks asynchronously, after loadedmetadata.
     el.audioTracks?.addEventListener?.('addtrack', () => this.applyNativeAudioSelection());
@@ -254,6 +257,7 @@ export class Player {
     if (!this.videoEl) return;
     this.manifestAudio = [];
     this.manifestSubtitles = [];
+    this.manifestVariants = [];
     this.subs.stop();
 
     if (this.hls) {
@@ -596,11 +600,29 @@ export class Player {
       }
     }
 
+    const v = this.videoEl;
+    const badge = v ? resolutionBadge(v.videoHeight) : null;
+    const variant = !this.hls && v ? pickVariant(this.manifestVariants, v.videoWidth, v.videoHeight) : null;
+    const vCodec = codecName(this.hls?.loadLevelObj?.videoCodec ?? variant?.videoCodec ?? '');
+    const aCodec = codecName(this.hls?.loadLevelObj?.audioCodec ?? variant?.audioCodec ?? '');
+    const audio = audioSummary(this.getAudioTracks());
+    const subtitle = subtitleSummary(this.getSubtitleTracks());
+    const streamInfoHtml = (badge || vCodec || aCodec || audio || subtitle) ? html`
+      <div class="osd-stream-info">
+        ${badge ? html`<span class="si-badge si-badge--${badge.tier}">${badge.label}</span>` : ''}
+        ${vCodec ? html`<span class="si-pill">${vCodec}</span>` : ''}
+        ${aCodec ? html`<span class="si-pill">${aCodec}</span>` : ''}
+        ${audio ? html`<span class="si-text">${audio}</span>` : ''}
+        ${subtitle ? html`<span class="si-text">CC: ${subtitle}</span>` : ''}
+      </div>
+    ` : '';
+
     osd.innerHTML = String(html`
       <div class="osd-channel">
         <div class="osd-channel-number">${this.currentIndex + 1}</div>
         ${ch.logo ? html`<img class="osd-channel-logo" src="${ch.logo}" alt="">` : ''}
         <div class="osd-channel-name">${ch.name}</div>
+        ${streamInfoHtml}
       </div>
       ${programmeHtml}
     `);
@@ -664,6 +686,11 @@ export class Player {
         log.info('manifest subtitles:', subs.map(r => r.name || r.lang || '?').join(', '));
         // Self-render the default subtitle so sync can be judged on-device.
         if (this.videoEl) void this.subs.start(this.videoEl, url);
+      }
+      const variants = parseVariants(text);
+      if (variants.length) {
+        this.manifestVariants = variants;
+        log.info('manifest variants:', variants.length);
       }
     } catch (e) {
       log.warn('manifest tracks fetch failed:', e);

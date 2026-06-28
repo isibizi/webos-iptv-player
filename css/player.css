@@ -68,6 +68,42 @@
   font-weight: 600;
 }
 
+.osd-stream-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 16px;
+  border-left: 2px solid rgba(255, 255, 255, 0.25); /* divider from the channel title */
+}
+
+.si-badge {
+  font-size: 18px;
+  font-weight: 700;
+  padding: 2px 10px;
+  border-radius: 4px;
+  color: #fff;
+  letter-spacing: 0.5px;
+}
+
+.si-badge--uhd { background: #6c4cd6; }
+.si-badge--fhd { background: #2b7de9; }
+.si-badge--hd  { background: #1aa3a3; }
+.si-badge--sd  { background: #5a6472; }
+
+.si-pill {
+  font-size: 18px;
+  font-weight: 600;
+  padding: 2px 10px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.14);
+  color: #e8eaf0;
+}
+
+.si-text {
+  font-size: 18px;
+  color: #c8cdd8;
+}
+
 .osd-programme {
   margin-top: 4px;
 }
