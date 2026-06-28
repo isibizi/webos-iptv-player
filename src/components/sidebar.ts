@@ -4,6 +4,7 @@ import { PlaylistService } from '../services/playlist-service';
 import { EpgService } from '../services/epg-service';
 import { $, html } from '../utils/dom';
 import { morph } from '../utils/morph';
+import { rankChannels } from '../utils/channel-search';
 
 type SidebarEntry = { ch: Channel; globalIdx: number };
 
@@ -133,17 +134,14 @@ export class Sidebar {
 
   private getChannels(): SidebarEntry[] {
     const all = PlaylistService.channels;
-    const q = this.searchQuery.trim().toLowerCase();
-    // Search spans groups, scoped to the selected playlist tab.
+    const q = this.searchQuery.trim();
+    // Search spans groups, scoped to the selected playlist tab; ranked by relevance.
     if (q) {
-      const result: SidebarEntry[] = [];
-      for (let i = 0; i < all.length; i++) {
-        if (this.playlist && !all[i].playlistIds.includes(this.playlist)) continue;
-        if (all[i].name.toLowerCase().includes(q)) {
-          result.push({ ch: all[i], globalIdx: i });
-        }
-      }
-      return result;
+      const pl = this.playlist;
+      const pool = pl ? all.filter(c => c.playlistIds.includes(pl)) : all;
+      const idxOf = new Map<Channel, number>();
+      for (let i = 0; i < all.length; i++) idxOf.set(all[i], i);
+      return rankChannels(pool, q).map(ch => ({ ch, globalIdx: idxOf.get(ch)! }));
     }
     if (!this.playlist) {
       return all.map((ch, i) => ({ ch, globalIdx: i }));

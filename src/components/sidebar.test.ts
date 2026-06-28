@@ -352,4 +352,18 @@ describe('Sidebar', () => {
       expect(items()[0].classList.contains('focused')).toBe(true);
     });
   });
+
+  describe('search ranking', () => {
+    it('a search result reports its global channel index, not the filtered position', () => {
+      sidebar.show();
+      sidebar.handleAction('select'); // focus the search box
+      const search = el.querySelector<HTMLInputElement>('.sidebar-search-input')!;
+      search.value = 'charlie';
+      search.dispatchEvent(new Event('input', { bubbles: true }));
+      expect(items().map(i => i.querySelector('.ch-name')?.textContent)).toEqual(['Charlie']);
+      sidebar.handleAction('down');   // enter the list at the single result
+      sidebar.handleAction('select'); // pick it
+      expect(onSelect).toHaveBeenCalledWith(2); // Charlie is global index 2, not filtered 0
+    });
+  });
 });

@@ -326,3 +326,25 @@ describe('PlaylistService.reset', () => {
     expect(PlaylistService.epgUrls).toEqual([]);
   });
 });
+
+describe('PlaylistService.search', () => {
+  beforeEach(() => {
+    PlaylistService.channels = [
+      channel({ id: '1', name: 'Alpha', playlistIds: ['a'] }),
+      channel({ id: '2', name: 'XAlpha', playlistIds: ['a'] }),
+      channel({ id: '3', name: 'Alpha HD', playlistIds: ['b'] }),
+    ];
+  });
+
+  it('returns [] for a blank query', () => {
+    expect(PlaylistService.search('  ')).toEqual([]);
+  });
+
+  it('ranks exact and prefix matches above a mid-word match', () => {
+    expect(PlaylistService.search('alpha').map(c => c.name)).toEqual(['Alpha', 'Alpha HD', 'XAlpha']);
+  });
+
+  it('scopes to a single playlist when given', () => {
+    expect(PlaylistService.search('alpha', 'b').map(c => c.name)).toEqual(['Alpha HD']);
+  });
+});

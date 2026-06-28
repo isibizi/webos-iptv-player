@@ -2,6 +2,7 @@ import type { Channel, PlaylistTab } from '../types';
 import { parseM3U } from '../parsers/m3u-parser';
 import { fetchText } from '../utils/fetch-helper';
 import { channelKey } from '../utils/channel';
+import { rankChannels } from '../utils/channel-search';
 import { createLogger } from '../utils/logger';
 import { StorageService } from './storage-service';
 
@@ -148,12 +149,10 @@ class PlaylistServiceImpl {
     return filtered.filter(ch => ch.group === group);
   }
 
-  /** Case-insensitive name search, optionally scoped to one playlist. Empty query → []. */
+  /** Relevance-ranked name search, optionally scoped to one playlist. Empty query → []. */
   search(query: string, playlist?: string): Channel[] {
-    const q = query.trim().toLowerCase();
-    if (!q) return [];
     const pool = playlist ? this.channels.filter(ch => ch.playlistIds.includes(playlist)) : this.channels;
-    return pool.filter(ch => ch.name.toLowerCase().includes(q));
+    return rankChannels(pool, query);
   }
 
   getGroupsForPlaylist(playlist?: string): string[] {
