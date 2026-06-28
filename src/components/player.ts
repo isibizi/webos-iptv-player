@@ -12,6 +12,7 @@ import { HlsSubtitles } from '../services/hls-subtitles';
 import { CONFIG } from '../config';
 import { formatTime, formatPosition, formatDuration, getProgress } from '../utils/time';
 import { getLenientLoaders } from '../utils/hls-stable-loader';
+import { StallWatchdog, type StallProbe } from '../utils/stall-watchdog';
 import { createLogger } from '../utils/logger';
 import { showToast } from './toast';
 
@@ -45,9 +46,23 @@ export class Player {
   private manifestSubtitles: ManifestSubtitle[] = []; // subtitle names parsed from the HLS master (webOS)
   private manifestSeq = 0;
   private subs = new HlsSubtitles(); // self-rendered subtitles on the webOS native path
+  private stallWatchdog: StallWatchdog;
   constructor(container: HTMLElement, onBack: () => void) {
     this.container = container;
     this.onBack = onBack;
+    this.stallWatchdog = new StallWatchdog({
+      probe: (): StallProbe => {
+        const v = this.videoEl;
+        // No element -> report "paused" so a stray tick is a no-op.
+        if (!v) return { currentTime: 0, readyState: 0, paused: true, seeking: false };
+        return { currentTime: v.currentTime, readyState: v.readyState, paused: v.paused, seeking: v.seeking };
+      },
+      onReload: () => this.reloadCurrentStream(),
+      onEscalate: () => this.channelUp(),
+      pollMs: CONFIG.PLAYER.STALL_POLL_MS,
+      freezeTicks: CONFIG.PLAYER.STALL_FREEZE_TICKS,
+      maxReloads: CONFIG.PLAYER.STALL_MAX_RELOADS,
+    });
   }
 
   init(videoEl: HTMLVideoElement): void {
@@ -111,6 +126,7 @@ export class Player {
     if (this.wasPlayingBeforeHide) return; // already suspended
     this.wasPlayingBeforeHide = !this.videoEl.paused;
     if (this.wasPlayingBeforeHide) {
+      this.stallWatchdog.stop();
       this.subs.stop();
       if (this.hls) {
         this.hls.destroy();
@@ -154,7 +170,20 @@ export class Player {
     }
   }
 
+  // Resolve the playable URL for a channel, applying the catch-up template when
+  // a catch-up window is active. Shared by play() and the stall reload path.
+  private resolveStreamUrl(channel: Channel, catchup: CatchupInfo | null): string {
+    if (catchup && channel.catchupSource) {
+      return channel.catchupSource
+        .replace('{channel-id}', encodeURIComponent(channel.id || channel.name))
+        .replace('{utc}', String(catchup.start))
+        .replace('{utcend}', String(catchup.end));
+    }
+    return channel.url;
+  }
+
   play(channelIndex: number, catchup?: CatchupInfo): void {
+    this.stallWatchdog.stop();
     const channel = PlaylistService.getByIndex(channelIndex);
     if (!channel || !this.videoEl) {
       log.warn('play() ignored — no channel or video element', { channelIndex, hasChannel: !!channel });
@@ -167,20 +196,26 @@ export class Player {
     this.catchupInfo = catchup || null;
     StorageService.setLastChannel(channelIndex);
 
-    // For catch-up/timeshift, use the catchup-source URL template
-    let url = channel.url;
-    if (catchup && channel.catchupSource) {
-      url = channel.catchupSource
-        .replace('{channel-id}', encodeURIComponent(channel.id || channel.name))
-        .replace('{utc}', String(catchup.start))
-        .replace('{utcend}', String(catchup.end));
-      log.debug('catchup URL:', url);
-    }
+    const url = this.resolveStreamUrl(channel, catchup || null);
+    if (catchup) log.debug('catchup URL:', url);
 
     this.videoEl.classList.add('active');
     this.loadStream(url, channel.extras);
     this.showOSD();
     show(this.container);
+    if (isWebOS) this.stallWatchdog.start();
+  }
+
+  // Stall watchdog recovery: swap in a fresh <video> (kills the wedged native
+  // pipeline) and reload the current channel WITHOUT going through play() — that
+  // would reset the watchdog's reload budget and prevent escalation.
+  private reloadCurrentStream(): void {
+    if (!this.currentChannel || this.currentIndex < 0) return;
+    log.warn('stall watchdog — reloading current stream:', this.currentChannel.name);
+    this.updateOSDMessage('Reconnecting…');
+    this.recreateVideoEl();
+    this.videoEl?.classList.add('active');
+    this.loadStream(this.resolveStreamUrl(this.currentChannel, this.catchupInfo), this.currentChannel.extras);
   }
 
   // A finished catch-up VOD would otherwise freeze on its last frame; fall back
@@ -194,6 +229,7 @@ export class Player {
   }
 
   stop(): void {
+    this.stallWatchdog.stop();
     this.subs.stop();
     if (this.hls) {
       this.hls.destroy();

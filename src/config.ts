@@ -17,6 +17,9 @@ export const CONFIG = {
     CHANNEL_NUMBER_TIMEOUT: 2000,
     SEEK_STEP: 30, // seconds per Left/Right press while seeking catch-up
     HLS_MAX_RECOVERIES: 3, // bounded hls.js fatal-error retries before giving up → next channel
+    STALL_POLL_MS: 2000,      // native stall watchdog: currentTime poll interval
+    STALL_FREEZE_TICKS: 5,    // ~10s frozen before the first in-place reload
+    STALL_MAX_RELOADS: 2,     // in-place reloads before escalating to the next channel
   },
 
   EPG: {
