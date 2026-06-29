@@ -12,6 +12,7 @@ vi.mock('../services/epg-service', () => ({
 vi.mock('../services/storage-service', () => ({ StorageService: { setLastChannel: vi.fn() } }));
 
 import { Player } from './player';
+import { CONFIG } from '../config';
 
 const CHANNEL = {
   id: 'c1', name: 'Chan', logo: '', group: '', url: 'http://host/play/c1', extras: null,
@@ -174,6 +175,33 @@ describe('Player live playback', () => {
     player.play(0); // live, no catch-up
     expect(player.canSeek()).toBe(false);
     expect(container.querySelector('[data-seekbar]')).toBeNull();
+  });
+});
+
+describe('Player stall reconnect OSD', () => {
+  it('clears the Reconnecting… message after the reloaded stream recovers', async () => {
+    HTMLMediaElement.prototype.play = vi.fn().mockResolvedValue(undefined);
+    HTMLMediaElement.prototype.pause = vi.fn();
+    HTMLMediaElement.prototype.load = vi.fn();
+    const v = document.createElement('video');
+    container.appendChild(v);
+    player.init(v);
+
+    player.play(0); // live
+    await flush();
+
+    // A real stall reloads only after the OSD has auto-hidden (osdVisible false)
+    // — the case the message used to get stuck in.
+    vi.advanceTimersByTime(CONFIG.PLAYER.OSD_TIMEOUT + 100);
+
+    (player as unknown as { reloadCurrentStream(): void }).reloadCurrentStream();
+    await flush();
+    const osd = container.querySelector('#player-osd')!;
+    expect(osd.textContent).toContain('Reconnecting');
+
+    // Recovery (loadedmetadata) must repaint over the message, not leave it stuck.
+    container.querySelector('video')!.dispatchEvent(new Event('loadedmetadata'));
+    expect(osd.textContent).not.toContain('Reconnecting');
   });
 });
 

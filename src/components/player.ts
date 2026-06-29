@@ -645,10 +645,13 @@ export class Player {
 
   private updateOSDMessage(message: string): void {
     const osd = $('#player-osd', this.container);
-    if (osd) {
-      osd.innerHTML = String(html`<div class="osd-message">${message}</div>`);
-      show(osd);
-    }
+    if (!osd) return;
+    osd.innerHTML = String(html`<div class="osd-message">${message}</div>`);
+    // osdVisible + timer so loadedmetadata repaints over this once the stream
+    // recovers (else "Reconnecting…" sticks) and it auto-hides otherwise.
+    this.osdVisible = true;
+    show(osd);
+    this.resetOsdTimer();
   }
 
   channelUp(): void {
