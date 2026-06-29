@@ -137,7 +137,11 @@ syncs it into `appinfo.json` and the `__APP_VERSION__` build constant;
 - **Debugging:** `ares-inspect` gives a page-level CDP socket only (Playwright
   `connectOverCDP` fails — connect to the page WebSocket directly). App `console.*`
   is visible only via the DevTools `ares-inspect` opens; `ares-monitor-log` is not in
-  the current CLI.
+  the current CLI. `scripts/tv.sh` wraps device access the `tv` CLI profile blocks:
+  `tv.sh logs [--app <id>]` tails the app's DevTools console headlessly over CDP (no
+  GUI copy-paste), `tv.sh eval '<js>'` evaluates an expression in the app page over CDP
+  (probe live DOM/app state from the terminal), and `tv.sh run '<cmd>'` / `push` /
+  `shell` cover ssh/scp since `ares-shell`/`ares-push` are disabled in the `tv` profile.
 - **Install needs a cold restart.** webOS keeps the old instance suspended through an
   in-place upgrade and a plain relaunch resumes the stale in-memory copy.
   `build.sh --install` closes then cold-starts the app to load the new bundle.
