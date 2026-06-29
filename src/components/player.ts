@@ -13,7 +13,7 @@ import { CONFIG } from '../config';
 import { formatTime, formatPosition, formatDuration, getProgress } from '../utils/time';
 import { getLenientLoaders } from '../utils/hls-stable-loader';
 import { StallWatchdog, type StallProbe } from '../utils/stall-watchdog';
-import { resolutionBadge, parseVariants, pickVariant, codecName, audioSummary, subtitleSummary, type StreamVariant } from '../utils/stream-info';
+import { resolutionBadge, hdrLabel, frameRateLabel, parseVariants, pickVariant, codecName, audioSummary, subtitleSummary, type StreamVariant } from '../utils/stream-info';
 import { createLogger } from '../utils/logger';
 import { showToast } from './toast';
 
@@ -112,6 +112,11 @@ export class Player {
       log.info('loadedmetadata', el.videoWidth + 'x' + el.videoHeight, '| duration:', el.duration);
       this.applyNativeAudioSelection();
       this.applyNativeSubtitleSelection();
+      if (this.osdVisible) this.renderOSD();
+    });
+    // Intrinsic size changes mid-stream (ABR up/down-switch) so the OSD pills
+    // (resolution, and on hls.js the codec/HDR/fps) reflect the live variant.
+    el.addEventListener('resize', () => {
       if (this.osdVisible) this.renderOSD();
     });
     // Some platforms populate audio/text tracks asynchronously, after loadedmetadata.
@@ -601,15 +606,25 @@ export class Player {
     }
 
     const v = this.videoEl;
+    const lvl = this.hls?.loadLevelObj;
     const badge = v ? resolutionBadge(v.videoHeight) : null;
     const variant = !this.hls && v ? pickVariant(this.manifestVariants, v.videoWidth, v.videoHeight) : null;
-    const vCodec = codecName(this.hls?.loadLevelObj?.videoCodec ?? variant?.videoCodec ?? '');
-    const aCodec = codecName(this.hls?.loadLevelObj?.audioCodec ?? variant?.audioCodec ?? '');
+    const vCodec = codecName(lvl?.videoCodec ?? variant?.videoCodec ?? '');
+    const aCodecName = codecName(lvl?.audioCodec ?? variant?.audioCodec ?? '');
+    // Atmos (JOC): native path from the manifest variant's audio group; hls.js from
+    // the active audio track's channel layout — loadLevelObj carries no channels.
+    const hlsChannels = this.hls?.audioTracks?.[this.hls.audioTrack]?.channels ?? '';
+    const atmos = variant?.atmos || /\bJOC\b/i.test(hlsChannels);
+    const aCodec = aCodecName && atmos ? `${aCodecName} Atmos` : aCodecName;
+    const hdr = hdrLabel(lvl?.videoRange ?? variant?.videoRange ?? '');
+    const fps = frameRateLabel(lvl?.frameRate ?? variant?.frameRate ?? 0);
     const audio = audioSummary(this.getAudioTracks());
     const subtitle = subtitleSummary(this.getSubtitleTracks());
-    const streamInfoHtml = (badge || vCodec || aCodec || audio || subtitle) ? html`
+    const streamInfoHtml = (badge || hdr || fps || vCodec || aCodec || audio || subtitle) ? html`
       <div class="osd-stream-info">
         ${badge ? html`<span class="si-badge si-badge--${badge.tier}">${badge.label}</span>` : ''}
+        ${hdr ? html`<span class="si-badge si-badge--hdr">${hdr}</span>` : ''}
+        ${fps ? html`<span class="si-pill">${fps}fps</span>` : ''}
         ${vCodec ? html`<span class="si-pill">${vCodec}</span>` : ''}
         ${aCodec ? html`<span class="si-pill">${aCodec}</span>` : ''}
         ${audio ? html`<span class="si-text">${audio}</span>` : ''}

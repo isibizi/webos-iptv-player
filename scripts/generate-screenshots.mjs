@@ -116,6 +116,15 @@ const MASTER_HLS = [
   'video.m3u8',
 ].join('\n');
 
+// Feature-rich variant for the channel-info OSD shot — 4K HDR Dolby Vision, Dolby
+// Digital+ Atmos (default audio gets CHANNELS="16/JOC"), 60fps.
+const MASTER_HLS_RICH = MASTER_HLS
+  .replace('NAME="English",LANGUAGE="en",DEFAULT=YES,AUTOSELECT=YES',
+    'NAME="English",LANGUAGE="en",DEFAULT=YES,AUTOSELECT=YES,CHANNELS="16/JOC"')
+  .replace(/#EXT-X-STREAM-INF:.*\n[^\n]*$/,
+    '#EXT-X-STREAM-INF:BANDWIDTH=16000000,RESOLUTION=3840x2160,FRAME-RATE=60,VIDEO-RANGE=PQ,' +
+    'CODECS="dvh1.05.06,ec-3",AUDIO="aud",SUBTITLES="sub"\nvideo.m3u8');
+
 // Empty *live* media playlist (no ENDLIST, no segments) for the variant/audio/
 // subtitle renditions hls.js loads after the master. It keeps polling for a live
 // edge rather than fatally erroring — which would make the player flash "Stream
@@ -442,16 +451,27 @@ try {
     await context.close();
   }
 
-  // 5) Channel info bar (the OSD).
+  // 5) Channel info bar (the OSD) — driven by the feature-rich master so the
+  //    stream-info pills all show.
   {
-    const { context, page } = await newPage();
+    const { context, page } = await newPage({ fakeStream: true });
+    // (screenshot-only) Fake a 4K frame for the resolution badge, and make hls.js
+    // keep the Dolby Vision / E-AC-3 level even where headless Chromium can't decode
+    // it (no fragments load, so nothing actually decodes).
+    await page.addInitScript(() => {
+      if (window.MediaSource) MediaSource.isTypeSupported = () => true;
+      Object.defineProperty(HTMLVideoElement.prototype, 'videoWidth', { configurable: true, get: () => 3840 });
+      Object.defineProperty(HTMLVideoElement.prototype, 'videoHeight', { configurable: true, get: () => 2160 });
+    });
+    await page.route(/\/stream\/ch\d+\.m3u8(?:[?#]|$)/, fulfill(MASTER_HLS_RICH, 'application/vnd.apple.mpegurl'));
     await gotoChannels(page, base);
     await page.keyboard.press('ArrowDown');
     await page.keyboard.press('Enter');
     await page.locator('#player-osd .osd-programme-title').waitFor({ state: 'visible' });
+    await page.waitForTimeout(1500);
     await page.evaluate(() => {
       const v = document.getElementById('video-player');
-      if (v) { v.classList.remove('active'); try { v.pause(); } catch { /* ignore */ } }
+      if (v) { v.classList.remove('active'); try { v.pause(); } catch { /* ignore */ } v.dispatchEvent(new Event('loadedmetadata')); }
       const vp = document.getElementById('view-player');
       if (vp) vp.style.background = 'radial-gradient(125% 110% at 60% 32%, #182942 0%, #0b0b12 62%)';
     });
