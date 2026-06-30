@@ -1,10 +1,10 @@
 import type { Action, Channel, CatchupInfo, AudioTrackOption, AudioOption, AudioPref, ManifestAudio,
-  SubtitleTrackOption, SubtitleOption, SubtitlePref, ManifestSubtitle } from '../types';
+  SubtitleTrackOption, SubtitleOption, SubtitlePref, ManifestSubtitle, ManifestClosedCaption } from '../types';
 import { $, show, hide, html, Safe } from '../utils/dom';
 import { channelKey } from '../utils/channel';
 import { fetchText } from '../utils/fetch-helper';
 import { audioLabel, hlsAudioOptions, nativeAudioOptions, chooseAudioIndex, isPrefMatch, parseAudioRenditions, mergeManifestNames } from '../utils/audio-tracks';
-import { subtitleLabel, hlsSubtitleOptions, nativeSubtitleOptions, chooseSubtitleIndex, isSubtitlePrefMatch, parseSubtitleRenditions, mergeSubtitleManifestNames } from '../utils/subtitle-tracks';
+import { subtitleLabel, hlsSubtitleOptions, nativeSubtitleOptions, chooseSubtitleIndex, isSubtitlePrefMatch, parseSubtitleRenditions, mergeSubtitleManifestNames, parseClosedCaptions, closedCaptionLabel } from '../utils/subtitle-tracks';
 import { PlaylistService } from '../services/playlist-service';
 import { EpgService } from '../services/epg-service';
 import { StorageService } from '../services/storage-service';
@@ -21,6 +21,11 @@ const log = createLogger('Player');
 
 // True on the TV's webOS WebView; false in desktop preview / tests.
 const isWebOS = /webOS|Web0S/i.test(navigator.userAgent);
+
+// Picker sentinel for the in-band CEA-608/708 toggle. -1 is the synthetic "Off"
+// row; -2 is the single closed-caption entry, drawn by the native compositor via
+// setSubtitleEnable (channel selection is impossible — selectTrack decode-freezes).
+const CC_SUBTITLE_INDEX = -2;
 
 // hls.js and mpegts.js are loaded as globals via preview-libs.js (desktop preview only)
 const win = window as unknown as Record<string, unknown>;
@@ -45,6 +50,8 @@ export class Player {
   private hlsRecoveries = 0; // fatal hls.js errors recovered since the last good fragment
   private manifestAudio: ManifestAudio[] = []; // real track names parsed from the HLS master (webOS)
   private manifestSubtitles: ManifestSubtitle[] = []; // subtitle names parsed from the HLS master (webOS)
+  private manifestClosedCaptions: ManifestClosedCaption[] = []; // CEA-608/708 declared in the HLS master (webOS)
+  private ccEnabled = false; // live state of the native caption compositor (setSubtitleEnable)
   private manifestVariants: StreamVariant[] = []; // HLS master variants for best-effort codec readout
   private manifestSeq = 0;
   private subs = new HlsSubtitles(); // self-rendered subtitles on the webOS native path
@@ -262,6 +269,8 @@ export class Player {
     if (!this.videoEl) return;
     this.manifestAudio = [];
     this.manifestSubtitles = [];
+    this.manifestClosedCaptions = [];
+    this.ccEnabled = false; // fresh pipeline — captions start off (608 doesn't auto-draw)
     this.manifestVariants = [];
     this.subs.stop();
 
@@ -705,6 +714,13 @@ export class Player {
         // Self-render the default subtitle so sync can be judged on-device.
         if (this.videoEl) void this.subs.start(this.videoEl, url);
       }
+      const ccs = parseClosedCaptions(text);
+      if (ccs.length) {
+        this.manifestClosedCaptions = ccs;
+        log.info('manifest closed captions:', ccs.map(c => c.instreamId || c.name || '?').join(', '));
+        // Re-apply a saved CC choice now the manifest confirms captions exist.
+        this.applyNativeSubtitleSelection();
+      }
       const variants = parseVariants(text);
       if (variants.length) {
         this.manifestVariants = variants;
@@ -718,7 +734,7 @@ export class Player {
   // Picker-facing options. When webOS collapses same-language renditions (the
   // native list is shorter than the manifest), surface every manifest rendition
   // but mark the hidden ones unavailable — the TV can't switch to them, so the
-  // picker greys them rather than pretending. `available` assumes the manifest
+  // picker grays them rather than pretending. `available` assumes the manifest
   // lists the native-exposed renditions first (default / first-per-language).
   private displayAudioOptions(): Array<AudioOption & { available: boolean }> {
     const opts = this.audioOptions();
@@ -743,7 +759,7 @@ export class Player {
   }
 
   /** Switch the active audio track and remember it for this channel. No-op for a
-   *  greyed (unavailable) track — webOS can't switch to a collapsed rendition. */
+   *  grayed (unavailable) track — webOS can't switch to a collapsed rendition. */
   selectAudioTrack(index: number): void {
     const opt = this.displayAudioOptions().find(o => o.index === index);
     if (!opt || !opt.available) return;
@@ -818,7 +834,7 @@ export class Player {
 
   // Picker-facing options. When the platform exposes fewer native text tracks
   // than the manifest declares, surface every manifest rendition but mark the
-  // unexposed ones unavailable — they can't be switched on, so the picker greys
+  // unexposed ones unavailable — they can't be switched on, so the picker grays
   // them rather than pretending.
   private displaySubtitleOptions(): Array<SubtitleOption & { available: boolean }> {
     const opts = this.subtitleOptions();
@@ -833,17 +849,44 @@ export class Player {
     return opts.map(o => ({ ...o, available: true }));
   }
 
-  /** Subtitle tracks for the picker (the menu prepends its own "Off" row). */
+  /** Subtitle tracks for the picker (the menu prepends its own "Off" row). On the
+   *  webOS native path a single "Closed Captions" toggle is appended when the
+   *  manifest declares in-band CEA-608/708 — drawn by the native compositor. */
   getSubtitleTracks(): SubtitleTrackOption[] {
-    return this.displaySubtitleOptions().map(o => ({
+    const tracks: SubtitleTrackOption[] = this.displaySubtitleOptions().map(o => ({
       index: o.index, label: subtitleLabel(o), active: o.active, available: o.available,
     }));
+    if (this.ccAvailable()) {
+      tracks.push({
+        index: CC_SUBTITLE_INDEX,
+        label: closedCaptionLabel(this.manifestClosedCaptions),
+        active: this.ccEnabled,
+        available: true,
+      });
+    }
+    return tracks;
   }
 
-  /** Switch the active subtitle (index -1 = off) and remember it for this channel.
-   *  No-op for a greyed (unavailable) track the platform didn't expose. */
+  // In-band CC is offered only on the native pipeline (setSubtitleEnable is a
+  // webOS Luna verb) and only when the master advertises CLOSED-CAPTIONS.
+  private ccAvailable(): boolean {
+    return isWebOS && this.manifestClosedCaptions.length > 0;
+  }
+
+  /** Switch the active subtitle (index -1 = off, -2 = in-band CC) and remember it
+   *  for this channel. No-op for a grayed (unavailable) track the platform didn't
+   *  expose. CC and the other subtitle paths are mutually exclusive. */
   selectSubtitleTrack(index: number): void {
-    if (index < 0) {
+    if (index === CC_SUBTITLE_INDEX) {
+      this.subs.stop();               // self-render and the native compositor can't both draw
+      this.setNativeSubtitleMode(-1);  // drop any native textTrack
+      this.setNativeCC(true);
+      this.rememberSubtitle({ off: false, cc: true, name: '', lang: '' });
+      showToast(`Subtitles: ${closedCaptionLabel(this.manifestClosedCaptions)}`);
+      return;
+    }
+    if (index === -1) {
+      this.setNativeCC(false);
       this.setNativeSubtitleMode(-1);
       this.rememberSubtitle({ off: true, name: '', lang: '' });
       showToast('Subtitles off');
@@ -851,9 +894,36 @@ export class Player {
     }
     const opt = this.displaySubtitleOptions().find(o => o.index === index);
     if (!opt || !opt.available) return;
+    this.setNativeCC(false);
     this.setNativeSubtitleMode(index);
     this.rememberSubtitle({ off: false, name: opt.name, lang: opt.lang });
     showToast(`Subtitles: ${subtitleLabel(opt)}`);
+  }
+
+  // Toggle the native caption compositor (CEA-608/708, also IMSC) via Luna. Only
+  // fires on a real state change, and needs the pipeline's mediaId — exposed on
+  // the native element once decoding starts. selectTrack is deliberately avoided:
+  // it decode-freezes the video, so this is enable/disable only.
+  private setNativeCC(enable: boolean): void {
+    if (!isWebOS || enable === this.ccEnabled) return;
+    const v = this.videoEl as (HTMLVideoElement & { mediaId?: string }) | null;
+    const mediaId = v?.mediaId;
+    if (!mediaId) { if (enable) log.warn('CC: no mediaId yet — will retry on track/metadata events'); return; }
+    const w = window as unknown as {
+      webOS?: { service?: { request?: (uri: string, opts: {
+        method: string; parameters: unknown;
+        onSuccess?: (r: unknown) => void; onFailure?: (e: unknown) => void;
+      }) => void } };
+    };
+    const request = w.webOS?.service?.request;
+    if (!request) return;
+    request('luna://com.webos.media', {
+      method: 'setSubtitleEnable',
+      parameters: { mediaId, enable },
+      onSuccess: () => log.info('CC: setSubtitleEnable', enable, 'ok'),
+      onFailure: (e) => log.warn('CC: setSubtitleEnable failed:', JSON.stringify(e)),
+    });
+    this.ccEnabled = enable;
   }
 
   // Apply a subtitle selection to whichever engine is active. hls.js owns its own
@@ -905,12 +975,18 @@ export class Player {
 
   private applyNativeSubtitleSelection(): void {
     if (this.hls) return; // hls.js owns the rendition and its native text tracks
+    const pref = StorageService.getSubtitlePref(this.channelPrefKey());
+    // A remembered CC choice wins over self-render / textTracks (mutually exclusive).
+    if (this.ccAvailable() && pref?.cc) {
+      this.subs.stop();
+      this.setNativeCC(true);
+      return;
+    }
     if (this.subs.active) return; // the self-rendered controller owns subtitles
     const list = this.videoEl?.textTracks;
     if (!list || !list.length) return;
     const options = this.subtitleOptions();
     if (!options.length) return;
-    const pref = StorageService.getSubtitlePref(this.channelPrefKey());
     const idx = chooseSubtitleIndex(options, pref);
     this.logSubtitleChoice('native', options, pref, idx);
     for (let i = 0; i < list.length; i++) {

@@ -9,6 +9,8 @@ import {
   isSubtitlePrefMatch,
   parseSubtitleRenditions,
   mergeSubtitleManifestNames,
+  parseClosedCaptions,
+  closedCaptionLabel,
 } from './subtitle-tracks';
 
 const opt = (over: Partial<SubtitleOption>): SubtitleOption => ({
@@ -132,7 +134,7 @@ describe('chooseSubtitleIndex', () => {
     expect(chooseSubtitleIndex(forced, null)).toBe(1);
   });
 
-  it('honours an explicit off pref, even over a forced track', () => {
+  it('honors an explicit off pref, even over a forced track', () => {
     const forced = opts.map((o, i) => ({ ...o, isForced: i === 1 }));
     expect(chooseSubtitleIndex(forced, { off: true, name: '', lang: '' })).toBe(-1);
   });
@@ -213,6 +215,60 @@ describe('parseSubtitleRenditions', () => {
   it('tolerates whitespace after attribute commas (does not drop the value)', () => {
     const m = '#EXT-X-MEDIA:TYPE=SUBTITLES, GROUP-ID="s", NAME="Track 1", LANGUAGE="l1"';
     expect(parseSubtitleRenditions(m)[0]).toMatchObject({ name: 'Track 1', lang: 'l1' });
+  });
+});
+
+describe('parseClosedCaptions', () => {
+  it('parses TYPE=CLOSED-CAPTIONS with name/lang/instream-id/default, in order', () => {
+    const m = [
+      '#EXTM3U',
+      '#EXT-X-MEDIA:TYPE=CLOSED-CAPTIONS,GROUP-ID="cc",NAME="Track 1",LANGUAGE="l1",INSTREAM-ID="CC1",DEFAULT=YES',
+      '#EXT-X-MEDIA:TYPE=CLOSED-CAPTIONS,GROUP-ID="cc",NAME="Track 2",LANGUAGE="l2",INSTREAM-ID="SERVICE1"',
+      '#EXT-X-STREAM-INF:BANDWIDTH=1,CLOSED-CAPTIONS="cc"',
+      'v1.m3u8',
+    ].join('\n');
+    expect(parseClosedCaptions(m)).toEqual([
+      { name: 'Track 1', lang: 'l1', instreamId: 'CC1', isDefault: true },
+      { name: 'Track 2', lang: 'l2', instreamId: 'SERVICE1', isDefault: false },
+    ]);
+  });
+
+  it('ignores other media types and dedupes a declaration repeated per quality tier', () => {
+    const m = [
+      '#EXT-X-MEDIA:TYPE=SUBTITLES,NAME="Track 9",LANGUAGE="l9"',
+      '#EXT-X-MEDIA:TYPE=CLOSED-CAPTIONS,GROUP-ID="lo",INSTREAM-ID="CC1"',
+      '#EXT-X-MEDIA:TYPE=CLOSED-CAPTIONS,GROUP-ID="hi",INSTREAM-ID="CC1"',
+    ].join('\n');
+    expect(parseClosedCaptions(m).map(c => c.instreamId)).toEqual(['CC1']);
+  });
+
+  it('keeps distinct INSTREAM-IDs that share an empty name/lang', () => {
+    const m = [
+      '#EXT-X-MEDIA:TYPE=CLOSED-CAPTIONS,INSTREAM-ID="CC1"',
+      '#EXT-X-MEDIA:TYPE=CLOSED-CAPTIONS,INSTREAM-ID="CC3"',
+    ].join('\n');
+    expect(parseClosedCaptions(m).map(c => c.instreamId)).toEqual(['CC1', 'CC3']);
+  });
+
+  it('returns [] when no closed captions are declared (and not for CLOSED-CAPTIONS=NONE)', () => {
+    const m = '#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1,CLOSED-CAPTIONS=NONE\nv.m3u8';
+    expect(parseClosedCaptions(m)).toEqual([]);
+  });
+});
+
+describe('closedCaptionLabel', () => {
+  it('uses the single declaration name when there is exactly one named entry', () => {
+    expect(closedCaptionLabel([{ name: 'Track 1', lang: 'l1', instreamId: 'CC1', isDefault: true }]))
+      .toBe('Track 1');
+  });
+
+  it('falls back to a generic label when unnamed or when several are declared', () => {
+    expect(closedCaptionLabel([{ name: '', lang: '', instreamId: 'CC1', isDefault: false }]))
+      .toBe('Closed Captions');
+    expect(closedCaptionLabel([
+      { name: 'Track 1', lang: 'l1', instreamId: 'CC1', isDefault: true },
+      { name: 'Track 2', lang: 'l2', instreamId: 'CC3', isDefault: false },
+    ])).toBe('Closed Captions');
   });
 });
 

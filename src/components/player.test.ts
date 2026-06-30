@@ -9,7 +9,9 @@ vi.mock('../services/playlist-service', () => ({ PlaylistService: playlistMock }
 vi.mock('../services/epg-service', () => ({
   EpgService: { findChannelId: () => null, getNowPlaying: () => null, getUpcoming: () => [] },
 }));
-vi.mock('../services/storage-service', () => ({ StorageService: { setLastChannel: vi.fn() } }));
+vi.mock('../services/storage-service', () => ({
+  StorageService: { setLastChannel: vi.fn(), getSubtitlePref: vi.fn(), getAudioPref: vi.fn() },
+}));
 
 import { Player } from './player';
 import { CONFIG } from '../config';
@@ -227,6 +229,6 @@ describe('Player audio track picker', () => {
 
     const tracks = player.getAudioTracks();
     expect(tracks.map((t) => t.active)).toEqual([true, false, false]);
-    expect(tracks[2].available).toBe(false); // collapsed alternate greyed out
+    expect(tracks[2].available).toBe(false); // collapsed alternate grayed out
   });
 });

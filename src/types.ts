@@ -54,9 +54,14 @@ export interface PlaylistEntry {
    *  backfills it for any legacy entry read from storage. */
   id: string;
   name: string;
+  /** For 'xtream' entries this is the normalized portal base (`http://host:port`);
+   *  the get.php/xmltv.php URLs are derived from it + credentials at load time. */
   url: string;
-  /** 'upload' entries are auto-managed by the local upload service; absent/'url' are user-entered. */
-  source?: 'upload' | 'url';
+  /** 'upload' entries are auto-managed by the local upload service; 'xtream' is an
+   *  Xtream Codes account; absent/'url' are user-entered M3U URLs. */
+  source?: 'upload' | 'url' | 'xtream';
+  /** Credentials for an 'xtream' entry. */
+  xtream?: { username: string; password: string };
   /** Channel count, populated for 'upload' entries by reconcile() from UploadMeta. */
   count?: number;
 }
@@ -142,11 +147,14 @@ export interface SubtitleOption {
 }
 
 /** A remembered subtitle choice. `off` records an explicit "no subtitles" so it
- *  survives re-tunes; otherwise matched against future streams by name then language. */
+ *  survives re-tunes; `cc` records the in-band CEA-608/708 toggle (drawn by the
+ *  native compositor, not a track); otherwise matched against future streams by
+ *  name then language. */
 export interface SubtitlePref {
   off: boolean;
   name: string;
   lang: string;
+  cc?: boolean;
 }
 
 /** A subtitle rendition declared in an HLS master playlist (EXT-X-MEDIA:TYPE=SUBTITLES). */
@@ -155,4 +163,15 @@ export interface ManifestSubtitle {
   lang: string;
   isDefault: boolean;
   isForced: boolean;
+}
+
+/** An in-band closed-caption track declared in an HLS master
+ *  (EXT-X-MEDIA:TYPE=CLOSED-CAPTIONS) — CEA-608 (INSTREAM-ID CC1-4) or
+ *  CEA-708 (SERVICE1-63). These ride inside the video ES; webOS draws them via
+ *  the native compositor (setSubtitleEnable), never as a textTrack. */
+export interface ManifestClosedCaption {
+  name: string;
+  lang: string;
+  instreamId: string;
+  isDefault: boolean;
 }

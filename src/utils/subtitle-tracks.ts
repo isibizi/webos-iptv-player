@@ -1,4 +1,4 @@
-import type { SubtitleOption, SubtitlePref, ManifestSubtitle } from '../types';
+import type { SubtitleOption, SubtitlePref, ManifestSubtitle, ManifestClosedCaption } from '../types';
 import ISO6391 from 'iso-639-1';
 import { iso6392BTo1 } from 'iso-639-2/2b-to-1';
 import { iso6392TTo1 } from 'iso-639-2/2t-to-1';
@@ -55,7 +55,7 @@ export function nativeSubtitleOptions(list: TextTrackList): SubtitleOption[] {
   return out;
 }
 
-/** Pick a subtitle index for `options`, or -1 for off. Honours an explicit "off"
+/** Pick a subtitle index for `options`, or -1 for off. Honors an explicit "off"
  *  pref, else matches by name then language; with no usable pref the stream
  *  default is the forced track if any, otherwise off (subtitles stay off). */
 export function chooseSubtitleIndex(options: SubtitleOption[], pref: SubtitlePref | null): number {
@@ -103,9 +103,37 @@ export function parseSubtitleRenditions(manifest: string): ManifestSubtitle[] {
   return out;
 }
 
+// Parse the EXT-X-MEDIA:TYPE=CLOSED-CAPTIONS declarations from an HLS master, in
+// order, deduped by INSTREAM-ID (CC1-4 = CEA-608, SERVICE1-63 = CEA-708). Unlike
+// SUBTITLES these have no URI — they ride inside the video ES — so the manifest is
+// the only place the app can learn a stream advertises captions.
+export function parseClosedCaptions(manifest: string): ManifestClosedCaption[] {
+  const out: ManifestClosedCaption[] = [];
+  const seen = new Set<string>();
+  for (const line of manifest.split(/\r?\n/)) {
+    if (!line.startsWith('#EXT-X-MEDIA:') || !/TYPE=CLOSED-CAPTIONS(?:,|$)/.test(line)) continue;
+    const attr = (k: string): string => line.match(new RegExp(`[:,]\\s*${k}="([^"]*)"`))?.[1] ?? '';
+    const instreamId = attr('INSTREAM-ID');
+    const name = attr('NAME');
+    const lang = attr('LANGUAGE');
+    const key = JSON.stringify([name, lang, instreamId]);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ name, lang, instreamId, isDefault: /[:,]DEFAULT=YES(?:,|$)/.test(line) });
+  }
+  return out;
+}
+
+/** Picker label for the single closed-caption toggle. Channel selection isn't
+ *  possible (selectTrack decode-freezes the video on webOS), so several declared
+ *  tracks collapse to one on/off entry — named only when there's exactly one. */
+export function closedCaptionLabel(ccs: ManifestClosedCaption[]): string {
+  return ccs.length === 1 && ccs[0].name ? ccs[0].name : 'Closed Captions';
+}
+
 /** Overlay manifest names/languages (and the default/forced flags native tracks
  *  can't carry) onto native subtitle options, by index. Only applies when the
- *  counts line up, so a partial native list isn't mislabelled. */
+ *  counts line up, so a partial native list isn't mislabeled. */
 export function mergeSubtitleManifestNames(opts: SubtitleOption[], manifest: ManifestSubtitle[]): SubtitleOption[] {
   if (!manifest.length || manifest.length !== opts.length) return opts;
   return opts.map((o, i) => ({
