@@ -1,6 +1,7 @@
 import type { Channel, PlaylistTab } from '../types';
 import { parseM3U } from '../parsers/m3u-parser';
 import { fetchText } from '../utils/fetch-helper';
+import { xtreamPlaylistUrl, xtreamEpgUrl } from '../utils/xtream-url';
 import { channelKey } from '../utils/channel';
 import { rankChannels } from '../utils/channel-search';
 import { createLogger } from '../utils/logger';
@@ -61,11 +62,16 @@ class PlaylistServiceImpl {
       // two playlists sharing a name/URL stay distinct and deleting/reordering
       // one never re-points another's channels.
       const plKey = pl.id;
+      // An xtream account derives get.php (playlist) and xmltv.php (EPG) from its
+      // credentials; everything downstream is the existing M3U path.
+      const fetchUrl = pl.source === 'xtream' && pl.xtream
+        ? xtreamPlaylistUrl({ baseUrl: pl.url, ...pl.xtream })
+        : pl.url;
       const plDone = log.time(`fetch '${pl.name || pl.url}'`);
       try {
-        const text = await fetchText(pl.url, 60000);
+        const text = await fetchText(fetchUrl, 60000);
         log.info('Fetched', pl.name || pl.url, '|', text.length, 'bytes');
-        const parsed = parseM3U(text, pl.url);
+        const parsed = parseM3U(text, fetchUrl);
         log.info('Parsed', parsed.channels.length, 'channels,', parsed.groups.length, 'groups',
           parsed.epgUrl ? `| epg: ${parsed.epgUrl}` : '');
         let added = 0, dupes = 0;
@@ -85,6 +91,11 @@ class PlaylistServiceImpl {
           }
         }
         log.debug(`Added ${added} channels (${dupes} duplicates skipped)`);
+        if (pl.source === 'xtream' && pl.xtream) {
+          // The panel's own XMLTV endpoint; the get.php url-tvg (if any) is added below too.
+          const epg = xtreamEpgUrl({ baseUrl: pl.url, ...pl.xtream });
+          if (!epgUrls.includes(epg)) epgUrls.push(epg);
+        }
         if (parsed.epgUrl) {
           // Resolve localhost/127.0.0.1 in embedded EPG URL to the playlist's host
           let epg = parsed.epgUrl;

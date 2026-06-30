@@ -176,6 +176,50 @@ describe('PlaylistService.refresh', () => {
   });
 });
 
+describe('PlaylistService.refresh (xtream source)', () => {
+  const XT = `#EXTM3U
+#EXTINF:-1 tvg-id="a" group-title="News",Alpha
+http://host:8080/live/u1/p1/101.ts
+#EXTINF:-1 tvg-id="b",Bravo
+http://host:8080/live/u1/p1/102.ts`;
+
+  beforeEach(() => {
+    storageMock.getPlaylists.mockReturnValue([
+      { id: 'x', name: 'Acct', url: 'http://host:8080', source: 'xtream',
+        xtream: { username: 'u1', password: 'p1' } },
+    ]);
+    fetchTextMock.mockResolvedValue(XT);
+  });
+
+  it('fetches the derived get.php playlist URL, not the bare base', async () => {
+    await PlaylistService.refresh();
+    expect(fetchTextMock).toHaveBeenCalledWith(
+      'http://host:8080/get.php?username=u1&password=p1&type=m3u_plus&output=ts',
+      expect.any(Number),
+    );
+  });
+
+  it('parses the channels out of the derived playlist', async () => {
+    const channels = await PlaylistService.refresh();
+    expect(channels.map(c => c.name)).toEqual(['Alpha', 'Bravo']);
+    // Live URLs come straight from the M3U on the native /live/USER/PASS/ID.ts form.
+    expect(channels.every(c => /\/live\/u1\/p1\/\d+\.ts$/.test(c.url))).toBe(true);
+  });
+
+  it('pushes the derived xmltv.php EPG URL', async () => {
+    await PlaylistService.refresh();
+    expect(PlaylistService.epgUrls).toContain(
+      'http://host:8080/xmltv.php?username=u1&password=p1',
+    );
+  });
+
+  it('keeps one tab for the account even when its feed is unreachable', async () => {
+    fetchTextMock.mockRejectedValue(new Error('down'));
+    await PlaylistService.refresh();
+    expect(PlaylistService.playlistTabs).toEqual([{ id: 'x', name: 'Acct' }]);
+  });
+});
+
 describe('PlaylistService.load', () => {
   it('uses the cached playlist without hitting the network', async () => {
     const cached = [channel({ id: 'a', name: 'Alpha', group: 'News', playlistIds: ['P1'] })];
