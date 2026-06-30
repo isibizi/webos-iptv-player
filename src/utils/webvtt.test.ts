@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseTimestamp, parseWebVTT } from './webvtt';
+import { parseTimestamp, parseWebVTT, applyCueSettings } from './webvtt';
 
 describe('parseTimestamp', () => {
   it('parses MM:SS.mmm and HH:MM:SS.mmm (any hours magnitude)', () => {
@@ -37,7 +37,7 @@ describe('parseWebVTT', () => {
     const { mapLocal, cues } = parseWebVTT(vtt);
     expect(mapLocal).toBe(10);
     expect(cues).toEqual([
-      { start: 10, end: 12, text: '<c.cyan>Hello</c>' },
+      { start: 10, end: 12, text: '<c.cyan>Hello</c>', settings: { line: 90, snapToLines: false } },
       { start: 12.5, end: 14, text: 'second line' },
     ]);
   });
@@ -75,5 +75,61 @@ describe('parseWebVTT', () => {
       '00:00:03.000 --> 00:00:04.000', 'Track 1',
     ].join('\n');
     expect(parseWebVTT(vtt).cues).toEqual([{ start: 3, end: 4, text: 'Track 1' }]);
+  });
+});
+
+describe('parseWebVTT cue settings', () => {
+  const cue = (settings: string) =>
+    parseWebVTT(`WEBVTT\n\n00:01.000 --> 00:03.000 ${settings}\nhi`).cues[0];
+
+  it('parses every positioning setting into a structured object', () => {
+    expect(cue('vertical:rl line:50% position:20% size:80% align:start')).toEqual({
+      start: 1, end: 3, text: 'hi',
+      settings: { vertical: 'rl', line: 50, snapToLines: false, position: 20, size: 80, align: 'start' },
+    });
+  });
+
+  it('treats a bare line number as a line index (snapToLines true)', () => {
+    expect(cue('line:5').settings).toEqual({ line: 5, snapToLines: true });
+  });
+
+  it('accepts a negative line number (count from the bottom)', () => {
+    expect(cue('line:-1').settings).toEqual({ line: -1, snapToLines: true });
+  });
+
+  it('reads the line/position alignment sub-settings', () => {
+    expect(cue('line:30%,end position:10%,line-left').settings).toEqual({
+      line: 30, snapToLines: false, lineAlign: 'end',
+      position: 10, positionAlign: 'line-left',
+    });
+  });
+
+  it('omits the settings field entirely when the cue has none', () => {
+    expect('settings' in cue('')).toBe(false);
+  });
+
+  it('ignores unknown names and malformed values', () => {
+    // region (no REGION-block support), unknown key, bad enum, non-numeric size
+    expect(cue('region:r1 foo:bar align:weird size:nan%').settings).toBeUndefined();
+  });
+});
+
+describe('applyCueSettings', () => {
+  it('assigns every defined field onto the cue', () => {
+    const target: Record<string, unknown> = {};
+    applyCueSettings(target, {
+      vertical: 'lr', line: 50, snapToLines: false, lineAlign: 'start',
+      position: 25, positionAlign: 'center', size: 90, align: 'end',
+    });
+    expect(target).toEqual({
+      vertical: 'lr', line: 50, snapToLines: false, lineAlign: 'start',
+      position: 25, positionAlign: 'center', size: 90, align: 'end',
+    });
+  });
+
+  it('touches only the provided fields', () => {
+    const target: Record<string, unknown> = { existing: 1 };
+    applyCueSettings(target, { align: 'start' });
+    expect(target).toEqual({ existing: 1, align: 'start' });
   });
 });

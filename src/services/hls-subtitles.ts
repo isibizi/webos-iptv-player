@@ -1,4 +1,4 @@
-import { parseWebVTT } from '../utils/webvtt';
+import { parseWebVTT, applyCueSettings } from '../utils/webvtt';
 import { createLogger } from '../utils/logger';
 
 const log = createLogger('Subs');
@@ -151,7 +151,13 @@ export class HlsSubtitles {
           if (this.addedKeys.has(key)) continue;
           this.addedKeys.set(key, wallMs);
           const start = wallToMediaSeconds(anchor, wallMs);
-          try { this.track.addCue(new VTTCue(start, start + (c.end - c.start), c.text)); added++; } catch { /* invalid */ }
+          try {
+            const cue = new VTTCue(start, start + (c.end - c.start), c.text);
+            // Carry the cue's WebVTT positioning (line/position/size/align/vertical);
+            // guard separately so an unsupported setter can't drop the caption text.
+            if (c.settings) { try { applyCueSettings(cue, c.settings); } catch { /* positioning unsupported */ } }
+            this.track.addCue(cue); added++;
+          } catch { /* invalid */ }
         }
       }
       this.seen = new Set([...this.seen].filter(u => windowUris.has(u))); // bound to the window

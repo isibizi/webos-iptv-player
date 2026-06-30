@@ -10,6 +10,7 @@
 //   settings.png       settings incl. the LAN-upload QR
 //   player.png         playback overlays: channel switcher + action menu
 //   channel-info.png   channel info bar (the OSD)
+//   subtitles.png      self-rendered WebVTT cues — ::cue colors + positioning
 //
 // Nothing here ships in the app or the .ipk; it is a dev-only tool.
 
@@ -22,6 +23,12 @@ import { join, extname } from 'node:path';
 const ROOT = process.cwd();
 const SHOTS = join(ROOT, 'screenshots');
 const SCALE = 1; // device pixel ratio — 1 = native 1920x1080 (no upsampling)
+
+// Radial "video frame" backdrop for the player shots (the fake stream can't decode
+// headless). One color pair, used as both a CSS gradient and a canvas gradient.
+const FRAME_INNER = '#182942';
+const FRAME_OUTER = '#0b0b12';
+const frameGradient = (at) => `radial-gradient(125% 110% at ${at}, ${FRAME_INNER} 0%, ${FRAME_OUTER} 62%)`;
 
 // Frozen clock: Friday 2026-06-12, 22:18 primetime (America/Los_Angeles).
 const TZ = 'America/Los_Angeles';
@@ -46,7 +53,7 @@ const GROUPS = [
     'Horizon News', 'Sentinel News', 'Meridian World', 'Atlas News', 'Frontier News',
     'Borealis News', 'Tribune 24']],
   ['Sports', 22, ['Apex Sports 1', 'Apex Sports 2', 'Tempo Sports', 'Stadium TV', 'Pitchside',
-    'Overtime', 'Pole Position', 'Centre Court', 'Endzone', 'Fastbreak', 'Matchday']],
+    'Overtime', 'Pole Position', 'Center Court', 'Endzone', 'Fastbreak', 'Matchday']],
   ['Movies', 32, ['Grand Cinema', 'Silver Screen', 'Reel One', 'Noir Classics', 'Indie Reel',
     'Big Screen', 'Matinee', "Director's Cut", 'Starlight Movies', 'Epic Films', 'Popcorn TV']],
   ['Series', 28, ['Binge TV', 'Primetime', 'Drama Lab', 'The Box Set', 'Serial', 'Marathon TV',
@@ -131,6 +138,18 @@ const MASTER_HLS_RICH = MASTER_HLS
 // error - trying next channel" and zap mid-screenshot.
 const EMPTY_LIVE = '#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:10\n#EXT-X-MEDIA-SEQUENCE:0\n';
 
+// Subtitle cues — each carries its own positioning (the VTTCue props applyCueSettings
+// sets; line is a % → snapToLines:false) and a <c.class> color, so one frame shows
+// ::cue colors + positioning.
+const SUBTITLE_CUES = [
+  { text: '<c.cyan>Top center</c> · line:6%', line: 6, snapToLines: false, position: 50, align: 'center' },
+  { text: '<c.yellow>Left</c> · position:5% align:start', line: 32, snapToLines: false, position: 5, align: 'start' },
+  { text: '<c.green>Right</c> · position:95% align:end', line: 50, snapToLines: false, position: 95, align: 'end' },
+  { text: '<c.magenta>Narrow box</c> · size:38%', line: 70, snapToLines: false, position: 50, align: 'center', size: 38 },
+  { text: '<c.blue>竖排字幕</c>', vertical: 'rl', line: 12, snapToLines: false, position: 88 },
+  { text: '<c.red>Default</c> — no settings (bottom center)' },
+];
+
 // ---------------------------------------------------------------------------
 // EPG (XMLTV)
 // ---------------------------------------------------------------------------
@@ -151,7 +170,7 @@ const HERO_SCHEDULE = [
   [17.25, 18.0, 'Brain Game', 'Quiz show in which contestants try to find the most obscure correct answers.'],
   [18.0, 19.0, 'Evening News', 'The latest national and international news, plus sport and weather.'],
   [19.0, 19.5, 'Tonight', 'Topical magazine show with celebrity guests and the stories of the day.'],
-  [19.5, 20.0, 'Riverside', 'Drama in a close-knit neighbourhood as tensions rise at the local pub.'],
+  [19.5, 20.0, 'Riverside', 'Drama in a close-knit neighborhood as tensions rise at the local pub.'],
   [20.0, 21.0, 'The Garden Show', 'Seasonal advice and inspiration from the team and their gardens.'],
   [21.0, 22.0, 'The Evening Debate', 'Topical debate from a different town each week with a panel of guests.'],
   [22.0, 22.5, 'Metro News at Ten', "The day's top stories with the latest analysis, plus sport and the weather forecast for the week ahead."],
@@ -169,7 +188,7 @@ function epgXml() {
     `<programme channel="${id}" start="${xmltvTime(start)}" stop="${xmltvTime(stop)}">` +
     `<title>${esc(title)}</title>${desc ? `<desc>${esc(desc)}</desc>` : ''}</programme>`;
 
-  // Hero channel: full day + neighbouring-day stubs so the date bar spans a week.
+  // Hero channel: full day + neighboring-day stubs so the date bar spans a week.
   for (const [s, e, title, desc] of HERO_SCHEDULE) {
     parts.push(prog('ch0', at(s), at(e), title, desc));
   }
@@ -422,7 +441,7 @@ try {
     await page.keyboard.press('ArrowLeft');  // ...open the channel switcher
     await page.locator('#player-sidebar.visible').waitFor({ state: 'visible' });
     await page.keyboard.press('ArrowDown');  // highlight the playing channel
-    await page.evaluate(() => {
+    await page.evaluate((bg) => {
       const v = document.getElementById('video-player');
       if (v) { v.classList.remove('active'); try { v.pause(); } catch { /* ignore */ } }
       // hls.js can't play the fake stream, so onError() re-shows #player-osd with a
@@ -442,8 +461,8 @@ try {
         menu.style.setProperty('transform', 'translateX(0)', 'important');
       }
       const vp = document.getElementById('view-player');
-      if (vp) vp.style.background = 'radial-gradient(125% 110% at 50% 28%, #182942 0%, #0b0b12 62%)';
-    });
+      if (vp) vp.style.background = bg;
+    }, frameGradient('50% 28%'));
     await clearToasts(page);
     await page.waitForTimeout(400);
     await shoot(page, 'player.png');
@@ -469,16 +488,66 @@ try {
     await page.keyboard.press('Enter');
     await page.locator('#player-osd .osd-programme-title').waitFor({ state: 'visible' });
     await page.waitForTimeout(1500);
-    await page.evaluate(() => {
+    await page.evaluate((bg) => {
       const v = document.getElementById('video-player');
       if (v) { v.classList.remove('active'); try { v.pause(); } catch { /* ignore */ } v.dispatchEvent(new Event('loadedmetadata')); }
       const vp = document.getElementById('view-player');
-      if (vp) vp.style.background = 'radial-gradient(125% 110% at 60% 32%, #182942 0%, #0b0b12 62%)';
-    });
+      if (vp) vp.style.background = bg;
+    }, frameGradient('60% 32%'));
     await clearToasts(page);
     await page.waitForTimeout(400);
     await shoot(page, 'channel-info.png');
     console.log('  channel-info.png');
+    await context.close();
+  }
+
+  // 6) Subtitles — self-rendered WebVTT cues drawn by Blink's `::cue` (see hls-subtitles.md):
+  //    <c.class> colors + positioning. Feed the <video> a canvas frame (can't decode headless),
+  //    then inject `showing` cues like HlsSubtitles does.
+  {
+    const { context, page } = await newPage({ fakeStream: true });
+    await gotoChannels(page, base);
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('Enter');
+    await page.locator('#player-osd .osd-programme-title').waitFor({ state: 'visible' });
+    // Clear the OSD for a clean frame, and keep the fake-stream error path from
+    // re-showing it (!important beats that show(), as in the player.png collage).
+    await page.evaluate(() => {
+      const hide = document.createElement('style');
+      hide.textContent = '#player-osd{display:none !important}';
+      document.head.appendChild(hide);
+    });
+    await page.evaluate(async ({ cues, inner, outer }) => {
+      const v = document.getElementById('video-player');
+      if (!v) return;
+      const canvas = document.createElement('canvas');
+      canvas.width = 1920; canvas.height = 1080;
+      const c = canvas.getContext('2d');
+      const g = c.createRadialGradient(960, 302, 80, 960, 540, 1200);
+      g.addColorStop(0, inner); g.addColorStop(1, outer);
+      c.fillStyle = g; c.fillRect(0, 0, 1920, 1080);
+      const stream = canvas.captureStream(8);
+      v.srcObject = stream;
+      v.muted = true;
+      v.classList.add('active');
+      await v.play().catch(() => { /* ignore */ });
+      await new Promise((r) => setTimeout(r, 500)); // let a few frames flow (readyState↑)
+      const track = v.addTextTrack('subtitles', 'Subtitles', 'en');
+      track.mode = 'showing';
+      for (const cue of cues) {
+        const x = new VTTCue(0, 1e6, cue.text);
+        for (const k of ['vertical', 'line', 'snapToLines', 'position', 'size', 'align']) {
+          if (cue[k] !== undefined) x[k] = cue[k];
+        }
+        track.addCue(x);
+      }
+      v.pause();
+      stream.getTracks().forEach((tr) => tr.stop()); // freeze the canvas frame for capture
+    }, { cues: SUBTITLE_CUES, inner: FRAME_INNER, outer: FRAME_OUTER });
+    await clearToasts(page);
+    await page.waitForTimeout(400);
+    await shoot(page, 'subtitles.png');
+    console.log('  subtitles.png');
     await context.close();
   }
 
