@@ -6,15 +6,17 @@ An IPTV player for LG webOS TVs. Supports M3U playlists, XMLTV programme guides,
 
 ## Preview
 
-![Channel list](https://github.com/user-attachments/assets/b9ae3b70-9ae0-42ad-acec-6c086d506826)
+| Channel list | Channel info |
+| --- | --- |
+| ![Channel list](https://github.com/user-attachments/assets/b9ae3b70-9ae0-42ad-acec-6c086d506826) | ![Channel info](https://github.com/user-attachments/assets/d07dfaa8-b191-4f60-bca5-ee266e1fa88a) |
+
+| Playback overlays | Subtitles |
+| --- | --- |
+| ![Playback overlays](https://github.com/user-attachments/assets/f48d7a56-33d1-4d5b-ab44-dbcfa1769930) | ![Subtitles](https://github.com/user-attachments/assets/5d1fab57-1087-414b-9a20-f900589eac4a) |
 
 | Programme guide | Settings |
 | --- | --- |
 | ![Programme guide](https://github.com/user-attachments/assets/887acb03-a7a6-4a12-986e-f1f9054c6d6c) | ![Settings](https://github.com/user-attachments/assets/107d2879-8e9a-4dd1-9b99-1cb1100a392a) |
-
-| Playback overlays | Channel info |
-| --- | --- |
-| ![Playback overlays](https://github.com/user-attachments/assets/f48d7a56-33d1-4d5b-ab44-dbcfa1769930) | ![Channel info](https://github.com/user-attachments/assets/bd3401d9-728c-499b-b7d1-bb8b057b5786) |
 
 ## Features
 
@@ -27,12 +29,12 @@ An IPTV player for LG webOS TVs. Supports M3U playlists, XMLTV programme guides,
 - **Group Icons** — Channel groups show genre icons (sports, news, kids, movies, music, …) auto-matched from the group title across many languages, with a generic fallback for unmatched groups
 - **Magic Remote Support** — Pointer-driven navigation for sidebar, menu, and channel selection
 - **Spatial Navigation** — Full D-pad/remote navigation across all views
-- **On-Screen Display** — Channel info bar with programme title, progress timeline, and timestamps
+- **On-Screen Display** — Channel info bar with programme title, progress timeline, and timestamps, plus a live stream-info readout (resolution, HDR, frame rate, video/audio codec, audio channels, and subtitles) detected from the playing stream
 - **Favorites** — Mark and filter favorite channels
 - **Auto-play** — Resume last watched channel on startup
 - **HDR & Dolby passthrough (native pipeline)** — On the TV, playback hands the stream straight to the native `<video>` element instead of a JavaScript player, so the set's hardware decoder handles it end-to-end. HDR10, HLG, Dolby Vision®, and Dolby Atmos® therefore pass through untouched whenever the stream carries them and your TV supports them — the app neither adds nor strips them; it gets this for free by staying out of the media path. (Desktop preview uses software HLS/TS players and won't.) See [`docs/native-vs-hls.js.md`](docs/native-vs-hls.js.md)
 - **Audio tracks** — Pick an audio track from the player menu; your choice is remembered per channel and re-matched by name or language on future streams, with track names read from the stream's master playlist
-- **Subtitles** — Pick a subtitle track from the player menu; your choice — including an explicit *off* — is remembered per channel. On the TV the app self-renders in-manifest WebVTT subtitles (webOS won't expose them as selectable tracks), time-synced to the video, with track names read from the stream
+- **Subtitles** — Pick a subtitle track from the player menu; your choice — including an explicit *off* — is remembered per channel. On the TV the app self-renders in-manifest WebVTT subtitles (webOS won't expose them as selectable tracks), time-synced to the video and honoring each cue's on-screen position and speaker colors, with track names read from the stream
 - **Desktop Preview** — Browser-based preview with HLS.js and mpegts.js fallbacks
 
 ## Supported webOS versions
