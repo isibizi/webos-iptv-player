@@ -1,10 +1,12 @@
 import type { Action, PlaylistEntry, TzMode } from '../types';
-import { $, $$, html, raw } from '../utils/dom';
+import { $, $$, html, raw, type Safe } from '../utils/dom';
 import { morph } from '../utils/morph';
 import { SpatialNav } from '../navigation/spatial-nav';
 import { StorageService } from '../services/storage-service';
 import { clearCachedEpg } from '../services/idb-cache';
 import { UploadClient, uploadIdFromUrl } from '../services/upload-client';
+import { createXtreamClient } from '../services/xtream-client';
+import { normalizeXtreamBaseUrl } from '../utils/xtream-url';
 import { genPlaylistId } from '../utils/playlist-id';
 import { CONFIG } from '../config';
 import { showToast } from './toast';
@@ -46,6 +48,49 @@ function toggleGroup(id: string, options: { value: string; label: string }[], ac
     </div>`;
 }
 
+/** One editable Xtream account: its four credential fields grouped in a card
+ *  keyed by the entry's stable id. Untrusted values interpolate through `html`. */
+function xtreamCard(pl: Partial<PlaylistEntry>) {
+  return html`
+    <div class="xtream-card" data-id="${pl.id || ''}">
+      <div class="xtream-fields">
+        <div class="settings-field">
+          <label>Label</label>
+          <input type="text" class="settings-input xtream-name" data-focusable
+                 aria-label="Account label" placeholder="My Provider" value="${pl.name || ''}">
+        </div>
+        <div class="settings-field wide">
+          <label>Server URL</label>
+          <input type="text" class="settings-input xtream-url" data-focusable
+                 aria-label="Server URL" placeholder="http://host:port" value="${pl.url || ''}">
+        </div>
+        <div class="settings-field">
+          <label>Username</label>
+          <input type="text" class="settings-input xtream-username" data-focusable
+                 aria-label="Username" placeholder="username" value="${pl.xtream?.username || ''}">
+        </div>
+        <div class="settings-field">
+          <label>Password</label>
+          <input type="password" class="settings-input xtream-password" data-focusable
+                 aria-label="Password" placeholder="password" value="${pl.xtream?.password || ''}">
+        </div>
+      </div>
+      <div class="xtream-card-foot">
+        <button class="btn btn-secondary check-xtream" data-focusable>Check</button>
+        <button class="btn btn-danger remove-xtream" data-focusable>Remove</button>
+        <div class="xtream-status"></div>
+      </div>
+    </div>`;
+}
+
+/** "expires 2026-08-01" (UTC) or "never expires" for a unix-seconds expiry. */
+function formatExpiry(expiresAt: number | null): string {
+  if (expiresAt === null) return 'never expires';
+  const d = new Date(expiresAt * 1000);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `expires ${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`;
+}
+
 /** What the app does after Settings closes: reload = re-fetch playlist/EPG;
  *  apply = re-render for display-only changes; cancel = discard. */
 export type SaveAction = 'reload' | 'apply' | 'cancel';
@@ -85,7 +130,8 @@ export class Settings {
 
   render(): void {
     const allPlaylists = StorageService.getPlaylists();
-    const playlists = allPlaylists.filter(pl => pl.source !== 'upload');
+    const playlists = allPlaylists.filter(pl => pl.source !== 'upload' && pl.source !== 'xtream');
+    const accounts = allPlaylists.filter(pl => pl.source === 'xtream');
     const uploads = allPlaylists.filter(pl => pl.source === 'upload');
     const epgUrl = StorageService.getEpgUrl();
     const autoPlay = StorageService.getAutoPlay();
@@ -95,6 +141,16 @@ export class Settings {
     this.container.innerHTML = String(html`
       <div class="settings-view">
         <h2 class="settings-title">Settings</h2>
+
+        <div class="settings-section">
+          <h3>Xtream Account</h3>
+          <div class="xtream-entries" id="xtream-entries">
+            ${accounts.length
+              ? html`${accounts.map((pl) => xtreamCard(pl))}`
+              : raw('<div class="empty-hint">No Xtream accounts added yet</div>')}
+          </div>
+          <button class="btn btn-primary" data-focusable id="add-xtream">+ Add Xtream Account</button>
+        </div>
 
         <div class="settings-section">
           <h3>Playlists</h3>
@@ -162,7 +218,7 @@ export class Settings {
         <div class="settings-section">
           <h3>Display</h3>
           <div class="settings-row settings-toggle-row">
-            <label>Programme time zone</label>
+            <label>Program time zone</label>
             ${toggleGroup('tz-mode', [{ value: 'device', label: 'Device' }, { value: 'feed', label: 'Feed' }], feedTime ? 'feed' : 'device')}
           </div>
           <div class="empty-hint">
@@ -230,6 +286,12 @@ export class Settings {
       this.addPlaylistEntry();
     } else if (el.classList.contains('remove-playlist')) {
       this.removePlaylistEntry(el);
+    } else if (el.id === 'add-xtream') {
+      this.addXtreamEntry();
+    } else if (el.classList.contains('remove-xtream')) {
+      this.removeXtreamEntry(el);
+    } else if (el.classList.contains('check-xtream')) {
+      void this.checkXtreamAccount(el);
     } else if (el.classList.contains('remove-upload')) {
       void this.removeUpload(el.dataset.url!);
     } else if (el.classList.contains('toggle-option')) {
@@ -321,6 +383,83 @@ export class Settings {
     this.nav.focusFirst();
   }
 
+  private addXtreamEntry(): void {
+    const entries = $('#xtream-entries', this.container);
+    if (!entries) return;
+    entries.querySelector('.empty-hint')?.remove();
+
+    // Build the card off-DOM from the trusted template, then attach it. The
+    // seeded id gives morph/save a stable key from the moment it's created.
+    const tmp = document.createElement('div');
+    tmp.innerHTML = String(xtreamCard({ id: genPlaylistId() }));
+    const card = tmp.firstElementChild as HTMLElement | null;
+    if (!card) return;
+    entries.appendChild(card);
+
+    const firstInput = card.querySelector<HTMLInputElement>('input');
+    if (firstInput) {
+      this.nav.focus(firstInput);
+      firstInput.focus();
+    }
+  }
+
+  private removeXtreamEntry(removeBtn: HTMLElement): void {
+    const entries = $('#xtream-entries', this.container);
+    if (!entries) return;
+    // Remove the card the clicked button sits in (closest), independent of order.
+    removeBtn.closest('.xtream-card')?.remove();
+    if (entries.querySelectorAll('.xtream-card').length === 0) {
+      const e = document.createElement('div');
+      e.className = 'empty-hint';
+      e.textContent = 'No Xtream accounts added yet';
+      entries.appendChild(e);
+    }
+    this.nav.focusFirst();
+  }
+
+  /**
+   * Verify a card's current (unsaved) credentials via get_account_info and show
+   * the result inline, so the user can confirm before saving. Re-resolves the
+   * status node after the await in case the view re-rendered, and never blocks
+   * the rest of the form.
+   */
+  private async checkXtreamAccount(btn: HTMLElement): Promise<void> {
+    const card = btn.closest<HTMLElement>('.xtream-card');
+    if (!card) return;
+    const id = card.dataset.id || '';
+    const url = card.querySelector<HTMLInputElement>('.xtream-url')!.value.trim();
+    const username = card.querySelector<HTMLInputElement>('.xtream-username')!.value.trim();
+    const password = card.querySelector<HTMLInputElement>('.xtream-password')!.value;
+    if (!url || !username || !password) {
+      this.setXtreamStatus(id, html`Enter server, username and password first.`, 'err');
+      return;
+    }
+
+    this.setXtreamStatus(id, html`Checking\u2026`, '');
+    const info = await createXtreamClient({ baseUrl: url, username, password }).getAccountInfo();
+    if (!info) {
+      this.setXtreamStatus(id, html`Couldn\u2019t verify account.`, 'err');
+      return;
+    }
+    if (!info.auth) {
+      this.setXtreamStatus(id, html`Login failed \u2014 check credentials.`, 'err');
+      return;
+    }
+    const status = info.status || 'Active';
+    this.setXtreamStatus(
+      id,
+      html`${status} \u00b7 ${formatExpiry(info.expiresAt)} \u00b7 ${info.activeConnections}/${info.maxConnections} connections`,
+      'ok',
+    );
+  }
+
+  private setXtreamStatus(id: string, content: Safe, cls: '' | 'ok' | 'err'): void {
+    const el = $(`#xtream-entries .xtream-card[data-id="${id}"] .xtream-status`, this.container);
+    if (!el) return;
+    el.className = 'xtream-status' + (cls ? ` ${cls}` : '');
+    morph(el, content);
+  }
+
   private save(): void {
     // Read row-by-row so each row's stable id (data-id) is preserved; a row
     // added before this build has none, so mint one.
@@ -339,11 +478,33 @@ export class Settings {
       });
     }
 
-    // Preserve auto-managed uploaded playlists (not shown in the URL editor).
+    // Xtream accounts derive their get.php/xmltv.php URLs from these credentials
+    // at load time; the base URL is normalized so a bare host still resolves.
+    const accounts: PlaylistEntry[] = [];
+    const cards = $$('#xtream-entries .xtream-card', this.container) as HTMLElement[];
+    for (const card of cards) {
+      const rawUrl = card.querySelector<HTMLInputElement>('.xtream-url')!.value.trim();
+      const username = card.querySelector<HTMLInputElement>('.xtream-username')!.value.trim();
+      const password = card.querySelector<HTMLInputElement>('.xtream-password')!.value;
+      if (!rawUrl || !username || !password) continue;
+      const base = normalizeXtreamBaseUrl(rawUrl);
+      const name = card.querySelector<HTMLInputElement>('.xtream-name')!.value.trim();
+      accounts.push({
+        id: card.dataset.id || genPlaylistId(),
+        name: name || base.replace(/^https?:\/\//i, ''),
+        url: base,
+        source: 'xtream',
+        xtream: { username, password },
+      });
+    }
+
+    const nonUpload = [...playlists, ...accounts];
+
+    // Preserve auto-managed uploaded playlists (not shown in the editors above).
     const stored = StorageService.getPlaylists();
-    const prevUrls = stored.filter(pl => pl.source !== 'upload');
+    const prevNonUpload = stored.filter(pl => pl.source !== 'upload');
     const uploads = stored.filter(pl => pl.source === 'upload');
-    StorageService.setPlaylists([...playlists, ...uploads]);
+    StorageService.setPlaylists([...nonUpload, ...uploads]);
 
     const epgInput = $('#epg-url', this.container) as HTMLInputElement | null;
     const prevEpg = StorageService.getEpgUrl();
@@ -356,10 +517,12 @@ export class Settings {
     const tzModeBtn = $('#tz-mode .toggle-option.active', this.container);
     if (tzModeBtn?.dataset.value) StorageService.setTzMode(tzModeBtn.dataset.value as TzMode);
 
-    // Only a playlist or EPG-URL change needs a re-fetch; display-only settings
-    // (time zone, auto-play) just re-render in place.
-    const sig = (l: PlaylistEntry[]) => JSON.stringify(l.map(pl => [pl.id, pl.name, pl.url]));
-    const dataChanged = epgUrl !== prevEpg || sig(prevUrls) !== sig(playlists);
+    // Only a playlist/account or EPG-URL change needs a re-fetch; display-only
+    // settings (time zone, auto-play) just re-render in place. Xtream credentials
+    // are part of the signature so editing a username/password reloads too.
+    const sig = (l: PlaylistEntry[]) =>
+      JSON.stringify(l.map(pl => [pl.id, pl.name, pl.url, pl.xtream?.username, pl.xtream?.password]));
+    const dataChanged = epgUrl !== prevEpg || sig(prevNonUpload) !== sig(nonUpload);
     this.onSave(dataChanged ? 'reload' : 'apply');
   }
 

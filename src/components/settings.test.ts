@@ -1,10 +1,18 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { TzMode } from '../types';
+import type { XtreamAccountInfo } from '../services/xtream-client';
 
-const { state, storageMock, toastMock, uploadMock } = vi.hoisted(() => {
+const { state, storageMock, toastMock, uploadMock, xtreamMock } = vi.hoisted(() => {
   const state = {
-    playlists: [] as { name: string; url: string; source?: 'upload' | 'url' }[],
+    playlists: [] as {
+      id?: string;
+      name: string;
+      url: string;
+      source?: 'upload' | 'url' | 'xtream';
+      count?: number;
+      xtream?: { username: string; password: string };
+    }[],
     epg: '',
     autoPlay: false,
     tzMode: 'device' as TzMode,
@@ -33,12 +41,20 @@ const { state, storageMock, toastMock, uploadMock } = vi.hoisted(() => {
       remove: vi.fn(async () => true),
       reconcile: vi.fn(async () => undefined),
     },
+    // Default to "unverifiable" so a stray Check is inert; tests opt in with
+    // mockResolvedValueOnce. Never touches the network.
+    xtreamMock: {
+      getAccountInfo: vi.fn(async (): Promise<XtreamAccountInfo | null> => null),
+    },
   };
 });
 
 vi.mock('../services/storage-service', () => ({ StorageService: storageMock }));
 vi.mock('../services/idb-cache', () => ({ clearCachedEpg: vi.fn(async () => {}) }));
 vi.mock('./toast', () => ({ showToast: toastMock.showToast }));
+vi.mock('../services/xtream-client', () => ({
+  createXtreamClient: () => ({ getAccountInfo: xtreamMock.getAccountInfo }),
+}));
 vi.mock('../services/upload-client', () => ({
   UploadClient: uploadMock,
   uploadIdFromUrl: (url: string) => {
@@ -75,7 +91,7 @@ function click(selector: string): void {
 describe('Settings.render', () => {
   it('shows an empty hint when there are no playlists', () => {
     settings.render();
-    expect(container.querySelector('.empty-hint')?.textContent).toBe('No playlists added yet');
+    expect(container.querySelector('#playlist-entries .empty-hint')?.textContent).toBe('No playlists added yet');
   });
 
   it('renders a row per configured playlist with its values', () => {
@@ -525,5 +541,204 @@ describe('Settings listener lifecycle', () => {
     expect(count('nav:hover')).toBe(1);
     expect(count('keydown')).toBe(1);
     expect(count('click')).toBe(1);
+  });
+});
+
+describe('Settings Xtream section', () => {
+  it('renders credential fields with stored values for an xtream account', () => {
+    state.playlists = [{
+      id: 'x1', name: 'My Provider', url: 'http://host:8080',
+      source: 'xtream', xtream: { username: 'user1', password: 'pass1' },
+    }];
+    settings.render();
+    const card = container.querySelector('#xtream-entries .xtream-card')!;
+    expect(card).not.toBeNull();
+    expect(card.querySelector<HTMLInputElement>('.xtream-name')!.value).toBe('My Provider');
+    expect(card.querySelector<HTMLInputElement>('.xtream-url')!.value).toBe('http://host:8080');
+    expect(card.querySelector<HTMLInputElement>('.xtream-username')!.value).toBe('user1');
+    const pw = card.querySelector<HTMLInputElement>('.xtream-password')!;
+    expect(pw.value).toBe('pass1');
+    expect(pw.type).toBe('password');
+  });
+
+  it('keeps xtream accounts out of the M3U Playlists list', () => {
+    state.playlists = [
+      { id: 'p1', name: 'M3U', url: 'http://m3u', source: 'url' },
+      { id: 'x1', name: 'Acct', url: 'http://host:8080', source: 'xtream', xtream: { username: 'u', password: 'p' } },
+    ];
+    settings.render();
+    const rows = container.querySelectorAll('#playlist-entries .settings-row:not(.playlist-header-row)');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].querySelector<HTMLInputElement>('.playlist-url')!.value).toBe('http://m3u');
+    expect(container.querySelectorAll('#xtream-entries .xtream-card')).toHaveLength(1);
+  });
+
+  it('shows the empty hint when no xtream accounts are configured', () => {
+    state.playlists = [];
+    settings.render();
+    expect(container.querySelector('#xtream-entries .xtream-card')).toBeNull();
+    expect(container.querySelector('#xtream-entries .empty-hint')?.textContent)
+      .toBe('No Xtream accounts added yet');
+    expect(container.querySelector<HTMLElement>('#add-xtream')).not.toBeNull();
+  });
+
+  it('renders the Xtream Account section first, above Playlists', () => {
+    settings.render();
+    const heads = Array.from(container.querySelectorAll('.settings-section h3'))
+      .map((h) => h.textContent);
+    expect(heads[0]).toBe('Xtream Account');
+    expect(heads.indexOf('Xtream Account')).toBeLessThan(heads.indexOf('Playlists'));
+  });
+
+  it('adds a blank xtream card and drops the empty hint', () => {
+    state.playlists = [];
+    settings.render();
+    expect(container.querySelector<HTMLElement>('#add-xtream')).not.toBeNull();
+    click('#add-xtream');
+    expect(container.querySelectorAll('#xtream-entries .xtream-card')).toHaveLength(1);
+    expect(container.querySelector('#xtream-entries .empty-hint')).toBeNull();
+    const card = container.querySelector('#xtream-entries .xtream-card')!;
+    expect(card.querySelector<HTMLElement>('.xtream-card')).toBeNull(); // one card, not nested
+    expect(card.getAttribute('data-id')).toBeTruthy(); // seeded a stable id
+  });
+
+  it('removes an xtream card and restores the empty hint when the last one goes', () => {
+    state.playlists = [
+      { id: 'x1', name: 'Acct', url: 'http://host:8080', source: 'xtream', xtream: { username: 'u', password: 'p' } },
+    ];
+    settings.render();
+    expect(container.querySelectorAll('#xtream-entries .xtream-card')).toHaveLength(1);
+    click('#xtream-entries .remove-xtream');
+    expect(container.querySelectorAll('#xtream-entries .xtream-card')).toHaveLength(0);
+    expect(container.querySelector('#xtream-entries .empty-hint')?.textContent)
+      .toBe('No Xtream accounts added yet');
+  });
+
+  it('removes only the card whose button was clicked', () => {
+    state.playlists = [
+      { id: 'x1', name: 'A', url: 'http://a:8080', source: 'xtream', xtream: { username: 'u', password: 'p' } },
+      { id: 'x2', name: 'B', url: 'http://b:8080', source: 'xtream', xtream: { username: 'u', password: 'p' } },
+    ];
+    settings.render();
+    const cardB = Array.from(container.querySelectorAll<HTMLElement>('#xtream-entries .xtream-card'))
+      .find(c => c.dataset.id === 'x1')!; // remove the first
+    cardB.querySelector<HTMLElement>('.remove-xtream')!
+      .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    const remaining = Array.from(container.querySelectorAll<HTMLElement>('#xtream-entries .xtream-card'));
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0].dataset.id).toBe('x2');
+  });
+
+  function fillCard(card: HTMLElement, v: { name?: string; url?: string; user?: string; pass?: string }): void {
+    if (v.name !== undefined) card.querySelector<HTMLInputElement>('.xtream-name')!.value = v.name;
+    if (v.url !== undefined) card.querySelector<HTMLInputElement>('.xtream-url')!.value = v.url;
+    if (v.user !== undefined) card.querySelector<HTMLInputElement>('.xtream-username')!.value = v.user;
+    if (v.pass !== undefined) card.querySelector<HTMLInputElement>('.xtream-password')!.value = v.pass;
+  }
+
+  it('saves a complete card as a source:xtream entry (normalized url) and reloads', () => {
+    state.playlists = [{ id: 'p1', name: 'M3U', url: 'http://m3u', source: 'url' }];
+    settings.render();
+    click('#add-xtream');
+    const card = container.querySelector<HTMLElement>('#xtream-entries .xtream-card')!;
+    fillCard(card, { name: 'My Provider', url: 'host:8080/', user: 'user1', pass: 'pass1' });
+    const id = card.dataset.id!;
+
+    click('#save-settings');
+
+    expect(storageMock.setPlaylists).toHaveBeenCalledWith([
+      { id: 'p1', name: 'M3U', url: 'http://m3u', source: 'url' },
+      { id, name: 'My Provider', url: 'http://host:8080', source: 'xtream', xtream: { username: 'user1', password: 'pass1' } },
+    ]);
+    expect(onSave).toHaveBeenCalledWith('reload');
+  });
+
+  it('falls back to the host as the label when none is given', () => {
+    state.playlists = [];
+    settings.render();
+    click('#add-xtream');
+    const card = container.querySelector<HTMLElement>('#xtream-entries .xtream-card')!;
+    fillCard(card, { url: 'http://host:8080', user: 'u', pass: 'p' });
+    click('#save-settings');
+    const saved = storageMock.setPlaylists.mock.calls.at(-1)![0] as { name: string }[];
+    expect(saved).toHaveLength(1);
+    expect(saved[0].name).toBe('host:8080');
+  });
+
+  it('skips an incomplete card (missing a credential) rather than persist a broken account', () => {
+    state.playlists = [];
+    settings.render();
+    click('#add-xtream'); // complete
+    click('#add-xtream'); // missing password
+    const cards = container.querySelectorAll<HTMLElement>('#xtream-entries .xtream-card');
+    fillCard(cards[0], { name: 'A', url: 'http://a:8080', user: 'u', pass: 'p' });
+    fillCard(cards[1], { name: 'B', url: 'http://b:8080', user: 'u', pass: '' });
+    click('#save-settings');
+    const saved = storageMock.setPlaylists.mock.calls.at(-1)![0] as { name: string; source?: string }[];
+    const xtream = saved.filter(p => p.source === 'xtream');
+    expect(xtream).toHaveLength(1);
+    expect(xtream[0].name).toBe('A');
+  });
+
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+
+  it('Check shows status, expiry and connections for a verified account', async () => {
+    state.playlists = [
+      { id: 'x1', name: 'Acct', url: 'http://host:8080', source: 'xtream', xtream: { username: 'u', password: 'p' } },
+    ];
+    settings.render();
+    xtreamMock.getAccountInfo.mockResolvedValueOnce({
+      auth: true, status: 'Active', expiresAt: 1786000000, maxConnections: 2, activeConnections: 1,
+    });
+    click('#xtream-entries .check-xtream');
+    await flush();
+    const status = container.querySelector('#xtream-entries .xtream-status')!;
+    expect(status.classList.contains('ok')).toBe(true);
+    expect(status.textContent).toContain('Active');
+    expect(status.textContent).toMatch(/expires \d{4}-\d{2}-\d{2}/);
+    expect(status.textContent).toContain('1/2');
+  });
+
+  it('Check reports a login failure for auth:0', async () => {
+    state.playlists = [
+      { id: 'x1', name: 'Acct', url: 'http://host:8080', source: 'xtream', xtream: { username: 'u', password: 'p' } },
+    ];
+    settings.render();
+    xtreamMock.getAccountInfo.mockResolvedValueOnce({
+      auth: false, status: '', expiresAt: null, maxConnections: 0, activeConnections: 0,
+    });
+    click('#xtream-entries .check-xtream');
+    await flush();
+    const status = container.querySelector('#xtream-entries .xtream-status')!;
+    expect(status.classList.contains('err')).toBe(true);
+    expect(status.textContent).toContain('Login failed');
+  });
+
+  it('Check prompts to complete the fields when a credential is missing, without a lookup', async () => {
+    state.playlists = [];
+    settings.render();
+    click('#add-xtream');
+    const card = container.querySelector<HTMLElement>('#xtream-entries .xtream-card')!;
+    fillCard(card, { url: 'http://host:8080', user: 'u', pass: '' }); // no password
+    card.querySelector<HTMLElement>('.check-xtream')!
+      .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await flush();
+    expect(xtreamMock.getAccountInfo).not.toHaveBeenCalled();
+    const status = card.querySelector('.xtream-status')!;
+    expect(status.classList.contains('err')).toBe(true);
+    expect(status.textContent).toContain('server, username and password');
+  });
+
+  it('Check reports a verify failure when the panel is unreachable (null)', async () => {
+    state.playlists = [
+      { id: 'x1', name: 'Acct', url: 'http://host:8080', source: 'xtream', xtream: { username: 'u', password: 'p' } },
+    ];
+    settings.render();
+    xtreamMock.getAccountInfo.mockResolvedValueOnce(null);
+    click('#xtream-entries .check-xtream');
+    await flush();
+    const status = container.querySelector('#xtream-entries .xtream-status')!;
+    expect(status.classList.contains('err')).toBe(true);
+    expect(status.textContent).toContain('verify');
   });
 });

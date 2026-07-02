@@ -132,8 +132,13 @@ export const KeyHandler = {
       // already consumed it by removing the element (e.g. settings "Remove"
       // deletes its row) — its `.settings-view` ancestor is gone, so the guard
       // below would miss it and fire a spurious select that deletes a second row.
+      //
+      // `.settings-btn` (the channels gear) self-handles its click to open
+      // Settings; it lives in the channels view, so without listing it here the
+      // deferred select would leak into the freshly-opened Settings and "press"
+      // its first focusable.
       const t = e.target as HTMLElement;
-      if (!t.isConnected || t.closest('.player-sidebar, .player-menu, .settings-view')) return;
+      if (!t.isConnected || t.closest('.player-sidebar, .player-menu, .settings-view, .settings-btn')) return;
       const target = t.closest<HTMLElement>('[data-focusable]');
       if (target && activeHandler) {
         target.dispatchEvent(new CustomEvent('nav:hover', { bubbles: true }));

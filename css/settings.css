@@ -185,5 +185,42 @@
   border-color: var(--accent);
   color: var(--bg-primary);
   font-weight: 600;
-  z-index: 1; /* lift the accent border above the neighbouring option */
+  z-index: 1; /* lift the accent border above the neighboring option */
 }
+
+/* Xtream accounts: a card per account so its four credential fields, the
+   Check/Remove actions and the inline status line stay grouped. */
+.xtream-card {
+  padding: 20px;
+  margin-bottom: 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.xtream-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.xtream-fields .settings-field { flex: 1 1 220px; }
+.xtream-fields .settings-field.wide { flex: 2 1 320px; }
+
+.xtream-card-foot {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.xtream-status {
+  flex: 1;
+  min-width: 0;
+  font-size: 18px;
+  color: var(--text-muted);
+  word-break: break-word;
+}
+
+.xtream-status.ok { color: var(--accent); }
+.xtream-status.err { color: var(--danger); }
