@@ -1,6 +1,6 @@
 # webOS IPTV Player
 
-An IPTV player for LG webOS TVs. Supports M3U playlists, XMLTV program guides, and catch-up/timeshift playback.
+An IPTV player for LG webOS TVs. Supports M3U playlists, Xtream Codes accounts, XMLTV program guides, and catch-up/timeshift playback.
 
 ![icon](assets/icon.svg)
 
@@ -21,9 +21,11 @@ An IPTV player for LG webOS TVs. Supports M3U playlists, XMLTV program guides, a
 ## Features
 
 - **M3U Playlist Support** — Load multiple M3U/M3U8 playlists with auto-deduplication
+- **Xtream Codes Accounts** — Add an Xtream account (portal URL + username + password) in Settings; the app derives the `get.php` playlist and `xmltv.php` EPG from your credentials automatically
 - **LAN M3U Upload** — Drop `.m3u` files onto the TV from any phone/laptop on the same network via a QR-scannable upload page; new playlists appear in Settings within milliseconds (push, not polling). See [`upload-service/README.md`](upload-service/README.md) for details.
 - **Electronic Program Guide (EPG)** — Three-pane layout (channels / date bar / programs), date range auto-derived from EPG data, with IndexedDB caching for instant reopen
 - **Catch-up / Timeshift** — Play past programs using `catchup-source` URL templates from M3U; seek within a program by jumping ±30s with Left/Right (while the OSD is showing) or pointing at the seek bar with the Magic Remote
+- **Live DVR** — Pause, rewind, and jump back to the live edge within the window a live stream retains — a scrubber with a "behind live" offset and a Go-to-Live control, shown automatically when the stream exposes a seekable window. Works with the D-pad/OK and the Magic Remote pointer; hardware transport keys act as accelerators where present
 - **Channel Search** — Find channels by name from both the channel list and the player sidebar; focus the search box and press OK to type. Search spans all groups and is scoped to the selected playlist tab
 - **Channel Sidebar** — Quick channel switching overlay with current program info and auto-scrolling text
 - **Group Icons** — Channel groups show genre icons (sports, news, kids, movies, music, …) auto-matched from the group title across many languages, with a generic fallback for unmatched groups
@@ -130,6 +132,7 @@ Opens at http://localhost:3000. Video playback uses HLS.js/mpegts.js on desktop 
 
 Open with the **Blue** key or click the gear icon in the channel list. Sections:
 
+- **Xtream Account** — add, edit, or remove Xtream Codes accounts (portal URL + username + password). The playlist and EPG are derived from your credentials on Save.
 - **Playlists** — add, edit, or remove M3U URLs. Re-applied on Save.
 - **Upload Playlist** — QR code + LAN URL on the left, list of currently uploaded playlists on the right. Scan the QR from a phone/laptop on the same network to upload `.m3u` files; they appear in this list within milliseconds via Luna push.
 - **EPG (Electronic Program Guide)** — set the XMLTV URL (also auto-detected from `x-tvg-url` in M3U).
@@ -143,13 +146,15 @@ Open with the **Blue** key or click the gear icon in the channel list. Sections:
 | Key | Player | Channel List | EPG |
 |-----|--------|-------------|-----|
 | Up/Down | Channel +/- | Navigate | Navigate within pane |
-| Left | Open sidebar / seek −30s (catch-up) | — | Back to channels / previous day |
-| Right | Open menu / seek +30s (catch-up) | — | To programs / next day |
-| OK/Enter | Toggle OSD | Select channel / Open settings (gear) | Play channel / program (catch-up if past) |
+| Left | Open sidebar / seek −30s (catch-up or live DVR) | — | Back to channels / previous day |
+| Right | Open menu / seek +30s (catch-up or live DVR) | — | To programs / next day |
+| OK/Enter | Toggle OSD (pause/resume on live DVR) | Select channel / Open settings (gear) | Play channel / program (catch-up if past) |
 | Back | Stop & return | Exit app (press twice) | Close guide |
 | Red | Open EPG | Open EPG | — |
 | Blue | Open settings | Open settings | Close guide |
 | Yellow | Show OSD | — | — |
 | Green | Toggle favorite (in sidebar/menu) | Toggle favorite (on focused channel) | Jump to today |
+| Play/Pause | Pause/resume (live DVR) | — | — |
+| Rewind/Fast-Forward | To oldest / Go to live (live DVR) | — | — |
 | Ch +/- | Channel +/- | Page up/down | Jump 10 channels |
 | 0-9 | Direct channel entry | Direct channel entry | — |
