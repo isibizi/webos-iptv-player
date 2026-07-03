@@ -298,6 +298,38 @@ describe('Player live DVR', () => {
   });
 });
 
+describe('Player OSD image handling', () => {
+  // renderOSD re-runs on pointer move (to keep the OSD fresh); it must reuse the
+  // programme <img> instead of recreating it, and drop one that failed to load so
+  // a broken image can't thrash the layout.
+  it('reuses the programme icon element across re-renders instead of recreating it', () => {
+    player.play(0, { ...CATCHUP, icon: 'http://host/a.jpg' });
+    const img1 = container.querySelector('.osd-programme-icon');
+    expect(img1).not.toBeNull();
+    player.showOSD(); // a re-render (e.g. pointer moved into the OSD area)
+    expect(container.querySelector('.osd-programme-icon')).toBe(img1); // same node → no reload
+  });
+
+  it('drops a programme icon that failed to load and does not re-request it', () => {
+    player.play(0, { ...CATCHUP, icon: 'http://host/broken.jpg' });
+    const img = container.querySelector('.osd-programme-icon') as HTMLImageElement;
+    expect(img).not.toBeNull();
+    img.dispatchEvent(new Event('error'));
+    expect(container.querySelector('.osd-programme-icon')).toBeNull(); // dropped on error
+    player.showOSD(); // re-render must not bring it back
+    expect(container.querySelector('.osd-programme-icon')).toBeNull();
+  });
+
+  it('retries a previously-failed icon on the next channel/programme (failure is per-visit)', () => {
+    player.play(0, { ...CATCHUP, icon: 'http://host/x.jpg' });
+    (container.querySelector('.osd-programme-icon') as HTMLImageElement).dispatchEvent(new Event('error'));
+    expect(container.querySelector('.osd-programme-icon')).toBeNull();
+
+    player.play(1, { ...CATCHUP, icon: 'http://host/x.jpg' }); // switch channel, same icon URL
+    expect(container.querySelector('.osd-programme-icon')).not.toBeNull(); // fresh attempt
+  });
+});
+
 describe('Player stall reconnect OSD', () => {
   it('clears the Reconnecting… message after the reloaded stream recovers', async () => {
     HTMLMediaElement.prototype.play = vi.fn().mockResolvedValue(undefined);

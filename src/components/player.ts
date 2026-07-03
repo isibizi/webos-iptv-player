@@ -2,6 +2,7 @@ import type { Action, Channel, CatchupInfo, AudioTrackOption, AudioOption, Audio
   SubtitleTrackOption, SubtitleOption, SubtitlePref, ManifestSubtitle, ManifestClosedCaption } from '../types';
 import { $, show, hide, html, Safe } from '../utils/dom';
 import { channelKey } from '../utils/channel';
+import { morph } from '../utils/morph';
 import { dvrWindow, dvrState, type DvrWindow, type DvrState } from '../utils/dvr';
 import { fetchText } from '../utils/fetch-helper';
 import { audioLabel, hlsAudioOptions, nativeAudioOptions, chooseAudioIndex, isPrefMatch, parseAudioRenditions, mergeManifestNames } from '../utils/audio-tracks';
@@ -49,6 +50,9 @@ export class Player {
   private wasPlayingBeforeHide = false;
   private pointerBound = false;
   private dvrPauseTick: ReturnType<typeof setInterval> | null = null;
+  // Programme-icon URLs that failed to load, so a re-render omits them instead of
+  // re-requesting a broken image (which would thrash the OSD layout).
+  private failedIcons = new Set<string>();
   private loadToken = 0;
   private hlsRecoveries = 0; // fatal hls.js errors recovered since the last good fragment
   private manifestAudio: ManifestAudio[] = []; // real track names parsed from the HLS master (webOS)
@@ -98,6 +102,18 @@ export class Player {
         if (this.osdVisible) this.resetOsdTimer(); else this.showOSD();
       });
       this.container.addEventListener('mouseup', (e: MouseEvent) => this.onPointerRelease(e.clientX, e.clientY));
+
+      // A broken programme icon: record its URL (capture — `error` doesn't bubble)
+      // and re-render so morph drops it and never re-requests it.
+      this.container.addEventListener('error', (e: Event) => {
+        const t = e.target as HTMLElement | null;
+        if (!(t instanceof HTMLImageElement) || !t.classList.contains('osd-programme-icon')) return;
+        const src = t.getAttribute('src');
+        if (src && !this.failedIcons.has(src)) {
+          this.failedIcons.add(src);
+          if (this.osdVisible) this.renderOSD();
+        }
+      }, true);
     }
 
     // Suspend/resume playback when the app is actually backgrounded so the
@@ -217,6 +233,7 @@ export class Player {
     this.currentChannel = channel;
     this.currentIndex = channelIndex;
     this.catchupInfo = catchup || null;
+    this.failedIcons.clear(); // fresh icon-load attempts per channel/programme visit
     StorageService.setLastChannel(channelIndex);
 
     const url = this.resolveStreamUrl(channel, catchup || null);
@@ -645,6 +662,15 @@ export class Player {
     else this.showOSD();
   }
 
+  /** The programme icon `<img>`, or nothing if it has no URL or that URL already
+   *  failed to load. Keyed by URL so morph reuses a loaded icon across re-renders
+   *  (no reload/flicker); a broken one is recorded by the delegated 'error'
+   *  listener and omitted here on the next render. */
+  private programmeIcon(url: string): Safe | string {
+    if (!url || this.failedIcons.has(url)) return '';
+    return html`<img class="osd-programme-icon" data-key="prog-icon:${url}" src="${url}" alt="">`;
+  }
+
   private dvrProgressRow(st: DvrState): Safe {
     const paused = !!this.videoEl?.paused;
     return html`
@@ -685,7 +711,7 @@ export class Player {
         <div class="osd-programme">
           <div class="osd-now-label">CATCH-UP</div>
           <div class="osd-programme-detail">
-            ${catchup.icon ? html`<img class="osd-programme-icon" src="${catchup.icon}" alt="" onerror="this.style.display='none'">` : ''}
+            ${this.programmeIcon(catchup.icon)}
             <div class="osd-programme-info">
               <div class="osd-programme-title">${catchup.title}</div>
               <div class="osd-programme-time">
@@ -722,7 +748,7 @@ export class Player {
           ` : '';
         const detail = nowPlaying ? html`
             <div class="osd-programme-detail">
-              ${nowPlaying.icon ? html`<img class="osd-programme-icon" src="${nowPlaying.icon}" alt="" onerror="this.style.display='none'">` : ''}
+              ${this.programmeIcon(nowPlaying.icon)}
               <div class="osd-programme-info">
                 <div class="osd-programme-title">${nowPlaying.title}</div>
                 <div class="osd-programme-time">
@@ -778,7 +804,7 @@ export class Player {
       </div>
     ` : '';
 
-    osd.innerHTML = String(html`
+    morph(osd, html`
       <div class="osd-channel">
         <div class="osd-channel-number">${this.currentIndex + 1}</div>
         ${ch.logo ? html`<img class="osd-channel-logo" src="${ch.logo}" alt="">` : ''}
