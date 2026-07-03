@@ -42,17 +42,19 @@ export function hlsSubtitleOptions(tracks: readonly HlsSubtitleTrackLike[], curr
   }));
 }
 
-/** Normalize the native HTMLMediaElement.textTracks list — subtitle/caption kinds
- *  only. `index` stays the position in the full list so it can drive `.mode`. */
-export function nativeSubtitleOptions(list: TextTrackList): SubtitleOption[] {
-  const out: SubtitleOption[] = [];
-  for (let i = 0; i < list.length; i++) {
-    const t = list[i];
-    if (t.kind && t.kind !== 'subtitles' && t.kind !== 'captions') continue;
-    const lang = t.language && t.language !== 'und' ? t.language : '';
-    out.push({ index: i, name: t.label || '', lang, isDefault: false, isForced: false, active: t.mode === 'showing' });
-  }
-  return out;
+/** Picker options from the parsed HLS master subtitle renditions, used on the
+ *  webOS native path where in-manifest WebVTT is self-rendered rather than
+ *  surfaced as switchable textTracks. `activeIndex` is the rendition currently
+ *  self-rendered (-1 = off). */
+export function manifestSubtitleOptions(manifest: readonly ManifestSubtitle[], activeIndex: number): SubtitleOption[] {
+  return manifest.map((m, i) => ({
+    index: i,
+    name: m.name,
+    lang: m.lang,
+    isDefault: m.isDefault,
+    isForced: m.isForced,
+    active: i === activeIndex,
+  }));
 }
 
 /** Pick a subtitle index for `options`, or -1 for off. Honors an explicit "off"
@@ -129,18 +131,4 @@ export function parseClosedCaptions(manifest: string): ManifestClosedCaption[] {
  *  tracks collapse to one on/off entry — named only when there's exactly one. */
 export function closedCaptionLabel(ccs: ManifestClosedCaption[]): string {
   return ccs.length === 1 && ccs[0].name ? ccs[0].name : 'Closed Captions';
-}
-
-/** Overlay manifest names/languages (and the default/forced flags native tracks
- *  can't carry) onto native subtitle options, by index. Only applies when the
- *  counts line up, so a partial native list isn't mislabeled. */
-export function mergeSubtitleManifestNames(opts: SubtitleOption[], manifest: ManifestSubtitle[]): SubtitleOption[] {
-  if (!manifest.length || manifest.length !== opts.length) return opts;
-  return opts.map((o, i) => ({
-    ...o,
-    name: manifest[i].name || o.name,
-    lang: manifest[i].lang || o.lang,
-    isDefault: manifest[i].isDefault,
-    isForced: manifest[i].isForced,
-  }));
 }

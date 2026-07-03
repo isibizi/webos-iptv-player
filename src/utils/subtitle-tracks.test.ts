@@ -1,14 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import type { SubtitleOption } from '../types';
+import type { SubtitleOption, ManifestSubtitle } from '../types';
 import {
   subtitleLabel,
   languageName,
   hlsSubtitleOptions,
-  nativeSubtitleOptions,
+  manifestSubtitleOptions,
   chooseSubtitleIndex,
   isSubtitlePrefMatch,
   parseSubtitleRenditions,
-  mergeSubtitleManifestNames,
   parseClosedCaptions,
   closedCaptionLabel,
 } from './subtitle-tracks';
@@ -16,20 +15,6 @@ import {
 const opt = (over: Partial<SubtitleOption>): SubtitleOption => ({
   index: 0, name: '', lang: '', isDefault: false, isForced: false, active: false, ...over,
 });
-
-// Build a native TextTrackList-like object (the DOM type is absent in node tests).
-const nativeList = (
-  tracks: Array<{ kind?: string; label?: string; language?: string; mode?: TextTrackMode }>,
-): TextTrackList => {
-  const list: Record<number | string, unknown> = { length: tracks.length };
-  tracks.forEach((t, i) => {
-    list[i] = {
-      kind: t.kind ?? 'subtitles', label: t.label ?? '',
-      language: t.language ?? '', mode: t.mode ?? 'disabled', id: '',
-    };
-  });
-  return list as unknown as TextTrackList;
-};
 
 describe('subtitleLabel', () => {
   it('prefers name, then language, then a positional fallback', () => {
@@ -91,29 +76,21 @@ describe('hlsSubtitleOptions', () => {
   });
 });
 
-describe('nativeSubtitleOptions', () => {
-  it('maps label→name, language→lang, showing→active', () => {
-    const opts = nativeSubtitleOptions(nativeList([
-      { label: 'Track 1', language: 'l1', mode: 'showing' },
-      { label: 'Track 2', language: 'l2', mode: 'disabled' },
-    ]));
-    expect(opts).toEqual([
-      { index: 0, name: 'Track 1', lang: 'l1', isDefault: false, isForced: false, active: true },
-      { index: 1, name: 'Track 2', lang: 'l2', isDefault: false, isForced: false, active: false },
+describe('manifestSubtitleOptions', () => {
+  const manifest: ManifestSubtitle[] = [
+    { name: 'Track 1', lang: 'l1', isDefault: true, isForced: false },
+    { name: 'Track 2', lang: 'l2', isDefault: false, isForced: true },
+  ];
+
+  it('maps manifest renditions to options, marking the active index', () => {
+    expect(manifestSubtitleOptions(manifest, 1)).toEqual([
+      { index: 0, name: 'Track 1', lang: 'l1', isDefault: true, isForced: false, active: false },
+      { index: 1, name: 'Track 2', lang: 'l2', isDefault: false, isForced: true, active: true },
     ]);
   });
 
-  it("treats 'und' language as empty", () => {
-    expect(nativeSubtitleOptions(nativeList([{ label: 'Track 1', language: 'und' }]))[0].lang).toBe('');
-  });
-
-  it('skips non-subtitle/caption text tracks but keeps their list index', () => {
-    const opts = nativeSubtitleOptions(nativeList([
-      { kind: 'metadata', label: 'meta' },
-      { kind: 'subtitles', label: 'Track 1', language: 'l1', mode: 'showing' },
-    ]));
-    expect(opts).toHaveLength(1);
-    expect(opts[0].index).toBe(1); // real position in textTracks, for driving .mode
+  it('marks none active when the index is -1 (off)', () => {
+    expect(manifestSubtitleOptions(manifest, -1).some(o => o.active)).toBe(false);
   });
 });
 
@@ -269,36 +246,5 @@ describe('closedCaptionLabel', () => {
       { name: 'Track 1', lang: 'l1', instreamId: 'CC1', isDefault: true },
       { name: 'Track 2', lang: 'l2', instreamId: 'CC3', isDefault: false },
     ])).toBe('Closed Captions');
-  });
-});
-
-describe('mergeSubtitleManifestNames', () => {
-  const opts = [
-    opt({ index: 0, name: '', lang: 'l1', active: true }),
-    opt({ index: 1, name: '', lang: '' }),
-  ];
-
-  it('overlays names/langs and the default/forced flags by index when counts match', () => {
-    const merged = mergeSubtitleManifestNames(opts, [
-      { name: 'Track 1', lang: 'l1', isDefault: true, isForced: false },
-      { name: 'Track 2', lang: 'l2', isDefault: false, isForced: true },
-    ]);
-    expect(merged.map(o => o.name)).toEqual(['Track 1', 'Track 2']);
-    expect(merged[1].lang).toBe('l2');
-    expect(merged[1].isForced).toBe(true); // forced comes only from the manifest
-    expect(merged[0].active).toBe(true); // native live state preserved
-  });
-
-  it('leaves options untouched when counts differ', () => {
-    expect(mergeSubtitleManifestNames(opts, [{ name: 'Track 1', lang: 'l1', isDefault: true, isForced: false }]))
-      .toBe(opts);
-  });
-
-  it('keeps the native value when a manifest name/lang is empty', () => {
-    const merged = mergeSubtitleManifestNames(opts, [
-      { name: '', lang: '', isDefault: false, isForced: false },
-      { name: 'Track 2', lang: '', isDefault: false, isForced: false },
-    ]);
-    expect(merged[0].lang).toBe('l1'); // native lang kept
   });
 });

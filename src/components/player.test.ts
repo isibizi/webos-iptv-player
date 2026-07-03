@@ -10,10 +10,11 @@ vi.mock('../services/epg-service', () => ({
   EpgService: { findChannelId: () => null, getNowPlaying: () => null, getUpcoming: () => [] },
 }));
 vi.mock('../services/storage-service', () => ({
-  StorageService: { setLastChannel: vi.fn(), getSubtitlePref: vi.fn(), getAudioPref: vi.fn() },
+  StorageService: { setLastChannel: vi.fn(), getSubtitlePref: vi.fn(), setSubtitlePref: vi.fn(), getAudioPref: vi.fn() },
 }));
 
 import { Player } from './player';
+import { StorageService } from '../services/storage-service';
 import { CONFIG } from '../config';
 
 const CHANNEL = {
@@ -230,5 +231,81 @@ describe('Player audio track picker', () => {
     const tracks = player.getAudioTracks();
     expect(tracks.map((t) => t.active)).toEqual([true, false, false]);
     expect(tracks[2].available).toBe(false); // collapsed alternate grayed out
+  });
+});
+
+describe('Player subtitle self-render (webOS native path)', () => {
+  // In-manifest WebVTT is self-rendered on the native path. Inject a fake
+  // controller so we can assert what gets rendered without real fetches, and
+  // drive the native branch by clearing `hls`.
+  let subs: { start: ReturnType<typeof vi.fn>; stop: ReturnType<typeof vi.fn>; active: boolean };
+
+  const rendition = (name: string, lang: string, over: { isDefault?: boolean; isForced?: boolean } = {}) =>
+    ({ name, lang, isDefault: !!over.isDefault, isForced: !!over.isForced });
+
+  const setup = (manifestSubtitles: unknown[], selfRenderIndex = -1) => {
+    subs = { start: vi.fn(), stop: vi.fn(), active: false };
+    const p = player as unknown as Record<string, unknown>;
+    p.hls = null;
+    p.videoEl = { textTracks: { length: 0 } };
+    p.subs = subs;
+    p.manifestSubtitles = manifestSubtitles;
+    p.masterUrl = 'http://host/master.m3u8';
+    p.selfRenderIndex = selfRenderIndex;
+    p.currentChannel = CHANNEL;
+  };
+  const applySelfRender = () =>
+    (player as unknown as { applySelfRenderSelection(): void }).applySelfRenderSelection();
+
+  beforeEach(() => vi.mocked(StorageService.getSubtitlePref).mockReset());
+
+  it('does not self-render a DEFAULT-only rendition on tune-in (off unless forced)', () => {
+    setup([rendition('Track 1', 'l1', { isDefault: true })]);
+    vi.mocked(StorageService.getSubtitlePref).mockReturnValue(null);
+    applySelfRender();
+    expect(subs.start).not.toHaveBeenCalled();
+  });
+
+  it('auto-self-renders a FORCED rendition on tune-in', () => {
+    setup([rendition('Track 1', 'l1', { isDefault: true }), rendition('Track 2', 'l2', { isForced: true })]);
+    vi.mocked(StorageService.getSubtitlePref).mockReturnValue(null);
+    applySelfRender();
+    expect(subs.start).toHaveBeenCalledWith(expect.anything(), 'http://host/master.m3u8', { name: 'Track 2', lang: 'l2' });
+  });
+
+  it('re-applies a saved subtitle pick on tune-in', () => {
+    setup([rendition('Track 1', 'l1'), rendition('Track 2', 'l2')]);
+    vi.mocked(StorageService.getSubtitlePref).mockReturnValue({ off: false, name: 'Track 2', lang: 'l2' });
+    applySelfRender();
+    expect(subs.start).toHaveBeenCalledWith(expect.anything(), expect.any(String), { name: 'Track 2', lang: 'l2' });
+  });
+
+  it('stays off when the saved pref is an explicit off (survives re-tune)', () => {
+    setup([rendition('Track 1', 'l1', { isDefault: true })]);
+    vi.mocked(StorageService.getSubtitlePref).mockReturnValue({ off: true, name: '', lang: '' });
+    applySelfRender();
+    expect(subs.start).not.toHaveBeenCalled();
+  });
+
+  it('selecting a subtitle self-renders it and remembers the pick', () => {
+    setup([rendition('Track 1', 'l1'), rendition('Track 2', 'l2')]);
+    player.selectSubtitleTrack(1);
+    expect(subs.start).toHaveBeenCalledWith(expect.anything(), 'http://host/master.m3u8', { name: 'Track 2', lang: 'l2' });
+    expect(StorageService.setSubtitlePref).toHaveBeenCalledWith(expect.any(String), { off: false, name: 'Track 2', lang: 'l2' });
+  });
+
+  it('selecting Off stops self-render and remembers off', () => {
+    setup([rendition('Track 1', 'l1')], 0);
+    player.selectSubtitleTrack(-1);
+    expect(subs.stop).toHaveBeenCalled();
+    expect(StorageService.setSubtitlePref).toHaveBeenCalledWith(expect.any(String), { off: true, name: '', lang: '' });
+  });
+
+  it('lists the manifest renditions with the self-rendered one active and all selectable', () => {
+    setup([rendition('Track 1', 'l1'), rendition('Track 2', 'l2')], 1);
+    const tracks = player.getSubtitleTracks();
+    expect(tracks.map((t) => t.label)).toEqual(['Track 1', 'Track 2']);
+    expect(tracks.map((t) => t.active)).toEqual([false, true]);
+    expect(tracks.every((t) => t.available)).toBe(true);
   });
 });

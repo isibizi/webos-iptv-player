@@ -4,7 +4,7 @@ import { $, show, hide, html, Safe } from '../utils/dom';
 import { channelKey } from '../utils/channel';
 import { fetchText } from '../utils/fetch-helper';
 import { audioLabel, hlsAudioOptions, nativeAudioOptions, chooseAudioIndex, isPrefMatch, parseAudioRenditions, mergeManifestNames } from '../utils/audio-tracks';
-import { subtitleLabel, hlsSubtitleOptions, nativeSubtitleOptions, chooseSubtitleIndex, isSubtitlePrefMatch, parseSubtitleRenditions, mergeSubtitleManifestNames, parseClosedCaptions, closedCaptionLabel } from '../utils/subtitle-tracks';
+import { subtitleLabel, hlsSubtitleOptions, manifestSubtitleOptions, chooseSubtitleIndex, isSubtitlePrefMatch, parseSubtitleRenditions, parseClosedCaptions, closedCaptionLabel } from '../utils/subtitle-tracks';
 import { PlaylistService } from '../services/playlist-service';
 import { EpgService } from '../services/epg-service';
 import { StorageService } from '../services/storage-service';
@@ -52,6 +52,8 @@ export class Player {
   private manifestSubtitles: ManifestSubtitle[] = []; // subtitle names parsed from the HLS master (webOS)
   private manifestClosedCaptions: ManifestClosedCaption[] = []; // CEA-608/708 declared in the HLS master (webOS)
   private ccEnabled = false; // live state of the native caption compositor (setSubtitleEnable)
+  private selfRenderIndex = -1; // manifest subtitle rendition currently self-rendered (-1 = off)
+  private masterUrl = ''; // HLS master URL of the active stream, for re-pointing self-render
   private manifestVariants: StreamVariant[] = []; // HLS master variants for best-effort codec readout
   private manifestSeq = 0;
   private subs = new HlsSubtitles(); // self-rendered subtitles on the webOS native path
@@ -271,6 +273,8 @@ export class Player {
     this.manifestSubtitles = [];
     this.manifestClosedCaptions = [];
     this.ccEnabled = false; // fresh pipeline — captions start off (608 doesn't auto-draw)
+    this.selfRenderIndex = -1;
+    this.masterUrl = '';
     this.manifestVariants = [];
     this.subs.stop();
 
@@ -710,9 +714,10 @@ export class Player {
       const subs = parseSubtitleRenditions(text);
       if (subs.length) {
         this.manifestSubtitles = subs;
+        this.masterUrl = url;
         log.info('manifest subtitles:', subs.map(r => r.name || r.lang || '?').join(', '));
-        // Self-render the default subtitle so sync can be judged on-device.
-        if (this.videoEl) void this.subs.start(this.videoEl, url);
+        // Off unless FORCED or a saved pick (spec-correct — see applySelfRenderSelection).
+        this.applySelfRenderSelection();
       }
       const ccs = parseClosedCaptions(text);
       if (ccs.length) {
@@ -827,26 +832,17 @@ export class Player {
    */
   private subtitleOptions(): SubtitleOption[] {
     if (this.hls) return hlsSubtitleOptions(this.hls.subtitleTracks || [], this.hls.subtitleTrack);
-    const list = this.videoEl?.textTracks;
-    if (!list) return [];
-    return mergeSubtitleManifestNames(nativeSubtitleOptions(list), this.manifestSubtitles);
+    // webOS native: in-manifest WebVTT is self-rendered (not surfaced as switchable
+    // textTracks), so the choices are the parsed master renditions and the active one
+    // is what we self-render.
+    return manifestSubtitleOptions(this.manifestSubtitles, this.selfRenderIndex);
   }
 
-  // Picker-facing options. When the platform exposes fewer native text tracks
-  // than the manifest declares, surface every manifest rendition but mark the
-  // unexposed ones unavailable — they can't be switched on, so the picker grays
-  // them rather than pretending.
+  // Picker-facing options. Unlike audio — where webOS collapses same-language
+  // renditions so unreachable ones are grayed (displayAudioOptions) — every
+  // subtitle rendition is self-renderable, so all are selectable.
   private displaySubtitleOptions(): Array<SubtitleOption & { available: boolean }> {
-    const opts = this.subtitleOptions();
-    if (this.manifestSubtitles.length > opts.length) {
-      return this.manifestSubtitles.map((m, i) => ({
-        index: i < opts.length ? opts[i].index : i,
-        name: m.name, lang: m.lang, isDefault: m.isDefault, isForced: m.isForced,
-        active: i < opts.length ? opts[i].active : false,
-        available: i < opts.length,
-      }));
-    }
-    return opts.map(o => ({ ...o, available: true }));
+    return this.subtitleOptions().map(o => ({ ...o, available: true }));
   }
 
   /** Subtitle tracks for the picker (the menu prepends its own "Off" row). On the
@@ -879,7 +875,7 @@ export class Player {
   selectSubtitleTrack(index: number): void {
     if (index === CC_SUBTITLE_INDEX) {
       this.subs.stop();               // self-render and the native compositor can't both draw
-      this.setNativeSubtitleMode(-1);  // drop any native textTrack
+      this.selfRenderIndex = -1;
       this.setNativeCC(true);
       this.rememberSubtitle({ off: false, cc: true, name: '', lang: '' });
       showToast(`Subtitles: ${closedCaptionLabel(this.manifestClosedCaptions)}`);
@@ -887,7 +883,7 @@ export class Player {
     }
     if (index === -1) {
       this.setNativeCC(false);
-      this.setNativeSubtitleMode(-1);
+      this.applySubtitleChoice(-1);
       this.rememberSubtitle({ off: true, name: '', lang: '' });
       showToast('Subtitles off');
       return;
@@ -895,7 +891,7 @@ export class Player {
     const opt = this.displaySubtitleOptions().find(o => o.index === index);
     if (!opt || !opt.available) return;
     this.setNativeCC(false);
-    this.setNativeSubtitleMode(index);
+    this.applySubtitleChoice(index);
     this.rememberSubtitle({ off: false, name: opt.name, lang: opt.lang });
     showToast(`Subtitles: ${subtitleLabel(opt)}`);
   }
@@ -926,21 +922,37 @@ export class Player {
     this.ccEnabled = enable;
   }
 
-  // Apply a subtitle selection to whichever engine is active. hls.js owns its own
-  // rendition (set subtitleTrack/-1); the native path toggles textTrack `.mode`.
-  private setNativeSubtitleMode(index: number): void {
+  // Route a subtitle pick to the active engine (index -1 = off). hls.js (preview)
+  // drives its own rendition; the webOS native path self-renders the chosen WebVTT
+  // rendition. selectTrack is never used — it decode-freezes the video on webOS.
+  private applySubtitleChoice(index: number): void {
     if (this.hls) {
       this.hls.subtitleDisplay = index >= 0;
       if (index < (this.hls.subtitleTracks?.length || 0)) this.hls.subtitleTrack = index;
       return;
     }
-    const list = this.videoEl?.textTracks;
-    if (!list) return;
-    for (let i = 0; i < list.length; i++) {
-      const t = list[i];
-      if (t.kind && t.kind !== 'subtitles' && t.kind !== 'captions') continue;
-      t.mode = i === index ? 'showing' : 'disabled';
+    const m = index >= 0 ? this.manifestSubtitles[index] : undefined;
+    if (!m || !this.videoEl || !this.masterUrl) {
+      this.subs.stop();
+      this.selfRenderIndex = -1;
+      return;
     }
+    this.selfRenderIndex = index;
+    void this.subs.start(this.videoEl, this.masterUrl, { name: m.name, lang: m.lang });
+  }
+
+  // Spec-correct tune-in default for self-rendered WebVTT: subtitles stay off
+  // unless a rendition is FORCED, or the user saved a pick for this channel.
+  // DEFAULT=YES does not auto-enable — per HLS it only marks the preferred
+  // rendition once subtitles are on. A saved CC pick is applied separately.
+  private applySelfRenderSelection(): void {
+    if (this.hls) return;
+    const pref = StorageService.getSubtitlePref(this.channelPrefKey());
+    if (pref?.cc) { this.applySubtitleChoice(-1); return; } // CC path owns it
+    const options = manifestSubtitleOptions(this.manifestSubtitles, this.selfRenderIndex);
+    const idx = chooseSubtitleIndex(options, pref);
+    this.logSubtitleChoice('self-render', options, pref, idx);
+    this.applySubtitleChoice(idx);
   }
 
   private rememberSubtitle(pref: SubtitlePref): void {
@@ -973,27 +985,16 @@ export class Player {
     if (this.hls.subtitleTrack !== idx) this.hls.subtitleTrack = idx;
   }
 
+  // Re-apply a remembered Closed-Captions choice once the pipeline/manifest
+  // confirms captions exist (fires on loadedmetadata, an addtrack event, and
+  // after the manifest parse). WebVTT is handled by applySelfRenderSelection.
   private applyNativeSubtitleSelection(): void {
     if (this.hls) return; // hls.js owns the rendition and its native text tracks
     const pref = StorageService.getSubtitlePref(this.channelPrefKey());
-    // A remembered CC choice wins over self-render / textTracks (mutually exclusive).
     if (this.ccAvailable() && pref?.cc) {
-      this.subs.stop();
+      this.subs.stop(); // self-render and the native compositor can't both draw
+      this.selfRenderIndex = -1;
       this.setNativeCC(true);
-      return;
-    }
-    if (this.subs.active) return; // the self-rendered controller owns subtitles
-    const list = this.videoEl?.textTracks;
-    if (!list || !list.length) return;
-    const options = this.subtitleOptions();
-    if (!options.length) return;
-    const idx = chooseSubtitleIndex(options, pref);
-    this.logSubtitleChoice('native', options, pref, idx);
-    for (let i = 0; i < list.length; i++) {
-      const t = list[i];
-      if (t.kind && t.kind !== 'subtitles' && t.kind !== 'captions') continue;
-      const want = i === idx ? 'showing' : 'disabled';
-      if (t.mode !== want) t.mode = want;
     }
   }
 
