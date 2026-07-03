@@ -134,6 +134,15 @@ syncs it into `appinfo.json` and the `__APP_VERSION__` build constant;
   the native compositor draws the cues using the TV's caption settings (it ignores `::cue`); the
   preview's `::cue` mirrors Safari. Full writeup in `docs/hls-subtitles.md` (helpers in
   `src/utils/subtitle-tracks.ts`, `src/utils/webvtt.ts`, `src/services/hls-subtitles.ts`).
+- **Magic Remote OK fires pointer events, not `click`.** Pressing OK with the Magic
+  Remote pointer over an element dispatches `mousedown`/`mouseup` (and pointer events)
+  but **no synthesized `click`**, and the event target can be the native video plane
+  rather than the element under the cursor. Drive pointer-activated controls from
+  `mouseup` by **coordinate hit-testing** (as the player's seek bar and the DVR
+  play-pause / Go-to-Live controls do in `src/components/player.ts`), never from a
+  `click` listener or `e.target`. A `click`-bound handler works with a desktop mouse
+  but silently does nothing on the TV — and a Playwright `.click()` won't catch it, so
+  reproduce it in a test by dispatching a bare `mouseup`.
 - **Debugging:** `ares-inspect` gives a page-level CDP socket only (Playwright
   `connectOverCDP` fails — connect to the page WebSocket directly). App `console.*`
   is visible only via the DevTools `ares-inspect` opens; `ares-monitor-log` is not in
@@ -150,7 +159,7 @@ syncs it into `appinfo.json` and the `__APP_VERSION__` build constant;
 
 - Prefer small, surgical changes that fit the existing architecture rather than
   introducing a new state container, UI framework, or ad hoc pattern.
-- When changing UI behaviour, preserve the remote-control and desktop-preview
+- When changing UI behavior, preserve the remote-control and desktop-preview
   experience; keep key handling, focus navigation, and view transitions consistent
   with the existing `App`/`KeyHandler`/component flow.
 - When changing parsers, services, or upload-service messaging, add or update the
@@ -162,6 +171,6 @@ syncs it into `appinfo.json` and the `__APP_VERSION__` build constant;
 - **No `Co-Authored-By` trailer** in commit messages.
 - Message length is proportional: small/mechanical changes get a tight one-line
   subject; real features get an imperative subject, a blank line, then a body
-  wrapped at ~72 cols covering the key behaviours and the *why*, with a bullet
+  wrapped at ~72 cols covering the key behaviors and the *why*, with a bullet
   list for supporting changes.
 - Only commit or push when asked.

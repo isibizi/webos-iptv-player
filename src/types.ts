@@ -85,6 +85,7 @@ export type Action =
   | 'red' | 'green' | 'yellow' | 'blue'
   | 'channel_up' | 'channel_down'
   | 'play' | 'pause' | 'stop'
+  | 'rewind' | 'fast_forward'
   | 'number';
 
 export interface NumberEvent {

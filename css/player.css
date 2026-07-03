@@ -218,6 +218,58 @@
   box-shadow: 0 0 8px var(--accent-glow);
 }
 
+/* Live DVR (timeshift) row: play/pause + "behind live" offset + Go-to-Live. */
+.osd-dvr-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.osd-dvr-btn svg {
+  width: 28px;
+  height: 28px;
+  display: block;
+}
+
+.osd-dvr-behind {
+  min-width: 72px;
+}
+
+.osd-dvr-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.osd-dvr-live::before {
+  content: '';
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.osd-dvr-live.is-live {
+  color: var(--danger);
+}
+
+.osd-dvr-live.is-live::before {
+  box-shadow: 0 0 8px var(--danger);
+}
+
 .osd-description {
   font-size: 24px;
   color: var(--text-secondary);

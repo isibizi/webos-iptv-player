@@ -2,6 +2,7 @@ import type { Action, Channel, CatchupInfo, AudioTrackOption, AudioOption, Audio
   SubtitleTrackOption, SubtitleOption, SubtitlePref, ManifestSubtitle, ManifestClosedCaption } from '../types';
 import { $, show, hide, html, Safe } from '../utils/dom';
 import { channelKey } from '../utils/channel';
+import { dvrWindow, dvrState, type DvrWindow, type DvrState } from '../utils/dvr';
 import { fetchText } from '../utils/fetch-helper';
 import { audioLabel, hlsAudioOptions, nativeAudioOptions, chooseAudioIndex, isPrefMatch, parseAudioRenditions, mergeManifestNames } from '../utils/audio-tracks';
 import { subtitleLabel, hlsSubtitleOptions, manifestSubtitleOptions, chooseSubtitleIndex, isSubtitlePrefMatch, parseSubtitleRenditions, parseClosedCaptions, closedCaptionLabel } from '../utils/subtitle-tracks';
@@ -46,6 +47,8 @@ export class Player {
   private pointerY: number | null = null;
   private osdTimer: ReturnType<typeof setTimeout> | null = null;
   private wasPlayingBeforeHide = false;
+  private pointerBound = false;
+  private dvrPauseTick: ReturnType<typeof setInterval> | null = null;
   private loadToken = 0;
   private hlsRecoveries = 0; // fatal hls.js errors recovered since the last good fragment
   private manifestAudio: ManifestAudio[] = []; // real track names parsed from the HLS master (webOS)
@@ -80,19 +83,22 @@ export class Player {
     this.videoEl = videoEl;
     this.bindVideoEvents(videoEl);
 
-    // Pointer seeking. The Magic Remote OK over the bar may arrive as a click
-    // (whose target can be the native video plane, not the bar) or as a keydown
-    // 'select' — so seek by pointer COORDINATES over the bar, not the event target.
-    this.container.addEventListener('mousemove', (e: MouseEvent) => {
-      this.pointerX = e.clientX;
-      this.pointerY = e.clientY;
-      // An active cursor reveals the OSD (and its seek bar) so there's something
-      // to aim at; keep it up while the cursor keeps moving.
-      if (this.osdVisible) this.resetOsdTimer(); else this.showOSD();
-    });
-    // The Magic Remote OK over the bar fires mousedown/up (and pointer events)
-    // but NOT a synthesized click — so seek on mouseup, by coordinates.
-    this.container.addEventListener('mouseup', (e: MouseEvent) => this.seekAtPointer(e.clientX, e.clientY));
+    // Pointer input (desktop mouse + Magic Remote). The Magic Remote OK fires
+    // mousedown/up (and pointer events) but NOT a synthesized click, and its
+    // target can be the video plane — so act on mouseup by COORDINATES, not the
+    // event target. Bound once (init() can re-run on a fresh <video>): the
+    // handlers read this.videoEl live and the container is stable.
+    if (!this.pointerBound) {
+      this.pointerBound = true;
+      this.container.addEventListener('mousemove', (e: MouseEvent) => {
+        this.pointerX = e.clientX;
+        this.pointerY = e.clientY;
+        // An active cursor reveals the OSD (and its controls) so there's
+        // something to aim at; keep it up while the cursor keeps moving.
+        if (this.osdVisible) this.resetOsdTimer(); else this.showOSD();
+      });
+      this.container.addEventListener('mouseup', (e: MouseEvent) => this.onPointerRelease(e.clientX, e.clientY));
+    }
 
     // Suspend/resume playback when the app is actually backgrounded so the
     // native media pipeline (a separate process) stops pulling segments off the
@@ -470,24 +476,43 @@ export class Player {
 
   private resetOsdTimer(): void {
     if (this.osdTimer) clearTimeout(this.osdTimer);
+    // Keep the OSD up while paused (DVR): there is no playback to fall behind.
+    if (this.videoEl?.paused) return;
     this.osdTimer = setTimeout(() => this.hideOSD(), CONFIG.PLAYER.OSD_TIMEOUT);
   }
 
-  /** Catch-up VOD is seekable while the OSD (the seek UI) is showing. */
+  /** The live DVR window (seekable timeshift) when playing live with a usable
+   *  retained window; null for catch-up VOD or a non-DVR live stream. */
+  private liveDvrWindow(): DvrWindow | null {
+    const v = this.videoEl;
+    if (!v || this.catchupInfo) return null;
+    return dvrWindow(v.seekable, v.duration, CONFIG.PLAYER.DVR_MIN_WINDOW);
+  }
+
+  isLiveDvr(): boolean {
+    return !!this.liveDvrWindow();
+  }
+
+  /** Seekable while the OSD (the seek UI) shows: catch-up VOD, or live DVR. */
   canSeek(): boolean {
     const v = this.videoEl;
-    return this.osdVisible && !!this.catchupInfo && !!v
-      && Number.isFinite(v.duration) && v.duration > 0;
+    if (!this.osdVisible || !v) return false;
+    if (this.catchupInfo) return Number.isFinite(v.duration) && v.duration > 0;
+    return this.isLiveDvr();
   }
 
   seekBy(seconds: number): void {
     this.seekTo((this.videoEl?.currentTime ?? 0) + seconds);
   }
 
-  /** Seek to a fraction (0..1) of the duration. */
+  /** Seek to a fraction (0..1) of the seekable range (DVR window or VOD duration). */
   private seekToFraction(fraction: number): void {
     const v = this.videoEl;
-    if (v && Number.isFinite(v.duration)) this.seekTo(Math.max(0, Math.min(1, fraction)) * v.duration);
+    if (!v) return;
+    const f = Math.max(0, Math.min(1, fraction));
+    const win = this.liveDvrWindow();
+    if (win) this.seekTo(win.start + f * win.length);
+    else if (Number.isFinite(v.duration)) this.seekTo(f * v.duration);
   }
 
   /** Seek to the bar position under (x, y) when it's over the seek bar; returns
@@ -505,18 +530,103 @@ export class Player {
     return true;
   }
 
+  /** A pointer release (mouse or Magic Remote OK): seek if it landed on the bar,
+   *  else activate the play/pause or Go-to-Live control under it. Coordinate-based
+   *  because the Magic Remote OK fires no click and its target may be the video. */
+  private onPointerRelease(x: number, y: number): void {
+    if (this.seekAtPointer(x, y)) return;
+    if (this.hitsControl('[data-playpause]', x, y)) this.pauseToggle();
+    else if (this.hitsControl('[data-golive]', x, y)) this.goToLive();
+  }
+
+  private hitsControl(selector: string, x: number, y: number): boolean {
+    const el = $(selector, this.container) as HTMLElement | null;
+    if (!el) return false;
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+  }
+
   private seekTo(time: number): void {
     const v = this.videoEl;
-    if (!v || !Number.isFinite(v.duration) || v.duration <= 0) return;
-    v.currentTime = Math.max(0, Math.min(v.duration, time));
+    if (!v) return;
+    const win = this.liveDvrWindow();
+    if (win) {
+      // Live DVR: clamp within the retained window; seeking to/near the edge snaps
+      // to the live edge (a small pad back so playback does not stall at the tip).
+      const liveEdge = win.end - CONFIG.PLAYER.DVR_GO_LIVE_PAD;
+      v.currentTime = time >= liveEdge ? liveEdge : Math.max(win.start, time);
+    } else if (Number.isFinite(v.duration) && v.duration > 0) {
+      v.currentTime = Math.max(0, Math.min(v.duration, time));
+    } else {
+      return;
+    }
     if (this.osdVisible) this.resetOsdTimer(); else this.showOSD();
     this.refreshProgress();
   }
 
-  /** Live-update the bar + elapsed label in place (on timeupdate / after a seek). */
+  private goToLive(): void {
+    const win = this.liveDvrWindow();
+    if (win) this.seekTo(win.end);
+  }
+
+  private goToOldest(): void {
+    const win = this.liveDvrWindow();
+    if (win) this.seekTo(win.start);
+  }
+
+  /** Pause/resume. On live DVR, if the retained window rolled past the paused
+   *  point, resume from the oldest available point rather than a dropped segment. */
+  private pauseToggle(): void {
+    const v = this.videoEl;
+    if (!v) return;
+    if (v.paused) {
+      const win = this.liveDvrWindow();
+      if (win && v.currentTime < win.start) v.currentTime = win.start;
+      v.play?.().catch(() => {});
+      this.stopDvrPauseTick();
+    } else {
+      v.pause?.();
+      if (this.isLiveDvr()) this.startDvrPauseTick();
+    }
+    if (this.osdVisible) { this.renderOSD(); this.resetOsdTimer(); } else this.showOSD();
+  }
+
+  // While paused on live DVR the window keeps rolling forward, so tick the OSD
+  // to keep "behind live" and the cursor accurate (timeupdate is silent paused).
+  private startDvrPauseTick(): void {
+    this.stopDvrPauseTick();
+    this.dvrPauseTick = setInterval(() => {
+      if (this.osdVisible && this.videoEl?.paused && this.isLiveDvr()) this.refreshProgress();
+      else this.stopDvrPauseTick();
+    }, 1000);
+  }
+
+  private stopDvrPauseTick(): void {
+    if (this.dvrPauseTick) { clearInterval(this.dvrPauseTick); this.dvrPauseTick = null; }
+  }
+
+  /** Live-update the bar + labels in place (on timeupdate / after a seek). */
   private refreshProgress(): void {
     const v = this.videoEl;
-    if (!this.osdVisible || !this.catchupInfo || !v || !Number.isFinite(v.duration) || v.duration <= 0) return;
+    if (!this.osdVisible || !v) return;
+    const win = this.liveDvrWindow();
+    // DVR availability can flip after the OSD is already open (the seekable
+    // window fills in a beat after tune-in). When the current layout no longer
+    // matches, do a full render so the DVR bar appears/disappears on its own —
+    // no close/reopen. [data-golive] exists only in the DVR layout.
+    const hasDvrBar = !!$('[data-golive]', this.container);
+    if (!!win !== hasDvrBar) { this.renderOSD(); return; }
+    if (win) {
+      const st = dvrState(win, v.currentTime, CONFIG.PLAYER.DVR_LIVE_EDGE);
+      const bar = $('.osd-progress-bar', this.container) as HTMLElement | null;
+      if (bar) bar.style.width = `${st.fraction * 100}%`;
+      const behind = $('.osd-dvr-behind', this.container);
+      if (behind) behind.textContent = st.atLiveEdge ? 'LIVE' : `-${formatPosition(st.behindLive)}`;
+      const liveEl = $('.osd-dvr-live', this.container) as HTMLElement | null;
+      if (liveEl) liveEl.classList.toggle('is-live', st.atLiveEdge);
+      return;
+    }
+    if (!this.catchupInfo || !Number.isFinite(v.duration) || v.duration <= 0) return;
     const bar = $('.osd-progress-bar', this.container) as HTMLElement | null;
     if (bar) bar.style.width = `${(Math.min(v.currentTime, v.duration) / v.duration) * 100}%`;
     const cur = $('.osd-time-current', this.container);
@@ -527,11 +637,30 @@ export class Player {
     this.osdVisible = false;
     hide($('#player-osd', this.container));
     if (this.osdTimer) clearTimeout(this.osdTimer);
+    this.stopDvrPauseTick();
   }
 
   private toggleOSD(): void {
     if (this.osdVisible) this.hideOSD();
     else this.showOSD();
+  }
+
+  private dvrProgressRow(st: DvrState): Safe {
+    const paused = !!this.videoEl?.paused;
+    return html`
+      <div class="osd-progress-row osd-dvr-row">
+        <button class="osd-dvr-btn" data-playpause aria-label="${paused ? 'Play' : 'Pause'}">
+          ${paused
+            ? html`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`
+            : html`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>`}
+        </button>
+        <span class="osd-time-current osd-dvr-behind">${st.atLiveEdge ? 'LIVE' : `-${formatPosition(st.behindLive)}`}</span>
+        <div class="osd-progress" data-seekbar>
+          <div class="osd-progress-bar" style="width: ${st.fraction * 100}%"></div>
+        </div>
+        <button class="osd-time-end osd-dvr-live ${st.atLiveEdge ? 'is-live' : ''}" data-golive aria-label="Go to live">LIVE</button>
+      </div>
+    `;
   }
 
   private renderOSD(): void {
@@ -576,42 +705,46 @@ export class Player {
         </div>
       `;
     } else {
-      // Live playback: show current EPG info
+      // Live playback. Show EPG programme info, and a DVR timeshift bar when the
+      // stream exposes a usable seekable window.
+      const win = this.liveDvrWindow();
+      const st = win ? dvrState(win, this.videoEl!.currentTime, CONFIG.PLAYER.DVR_LIVE_EDGE) : null;
       const epgId = EpgService.findChannelId(ch);
       const nowPlaying = epgId ? EpgService.getNowPlaying(epgId) : null;
       const upcoming = epgId ? EpgService.getUpcoming(epgId, 1) : [];
 
-      if (nowPlaying) {
-        const progress = getProgress(nowPlaying.start, nowPlaying.stop);
-        const remaining = formatDuration(nowPlaying.stop.getTime() - Date.now());
-        const nowTime = formatTime(new Date());
+      if (nowPlaying || st) {
         const next = upcoming.length ? html`
             <div class="osd-next">
               <span class="osd-next-label">NEXT</span>
               <span class="osd-next-title">${upcoming[0].title} <span class="osd-next-time">${formatTime(upcoming[0].start)}</span></span>
             </div>
           ` : '';
-        programmeHtml = html`
-          <div class="osd-programme">
-            <div class="osd-now-label">NOW</div>
+        const detail = nowPlaying ? html`
             <div class="osd-programme-detail">
               ${nowPlaying.icon ? html`<img class="osd-programme-icon" src="${nowPlaying.icon}" alt="" onerror="this.style.display='none'">` : ''}
               <div class="osd-programme-info">
                 <div class="osd-programme-title">${nowPlaying.title}</div>
                 <div class="osd-programme-time">
                   ${formatTime(nowPlaying.start)} - ${formatTime(nowPlaying.stop)}
-                  <span class="osd-remaining">${remaining} remaining</span>
+                  <span class="osd-remaining">${formatDuration(nowPlaying.stop.getTime() - Date.now())} remaining</span>
                 </div>
               </div>
-            </div>
+            </div>` : '';
+        const progressRow = st ? this.dvrProgressRow(st) : (nowPlaying ? html`
             <div class="osd-progress-row">
-              <span class="osd-time-current">${nowTime}</span>
+              <span class="osd-time-current">${formatTime(new Date())}</span>
               <div class="osd-progress">
-                <div class="osd-progress-bar" style="width: ${progress * 100}%"></div>
+                <div class="osd-progress-bar" style="width: ${getProgress(nowPlaying.start, nowPlaying.stop) * 100}%"></div>
               </div>
               <span class="osd-time-end">${formatTime(nowPlaying.stop)}</span>
-            </div>
-            ${nowPlaying.description ? html`<div class="osd-description">${nowPlaying.description}</div>` : ''}
+            </div>` : '');
+        programmeHtml = html`
+          <div class="osd-programme">
+            <div class="osd-now-label">${st && !st.atLiveEdge ? 'TIMESHIFT' : 'NOW'}</div>
+            ${detail}
+            ${progressRow}
+            ${nowPlaying && nowPlaying.description ? html`<div class="osd-description">${nowPlaying.description}</div>` : ''}
           </div>
           ${next}
         `;
@@ -1009,7 +1142,9 @@ export class Player {
         this.onBack();
         break;
       case 'select':
-        if (!this.seekAtPointer(this.pointerX, this.pointerY)) this.toggleOSD();
+        if (this.seekAtPointer(this.pointerX, this.pointerY)) break;
+        if (this.osdVisible && this.isLiveDvr()) this.pauseToggle();
+        else this.toggleOSD();
         break;
       case 'left':
         this.seekBy(-CONFIG.PLAYER.SEEK_STEP);
@@ -1027,6 +1162,18 @@ export class Player {
         break;
       case 'yellow':
         this.showOSD();
+        break;
+      case 'play':
+        if (this.videoEl?.paused) this.pauseToggle();
+        break;
+      case 'pause':
+        if (this.videoEl && !this.videoEl.paused) this.pauseToggle();
+        break;
+      case 'rewind':
+        this.goToOldest();
+        break;
+      case 'fast_forward':
+        this.goToLive();
         break;
     }
   }

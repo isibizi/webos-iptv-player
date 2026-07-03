@@ -22,6 +22,8 @@ const ACTION_MAP: Record<number, Action> = {
   [K.PLAY]: 'play',
   [K.PAUSE]: 'pause',
   [K.STOP]: 'stop',
+  [K.REWIND]: 'rewind',
+  [K.FORWARD]: 'fast_forward',
 };
 
 // Remote-control keys that must still reach the app even when a text input has
@@ -33,7 +35,7 @@ const ACTION_MAP: Record<number, Action> = {
 // EPG/Settings, etc.
 const INPUT_PASSTHROUGH_KEYS = new Set<number>([
   K.BACK, K.RED, K.GREEN, K.YELLOW, K.BLUE,
-  K.CH_UP, K.CH_DOWN, K.PLAY, K.PAUSE, K.STOP,
+  K.CH_UP, K.CH_DOWN, K.PLAY, K.PAUSE, K.STOP, K.REWIND, K.FORWARD,
 ]);
 
 let activeHandler: ActionHandler | null = null;

@@ -45,6 +45,36 @@ function fakeVideo(duration: number): HTMLVideoElement {
   } as unknown as HTMLVideoElement;
 }
 
+// A live <video> stand-in: duration Infinity and a single seekable range (the DVR
+// window), with a mutable window so tests can simulate it rolling forward.
+function fakeLiveVideo(start: number, end: number, currentTime = 0) {
+  let ct = currentTime;
+  let paused = false;
+  let src = '';
+  let w = { start, end };
+  const listeners: Record<string, Array<() => void>> = {};
+  const video = {
+    duration: Infinity,
+    get currentTime() { return ct; },
+    set currentTime(t: number) { ct = t; },
+    get paused() { return paused; },
+    get src() { return src; },
+    set src(v: string) { src = v; },
+    seekable: { length: 1, start: () => w.start, end: () => w.end },
+    classList: { add() {}, remove() {} },
+    canPlayType: () => '',
+    play: () => { paused = false; return Promise.resolve(); },
+    pause() { paused = true; },
+    load() {}, removeAttribute() {}, appendChild() {}, set innerHTML(_: string) {},
+    addEventListener(type: string, fn: () => void) { (listeners[type] ||= []).push(fn); },
+    dispatchEvent(e: Event) { (listeners[e.type] || []).forEach((fn) => fn()); return true; },
+  };
+  return {
+    video: video as unknown as HTMLVideoElement,
+    setWindow: (s: number, e: number) => { w = { start: s, end: e }; },
+  };
+}
+
 let container: HTMLElement;
 let player: Player;
 let video: HTMLVideoElement;
@@ -178,6 +208,93 @@ describe('Player live playback', () => {
     player.play(0); // live, no catch-up
     expect(player.canSeek()).toBe(false);
     expect(container.querySelector('[data-seekbar]')).toBeNull();
+  });
+});
+
+describe('Player live DVR', () => {
+  let live: HTMLVideoElement;
+  let setWindow: (s: number, e: number) => void;
+  const PAD = CONFIG.PLAYER.DVR_GO_LIVE_PAD;
+
+  beforeEach(() => {
+    ({ video: live, setWindow } = fakeLiveVideo(0, 60, 60)); // 60s window, at the live edge
+    player.init(live);
+    player.play(0); // live, no catch-up → OSD shown
+  });
+
+  it('is seekable within the window and shows a seek bar', () => {
+    expect(player.canSeek()).toBe(true);
+    expect(container.querySelector('[data-seekbar]')).not.toBeNull();
+  });
+
+  it('Left rewinds by the step, moving the bar', () => {
+    player.handleAction('left'); // 60 - 30 = 30
+    expect(live.currentTime).toBe(30);
+    expect((container.querySelector('.osd-progress-bar') as HTMLElement).style.width).toBe('50%');
+  });
+
+  it('Right near the live edge snaps to the edge (end - pad)', () => {
+    player.handleAction('right'); // 60 + 30 → clamp 60 → snap 60 - PAD
+    expect(live.currentTime).toBe(60 - PAD);
+  });
+
+  it('rewind jumps to the oldest point, fast_forward to live', () => {
+    player.handleAction('rewind');
+    expect(live.currentTime).toBe(0);
+    player.handleAction('fast_forward');
+    expect(live.currentTime).toBe(60 - PAD);
+  });
+
+  it('pause/play and OK toggle playback', () => {
+    player.handleAction('pause');
+    expect(live.paused).toBe(true);
+    player.handleAction('play');
+    expect(live.paused).toBe(false);
+    player.handleAction('select'); // OSD up + live DVR → pause
+    expect(live.paused).toBe(true);
+  });
+
+  it('clamps to the window start when resuming after it rolled past the paused point', () => {
+    player.handleAction('rewind'); // to 0
+    player.handleAction('pause');
+    setWindow(20, 80); // window rolled forward while paused
+    player.handleAction('play');
+    expect(live.currentTime).toBe(20);
+  });
+
+  // The Magic Remote OK fires mouseup (and pointer events) but NOT a synthesized
+  // click, and its target can be the video plane — so the OSD controls must be
+  // driven from mouseup by coordinates, like the seek bar.
+  it('a pointer release (Magic Remote OK) on the pause control pauses playback', () => {
+    const btn = container.querySelector('[data-playpause]') as HTMLElement;
+    btn.getBoundingClientRect = () => ({ left: 10, right: 42, width: 32, top: 0, bottom: 32 }) as DOMRect;
+    container.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: 26, clientY: 16 }));
+    expect(live.paused).toBe(true);
+  });
+
+  it('a pointer release on the Go-to-Live control seeks to the live edge', () => {
+    player.handleAction('rewind'); // move to the oldest point (0)
+    expect(live.currentTime).toBe(0);
+    const btn = container.querySelector('[data-golive]') as HTMLElement;
+    btn.getBoundingClientRect = () => ({ left: 500, right: 560, width: 60, top: 0, bottom: 32 }) as DOMRect;
+    container.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: 530, clientY: 16 }));
+    expect(live.currentTime).toBe(60 - PAD);
+  });
+
+  it('reveals the DVR bar once the window becomes available, without reopening the OSD', () => {
+    // Tune in to a live stream whose seekable window is not usable yet.
+    const { video: v2, setWindow } = fakeLiveVideo(0, 3, 0); // 3s < DVR_MIN_WINDOW
+    player.init(v2);
+    player.play(0); // OSD shown, but no DVR window yet
+    expect(container.querySelector('[data-seekbar]')).toBeNull();
+
+    // The pipeline fills the retained window; the next timeupdate must switch the
+    // OSD to the DVR layout on its own (no close/reopen).
+    setWindow(0, 60);
+    v2.dispatchEvent(new Event('timeupdate'));
+
+    expect(container.querySelector('[data-seekbar]')).not.toBeNull();
+    expect(container.querySelector('[data-playpause]')).not.toBeNull();
   });
 });
 
