@@ -6,10 +6,10 @@
 // fixtures and a frozen clock, then captures each view into screenshots/:
 //
 //   channel-list.png   channel list (the README hero)
-//   epg-guide.png      three-pane programme guide
+//   epg-guide.png      three-pane program guide
 //   settings.png       settings incl. the LAN-upload QR
 //   player.png         playback overlays: channel switcher + action menu
-//   channel-info.png   channel info bar (the OSD)
+//   channel-info.png   channel info bar (the OSD) — live DVR (timeshift) view
 //   subtitles.png      self-rendered WebVTT cues — ::cue colors + positioning
 //
 // Nothing here ships in the app or the .ipk; it is a dev-only tool.
@@ -41,10 +41,10 @@ const UPLOAD_PORT = 8899;
 // Channels
 // ---------------------------------------------------------------------------
 
-// group title -> [count, recognisable lead names]. Titles are chosen so the
+// group title -> [count, recognizable lead names]. Titles are chosen so the
 // genre-icon lookup resolves a real icon for every category. News leads, so it
 // fills the visible rows.
-// All channel and programme names below are fictional, to avoid using real
+// All channel and program names below are fictional, to avoid using real
 // broadcaster trademarks in marketing screenshots. Group titles stay generic
 // (they also drive the genre-icon lookup in channel-list.ts).
 const GROUPS = [
@@ -163,7 +163,7 @@ function xmltvTime(ms) {
 const at = (hoursFromMidnight) => MID + Math.round(hoursFromMidnight * HOUR);
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-// Metro One's full schedule for today — drives the programme-guide pane and the
+// Metro One's full schedule for today — drives the program-guide pane and the
 // channel-list/OSD "now/next". The 22:00 slot straddles the frozen clock.
 const HERO_SCHEDULE = [
   [16.0, 17.25, 'Country Escapes', 'A couple search for their dream rural home with a generous budget and a long wish list.'],
@@ -195,7 +195,7 @@ function epgXml() {
   for (const d of [-2, -1, 1, 2, 3]) {
     parts.push(prog('ch0', at(d * 24 + 20), at(d * 24 + 21), d < 0 ? 'Highlights' : 'Coverage', ''));
   }
-  // Every other visible channel: a current programme so the list shows a "now" line.
+  // Every other visible channel: a current program so the list shows a "now" line.
   for (const ch of epgChannels.slice(1)) {
     parts.push(prog(ch.id, at(22), at(22.5), NOW_TITLES[ch.name] || `${ch.name} Live`, ''));
   }
@@ -470,17 +470,22 @@ try {
     await context.close();
   }
 
-  // 5) Channel info bar (the OSD) — driven by the feature-rich master so the
-  //    stream-info pills all show.
+  // 5) Channel info bar (the OSD) — the live DVR (timeshift) view: rewound ~2 min
+  //    behind the live edge (scrubber, "behind live" offset, LIVE control), driven
+  //    by the feature-rich master so the stream-info pills all show.
   {
     const { context, page } = await newPage({ fakeStream: true });
-    // (screenshot-only) Fake a 4K frame for the resolution badge, and make hls.js
-    // keep the Dolby Vision / E-AC-3 level even where headless Chromium can't decode
-    // it (no fragments load, so nothing actually decodes).
+    // (screenshot-only) A live stream reports duration Infinity; give it a large
+    // seekable window so the DVR bar renders. Fake a 4K frame for the resolution
+    // badge and keep hls.js on the Dolby Vision / E-AC-3 level (nothing decodes).
     await page.addInitScript(() => {
       if (window.MediaSource) MediaSource.isTypeSupported = () => true;
       Object.defineProperty(HTMLVideoElement.prototype, 'videoWidth', { configurable: true, get: () => 3840 });
       Object.defineProperty(HTMLVideoElement.prototype, 'videoHeight', { configurable: true, get: () => 2160 });
+      Object.defineProperty(HTMLVideoElement.prototype, 'duration', { configurable: true, get: () => Infinity });
+      Object.defineProperty(HTMLVideoElement.prototype, 'seekable', {
+        configurable: true, get: () => ({ length: 1, start: () => 0, end: () => 600 }),
+      });
     });
     await page.route(/\/stream\/ch\d+\.m3u8(?:[?#]|$)/, fulfill(MASTER_HLS_RICH, 'application/vnd.apple.mpegurl'));
     await gotoChannels(page, base);
@@ -490,7 +495,13 @@ try {
     await page.waitForTimeout(1500);
     await page.evaluate((bg) => {
       const v = document.getElementById('video-player');
-      if (v) { v.classList.remove('active'); try { v.pause(); } catch { /* ignore */ } v.dispatchEvent(new Event('loadedmetadata')); }
+      if (v) {
+        // Pin the playhead ~2 min behind the 10-min live edge, then refresh the
+        // DVR bar in place (scrubber → 80%, "-2:00 behind live", LIVE not lit).
+        Object.defineProperty(v, 'currentTime', { configurable: true, get: () => 480 });
+        v.classList.remove('active');
+        v.dispatchEvent(new Event('timeupdate'));
+      }
       const vp = document.getElementById('view-player');
       if (vp) vp.style.background = bg;
     }, frameGradient('60% 32%'));

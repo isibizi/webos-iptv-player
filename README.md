@@ -1,6 +1,6 @@
 # webOS IPTV Player
 
-An IPTV player for LG webOS TVs. Supports M3U playlists, XMLTV programme guides, and catch-up/timeshift playback.
+An IPTV player for LG webOS TVs. Supports M3U playlists, XMLTV program guides, and catch-up/timeshift playback.
 
 ![icon](assets/icon.svg)
 
@@ -8,28 +8,28 @@ An IPTV player for LG webOS TVs. Supports M3U playlists, XMLTV programme guides,
 
 | Channel list | Channel info |
 | --- | --- |
-| ![Channel list](https://github.com/user-attachments/assets/b9ae3b70-9ae0-42ad-acec-6c086d506826) | ![Channel info](https://github.com/user-attachments/assets/d07dfaa8-b191-4f60-bca5-ee266e1fa88a) |
+| ![Channel list](https://github.com/user-attachments/assets/b9ae3b70-9ae0-42ad-acec-6c086d506826) | ![Channel info](https://github.com/user-attachments/assets/9b77591d-ac4f-4746-bf69-5d4527f6ce8c) |
 
 | Playback overlays | Subtitles |
 | --- | --- |
 | ![Playback overlays](https://github.com/user-attachments/assets/f48d7a56-33d1-4d5b-ab44-dbcfa1769930) | ![Subtitles](https://github.com/user-attachments/assets/5d1fab57-1087-414b-9a20-f900589eac4a) |
 
-| Programme guide | Settings |
+| Program guide | Settings |
 | --- | --- |
-| ![Programme guide](https://github.com/user-attachments/assets/887acb03-a7a6-4a12-986e-f1f9054c6d6c) | ![Settings](https://github.com/user-attachments/assets/107d2879-8e9a-4dd1-9b99-1cb1100a392a) |
+| ![Program guide](https://github.com/user-attachments/assets/887acb03-a7a6-4a12-986e-f1f9054c6d6c) | ![Settings](https://github.com/user-attachments/assets/6dba6720-9ff9-4fd0-8dab-50484c2eafaf) |
 
 ## Features
 
 - **M3U Playlist Support** — Load multiple M3U/M3U8 playlists with auto-deduplication
 - **LAN M3U Upload** — Drop `.m3u` files onto the TV from any phone/laptop on the same network via a QR-scannable upload page; new playlists appear in Settings within milliseconds (push, not polling). See [`upload-service/README.md`](upload-service/README.md) for details.
-- **Electronic Programme Guide (EPG)** — Three-pane layout (channels / date bar / programmes), date range auto-derived from EPG data, with IndexedDB caching for instant reopen
-- **Catch-up / Timeshift** — Play past programmes using `catchup-source` URL templates from M3U; seek within a programme by jumping ±30s with Left/Right (while the OSD is showing) or pointing at the seek bar with the Magic Remote
+- **Electronic Program Guide (EPG)** — Three-pane layout (channels / date bar / programs), date range auto-derived from EPG data, with IndexedDB caching for instant reopen
+- **Catch-up / Timeshift** — Play past programs using `catchup-source` URL templates from M3U; seek within a program by jumping ±30s with Left/Right (while the OSD is showing) or pointing at the seek bar with the Magic Remote
 - **Channel Search** — Find channels by name from both the channel list and the player sidebar; focus the search box and press OK to type. Search spans all groups and is scoped to the selected playlist tab
-- **Channel Sidebar** — Quick channel switching overlay with current programme info and auto-scrolling text
+- **Channel Sidebar** — Quick channel switching overlay with current program info and auto-scrolling text
 - **Group Icons** — Channel groups show genre icons (sports, news, kids, movies, music, …) auto-matched from the group title across many languages, with a generic fallback for unmatched groups
 - **Magic Remote Support** — Pointer-driven navigation for sidebar, menu, and channel selection
 - **Spatial Navigation** — Full D-pad/remote navigation across all views
-- **On-Screen Display** — Channel info bar with programme title, progress timeline, and timestamps, plus a live stream-info readout (resolution, HDR, frame rate, video/audio codec, audio channels, and subtitles) detected from the playing stream
+- **On-Screen Display** — Channel info bar with program title, progress timeline, and timestamps, plus a live stream-info readout (resolution, HDR, frame rate, video/audio codec, audio channels, and subtitles) detected from the playing stream
 - **Favorites** — Mark and filter favorite channels
 - **Auto-play** — Resume last watched channel on startup
 - **HDR & Dolby passthrough (native pipeline)** — On the TV, playback hands the stream straight to the native `<video>` element instead of a JavaScript player, so the set's hardware decoder handles it end-to-end. HDR10, HLG, Dolby Vision®, and Dolby Atmos® therefore pass through untouched whenever the stream carries them and your TV supports them — the app neither adds nor strips them; it gets this for free by staying out of the media path. (Desktop preview uses software HLS/TS players and won't.) See [`docs/native-vs-hls.js.md`](docs/native-vs-hls.js.md)
@@ -133,7 +133,7 @@ Open with the **Blue** key or click the gear icon in the channel list. Sections:
 - **Playlists** — add, edit, or remove M3U URLs. Re-applied on Save.
 - **Upload Playlist** — QR code + LAN URL on the left, list of currently uploaded playlists on the right. Scan the QR from a phone/laptop on the same network to upload `.m3u` files; they appear in this list within milliseconds via Luna push.
 - **EPG (Electronic Program Guide)** — set the XMLTV URL (also auto-detected from `x-tvg-url` in M3U).
-- **Display** — *Programme time zone*: show EPG times in your **Device** time zone (default), or the **Feed**'s own time zone (auto-detected from the EPG feed when it loads).
+- **Display** — *Program time zone*: show EPG times in your **Device** time zone (default), or the **Feed**'s own time zone (auto-detected from the EPG feed when it loads).
 - **Playback** — toggle auto-play (resume last watched channel on launch).
 - **Data Management** — *Refresh All Data* re-fetches playlists and EPG; *Clear Cache* drops the cached playlist + EPG.
 - **Save & Apply** reloads channels from the new sources. **Cancel** discards edits.
@@ -144,8 +144,8 @@ Open with the **Blue** key or click the gear icon in the channel list. Sections:
 |-----|--------|-------------|-----|
 | Up/Down | Channel +/- | Navigate | Navigate within pane |
 | Left | Open sidebar / seek −30s (catch-up) | — | Back to channels / previous day |
-| Right | Open menu / seek +30s (catch-up) | — | To programmes / next day |
-| OK/Enter | Toggle OSD | Select channel / Open settings (gear) | Play channel / programme (catch-up if past) |
+| Right | Open menu / seek +30s (catch-up) | — | To programs / next day |
+| OK/Enter | Toggle OSD | Select channel / Open settings (gear) | Play channel / program (catch-up if past) |
 | Back | Stop & return | Exit app (press twice) | Close guide |
 | Red | Open EPG | Open EPG | — |
 | Blue | Open settings | Open settings | Close guide |
