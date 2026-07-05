@@ -74,6 +74,17 @@ export interface CatchupInfo {
   icon: string;
 }
 
+/** A user-set reminder for an upcoming program. Keyed by channelKey + startMs. */
+export interface Reminder {
+  channelKey: string;
+  channelName: string;
+  title: string;
+  startMs: number;
+  stopMs: number;
+  /** Set once the user answers the in-app OK/Cancel prompt, so it isn't shown again. */
+  answered?: boolean;
+}
+
 /** Which timezone EPG times are displayed in: the device's, or the feed's. */
 export type TzMode = 'device' | 'feed';
 

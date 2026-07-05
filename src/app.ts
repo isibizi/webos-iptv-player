@@ -11,6 +11,8 @@ import { Settings, type SaveAction } from './components/settings';
 import { Sidebar } from './components/sidebar';
 import { PlayerMenu } from './components/player-menu';
 import { showToast } from './components/toast';
+import { ReminderService } from './services/reminder-service';
+import { ReminderPrompt } from './components/reminder-prompt';
 import { setDisplayTz } from './utils/time';
 import { channelKey } from './utils/channel';
 import { $, show, hide } from './utils/dom';
@@ -31,6 +33,7 @@ class App {
   private settings!: Settings;
   private sidebar!: Sidebar;
   private menu!: PlayerMenu;
+  private reminderPrompt = new ReminderPrompt();
 
   async init(): Promise<void> {
     const done = log.time('init');
@@ -85,6 +88,7 @@ class App {
     await this.startUploadService();
     this.subscribeToUploadEvents();
     this.bindUploadServiceLifecycle();
+    this.bindReminderLifecycle();
     await this.loadData();
   }
 
@@ -302,6 +306,8 @@ class App {
 
       showToast(`${PlaylistService.channels.length} channels loaded`);
 
+      this.scanReminders();
+
       if (StorageService.getAutoPlay()) {
         const lastCh = StorageService.getLastChannel();
         if (lastCh >= 0 && lastCh < PlaylistService.channels.length) {
@@ -353,8 +359,45 @@ class App {
     this.player.play(index, catchup);
   }
 
+  private bindReminderLifecycle(): void {
+    setInterval(() => this.scanReminders(), CONFIG.REMINDER_SCAN_INTERVAL);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') this.scanReminders();
+    });
+  }
+
+  private scanReminders(): void {
+    ReminderService.prune();
+    this.showNextReminder();
+  }
+
+  private showNextReminder(): void {
+    if (this.reminderPrompt.visible) return;
+    const due = ReminderService.dueNow();
+    const r = due[0];
+    if (!r) return;
+    this.reminderPrompt.show(r.title, {
+      onConfirm: () => {
+        ReminderService.markAnswered(r.channelKey, r.startMs);
+        const idx = ReminderService.resolveChannelIndex(r.channelKey);
+        if (idx >= 0) this.playChannel(idx);
+        this.showNextReminder();
+      },
+      onCancel: () => {
+        ReminderService.markAnswered(r.channelKey, r.startMs);
+        this.showNextReminder();
+      },
+    });
+  }
+
   private handleKey(action: Action, event?: NumberEvent): void {
     const currentView = this.viewStack[this.viewStack.length - 1];
+
+    // A reminder prompt overlays every view and consumes input first.
+    if (this.reminderPrompt.visible) {
+      this.reminderPrompt.handleAction(action);
+      return;
+    }
 
     // Global shortcuts
     if (action === 'red' && currentView !== 'epg') {

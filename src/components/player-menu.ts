@@ -6,7 +6,7 @@ import { morph } from '../utils/morph';
 const AUTO_HIDE_MS = 5000;
 
 const MENU_ITEMS = [
-  { action: 'red' as const, color: 'red', label: 'Programme Guide' },
+  { action: 'red' as const, color: 'red', label: 'Program Guide' },
   { action: 'green' as const, color: 'green', label: 'Toggle Favorite' },
   { action: 'yellow' as const, color: 'yellow', label: 'Channel Info' },
   { action: 'blue' as const, color: 'blue', label: 'Settings' },
@@ -18,7 +18,7 @@ const SUBTITLE_ICON = raw(
   '</svg>',
 );
 
-// Sentinel data-menu-action values for the non-colour rows.
+// Sentinel data-menu-action values for the non-color rows.
 const OPEN_AUDIO = '__audio_open__';
 const BACK = '__menu_back__';
 const PICK_AUDIO = '__audio_track__';
@@ -27,7 +27,7 @@ const PICK_SUB = '__subs_track__';
 
 /**
  * The action overlay shown on the right edge during playback. Owns its own
- * visibility, auto-hide timer and focus index. Selecting a colour item hides the
+ * visibility, auto-hide timer and focus index. Selecting a color item hides the
  * menu and emits the chosen action via `onAction`; the host decides how to
  * route it. When the stream has multiple audio tracks an "Audio Track" row opens
  * an in-place sub-menu for picking one; likewise a "Subtitles" row when the

@@ -36,6 +36,13 @@ describe('StorageService', () => {
     expect(StorageService.getEpgUrl()).toBe('http://epg/guide.xml');
   });
 
+  it('defaults reminders to an empty array and round-trips them', () => {
+    expect(StorageService.getReminders()).toEqual([]);
+    const list = [{ channelKey: 'k1', channelName: 'Chan A', title: 'Alpha', startMs: 100, stopMs: 200 }];
+    StorageService.setReminders(list);
+    expect(StorageService.getReminders()).toEqual(list);
+  });
+
   it('toggles a favorite on and off, returning the new state', () => {
     expect(StorageService.getFavorites()).toEqual([]);
     expect(StorageService.toggleFavorite('chan-1')).toBe(true);

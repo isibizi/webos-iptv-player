@@ -67,7 +67,7 @@ test('the right-edge player menu opens and lists its color actions', async ({ pa
   const menu = page.locator('#player-menu');
   await expect(menu).toBeVisible();
   await expect(menu.locator('.menu-item')).toHaveCount(4);
-  await expect(menu).toContainText('Programme Guide');
+  await expect(menu).toContainText('Program Guide');
   await expect(menu).toContainText('Settings');
 
   // The first item is focused on open; Down moves focus to the second.

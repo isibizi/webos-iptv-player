@@ -1,0 +1,78 @@
+import type { Action } from '../types';
+import { html } from '../utils/dom';
+import { morph } from '../utils/morph';
+
+interface PromptHandlers {
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+export class ReminderPrompt {
+  private el: HTMLElement | null = null;
+  private handlers: PromptHandlers | null = null;
+  private focus: 'ok' | 'cancel' = 'ok';
+  private title = '';
+
+  get visible(): boolean {
+    return this.el !== null && !this.el.classList.contains('hidden');
+  }
+
+  show(title: string, handlers: PromptHandlers): void {
+    this.handlers = handlers;
+    this.focus = 'ok';
+    this.title = title;
+    if (!this.el) {
+      this.el = document.createElement('div');
+      this.el.className = 'reminder-prompt';
+      document.body.appendChild(this.el);
+      this.bindEvents();
+    }
+    this.el.classList.remove('hidden');
+    this.render();
+  }
+
+  hide(): void {
+    this.el?.classList.add('hidden');
+    this.handlers = null;
+  }
+
+  handleAction(action: Action): void {
+    if (!this.visible) return;
+    switch (action) {
+      case 'left': this.focus = 'ok'; this.render(); break;
+      case 'right': this.focus = 'cancel'; this.render(); break;
+      case 'select': this.focus === 'ok' ? this.confirm() : this.cancel(); break;
+      case 'back': this.cancel(); break;
+      default: break;
+    }
+  }
+
+  private confirm(): void { const h = this.handlers; this.hide(); h?.onConfirm(); }
+  private cancel(): void { const h = this.handlers; this.hide(); h?.onCancel(); }
+
+  private render(): void {
+    if (!this.el) return;
+    morph(this.el, html`
+      <div class="reminder-dialog">
+        <p class="reminder-message">${this.title} is now live — watch it?</p>
+        <div class="reminder-buttons">
+          <button class="reminder-btn ${this.focus === 'ok' ? 'focused' : ''}"
+                  data-key="ok" data-reminder-action="ok">OK</button>
+          <button class="reminder-btn ${this.focus === 'cancel' ? 'focused' : ''}"
+                  data-key="cancel" data-reminder-action="cancel">Cancel</button>
+        </div>
+      </div>
+    `);
+  }
+
+  private bindEvents(): void {
+    // Magic Remote OK fires mouseup (no click) and can target the video plane —
+    // hit-test by coordinate. See AGENTS.md webOS gotchas.
+    this.el!.addEventListener('mouseup', (e: MouseEvent) => {
+      const hit = document.elementFromPoint(e.clientX, e.clientY);
+      const btn = hit?.closest<HTMLElement>('[data-reminder-action]');
+      if (!btn) return;
+      btn.dataset.reminderAction === 'ok' ? this.confirm() : this.cancel();
+    });
+  }
+}

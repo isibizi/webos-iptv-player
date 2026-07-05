@@ -185,3 +185,61 @@ h3 {
 #video-player.active {
   display: block;
 }
+
+/* Program-reminder prompt (in-app OK/Cancel overlay) */
+.reminder-prompt {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 10000;
+}
+.reminder-prompt.hidden { display: none; }
+.reminder-dialog {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 40px 48px;
+  max-width: 720px;
+  text-align: center;
+}
+.reminder-message {
+  color: var(--text-primary);
+  font-size: 30px;
+  margin: 0 0 32px;
+}
+.reminder-buttons { display: flex; gap: 24px; justify-content: center; }
+.reminder-btn {
+  min-width: 160px;
+  padding: 14px 32px;
+  font-size: 26px;
+  color: var(--text-primary);
+  background: transparent;
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.reminder-btn.focused {
+  border-color: var(--focus-ring);
+  background: var(--accent-dim);
+  box-shadow: 0 0 12px var(--accent-glow);
+}
+
+/* EPG reminder bell badge — dim on any future program (affordance), accent once set */
+.epg-bell-glyph {
+  width: 22px;
+  height: 22px;
+  vertical-align: -3px;
+}
+.epg-prog-title .epg-bell-glyph { margin-left: 8px; }
+.epg-legend-item .epg-bell-glyph { margin-right: 6px; }
+.epg-bell-glyph.unset { color: var(--text-muted); opacity: 0.5; }
+.epg-bell-glyph.set {
+  color: var(--warning);
+  filter: drop-shadow(0 0 4px rgba(255, 165, 2, 0.5));
+}

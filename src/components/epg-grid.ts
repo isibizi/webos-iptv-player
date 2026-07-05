@@ -4,7 +4,17 @@ import { morph } from '../utils/morph';
 import { channelKey } from '../utils/channel';
 import { PlaylistService } from '../services/playlist-service';
 import { EpgService } from '../services/epg-service';
+import { ReminderService } from '../services/reminder-service';
+import { showToast } from './toast';
 import { formatTime, formatDayLabel, displayDayKey, startOfDisplayDay, addDisplayDays, formatDuration } from '../utils/time';
+
+const BELL_PATH = 'M12 22a2 2 0 0 0 2-2h-4a2 2 0 0 0 2 2zm6-6v-5a6 6 0 0 0-5-5.91V4a1 1 0 0 0-2 0v1.09A6 6 0 0 0 6 11v5l-2 2v1h16v-1l-2-2z';
+
+/** Bell affordance: dim on any future program ("OK sets a reminder"), accent once set. */
+function bellSvg(active: boolean): string {
+  return `<svg class="epg-bell-glyph ${active ? 'set' : 'unset'}" viewBox="0 0 24 24" aria-hidden="true">`
+    + `<path fill="currentColor" d="${BELL_PATH}"/></svg>`;
+}
 
 type FocusCol = 'channels' | 'dates' | 'programmes';
 
@@ -33,8 +43,8 @@ export class EpgGrid {
   }
 
   private getDateOptions(): Date[] {
-    // Day columns span the earliest..latest programme START. Using start (not
-    // stop) means a programme that merely runs past midnight doesn't add an
+    // Day columns span the earliest..latest program START. Using start (not
+    // stop) means a program that merely runs past midnight doesn't add an
     // empty day column for the day it spills into — it belongs to its start day.
     let minStart = Infinity;
     let maxStart = -Infinity;
@@ -78,7 +88,7 @@ export class EpgGrid {
     if (!dayStart) return [];
     const dayEnd = addDisplayDays(dayStart, 1).getTime();
     const from = dayStart.getTime();
-    // Bucket each programme by the day it STARTS, so one spanning midnight shows
+    // Bucket each program by the day it STARTS, so one spanning midnight shows
     // on its start day only — not as a stray previous-day entry atop the next day.
     return (EpgService.programmes[epgId] ?? [])
       .filter(p => p.start.getTime() >= from && p.start.getTime() < dayEnd);
@@ -102,12 +112,13 @@ export class EpgGrid {
     morph(this.container, html`
       <div class="epg-view">
         <div class="epg-header">
-          <h2>Programme Guide</h2>
-          <span class="epg-page-info">${channel?.name ?? ''}${programmes.length ? html` · ${programmes.length} programmes` : ''}</span>
+          <h2>Program Guide</h2>
+          <span class="epg-page-info">${channel?.name ?? ''}${programmes.length ? html` · ${programmes.length} programs` : ''}</span>
           ${raw(`
             <div class="epg-legend">
               <span class="epg-legend-item state-past"><i class="epg-legend-dot"></i>Aired</span>
               <span class="epg-legend-item state-future"><i class="epg-legend-dot"></i>Upcoming</span>
+              <span class="epg-legend-item">${bellSvg(true)}Reminder</span>
             </div>
           `)}
         </div>
@@ -146,13 +157,13 @@ export class EpgGrid {
             </div>
             <div class="epg-programmes-pane ${this.focusCol === 'programmes' ? 'pane-focused' : ''}" id="epg-programmes">
               ${programmes.length === 0
-                ? raw('<div class="epg-no-data">No programme data</div>')
+                ? raw('<div class="epg-no-data">No program data</div>')
                 : programmes.map((p, i) => {
                     const foc = i === this.focusProg && this.focusCol === 'programmes';
                     const now = Date.now();
                     const startMs = p.start.getTime();
                     const stopMs = p.stop.getTime();
-                    // Three temporal states drive the row's colour: aired (replayable
+                    // Three temporal states drive the row's color: aired (replayable
                     // via catch-up), live (airing now), and upcoming.
                     const state = stopMs <= now ? 'past' : startMs > now ? 'future' : 'live';
                     const current = state === 'live';
@@ -170,6 +181,7 @@ export class EpgGrid {
                           <div class="epg-prog-title">
                             ${current ? raw('<span class="epg-now-badge"><span class="epg-now-dot"></span>LIVE</span>') : ''}
                             ${p.title}
+                            ${state === 'future' && channel ? raw(bellSvg(ReminderService.has(channelKey(channel), startMs))) : ''}
                           </div>
                           ${p.description ? html`<div class="epg-prog-desc">${p.description.slice(0, 200)}</div>` : ''}
                         </div>
@@ -216,7 +228,7 @@ export class EpgGrid {
       if (progItem) {
         this.focusProg = parseInt(progItem.dataset.progIdx!, 10);
         this.focusCol = 'programmes';
-        this.playSelectedProgramme();
+        this.activateFocusedProgramme();
       }
     });
 
@@ -268,6 +280,34 @@ export class EpgGrid {
       };
     }
     this.onChannelSelect(this.selectedChannelIdx, catchup);
+  }
+
+  private activateFocusedProgramme(): void {
+    const prog = this.getCurrentProgrammes()[this.focusProg];
+    if (prog && prog.start.getTime() > Date.now()) this.toggleReminder();
+    else this.playSelectedProgramme();
+  }
+
+  private toggleReminder(): void {
+    const prog = this.getCurrentProgrammes()[this.focusProg];
+    const channel = PlaylistService.channels[this.selectedChannelIdx];
+    if (!prog || !channel) return;
+    const chKey = channelKey(channel);
+    const startMs = prog.start.getTime();
+    if (ReminderService.has(chKey, startMs)) {
+      ReminderService.remove(chKey, startMs);
+      showToast('Reminder removed');
+    } else {
+      ReminderService.add({
+        channelKey: chKey,
+        channelName: channel.name,
+        title: prog.title,
+        startMs,
+        stopMs: prog.stop.getTime(),
+      });
+      showToast('Reminder set');
+    }
+    this.render();
   }
 
   handleAction(action: Action, _event?: NumberEvent): void {
@@ -364,7 +404,7 @@ export class EpgGrid {
         if (this.focusCol === 'channels') {
           this.onChannelSelect(this.selectedChannelIdx);
         } else if (this.focusCol === 'programmes') {
-          this.playSelectedProgramme();
+          this.activateFocusedProgramme();
         } else if (this.focusCol === 'dates') {
           this.focusCol = 'programmes';
           this.focusProg = 0;

@@ -21,6 +21,12 @@ const { state, playlistMock, epgMock } = vi.hoisted(() => {
 vi.mock('../services/playlist-service', () => ({ PlaylistService: playlistMock }));
 vi.mock('../services/epg-service', () => ({ EpgService: epgMock }));
 
+const { reminderMock } = vi.hoisted(() => ({
+  reminderMock: { has: vi.fn(() => false), add: vi.fn(), remove: vi.fn() },
+}));
+vi.mock('../services/reminder-service', () => ({ ReminderService: reminderMock }));
+vi.mock('./toast', () => ({ showToast: vi.fn() }));
+
 import { EpgGrid } from './epg-grid';
 
 const Y = 2024, M = 5, D = 15; // Sat Jun 15 2024, 12:00 local = "now"
@@ -88,7 +94,7 @@ describe('EpgGrid.render', () => {
     expect(channelItems().map(el => el.querySelector('.epg-ch-name')!.textContent)).toEqual(['Chan A', 'Chan B']);
   });
 
-  it('builds one date column per day spanned by programme data', () => {
+  it('builds one date column per day spanned by program data', () => {
     expect(dateItems()).toHaveLength(2); // today + tomorrow
   });
 
@@ -98,13 +104,13 @@ describe('EpgGrid.render', () => {
     expect(today.classList.contains('selected')).toBe(true);
   });
 
-  it("shows the selected channel's programmes for today", () => {
+  it("shows the selected channel's programs for today", () => {
     expect(progItems()).toHaveLength(3);
     expect(container.querySelector('.epg-page-info')!.textContent).toContain('Chan A');
-    expect(container.querySelector('.epg-page-info')!.textContent).toContain('3 programmes');
+    expect(container.querySelector('.epg-page-info')!.textContent).toContain('3 programs');
   });
 
-  it('flags the currently airing programme with a NOW badge', () => {
+  it('flags the currently airing program with a NOW badge', () => {
     const now = container.querySelector('.epg-programme-item.current');
     expect(now!.querySelector('.epg-now-badge')).not.toBeNull();
     expect(now!.querySelector('.epg-prog-title')!.textContent).toContain('Noon Show');
@@ -117,7 +123,7 @@ describe('EpgGrid mouse interaction', () => {
   it('selecting a different channel re-renders its (empty) guide', () => {
     clickData('data-channel-idx', 1);
     expect(channelItems()[1].classList.contains('selected')).toBe(true);
-    expect(container.querySelector('.epg-no-data')!.textContent).toBe('No programme data');
+    expect(container.querySelector('.epg-no-data')!.textContent).toBe('No program data');
   });
 
   it('clicking the already-selected focused channel plays it', () => {
@@ -125,13 +131,13 @@ describe('EpgGrid mouse interaction', () => {
     expect(onSelect).toHaveBeenCalledWith(0);
   });
 
-  it('changing the day shows that day programmes', () => {
+  it('changing the day shows that day programs', () => {
     clickData('data-day-index', 1);
     expect(progItems()).toHaveLength(1);
     expect(progItems()[0].querySelector('.epg-prog-title')!.textContent).toContain('Tomorrow AM');
   });
 
-  it('clicking a past programme plays it with catch-up info', () => {
+  it('clicking a past program plays it with catch-up info', () => {
     clickData('data-prog-idx', 0); // Morning 10:00-11:00, before noon
     expect(onSelect).toHaveBeenCalledTimes(1);
     const [idx, catchup] = onSelect.mock.calls[0];
@@ -140,9 +146,10 @@ describe('EpgGrid mouse interaction', () => {
     expect(catchup.start).toBeLessThan(catchup.end);
   });
 
-  it('clicking a future programme plays it without catch-up', () => {
-    clickData('data-prog-idx', 2); // Afternoon 13:00-14:00, after noon
-    expect(onSelect).toHaveBeenCalledWith(0, undefined);
+  it('clicking a future program sets a reminder instead of tuning', () => {
+    clickData('data-prog-idx', 2); // Afternoon 13:00-14:00, future vs noon
+    expect(reminderMock.add).toHaveBeenCalledTimes(1);
+    expect(onSelect).not.toHaveBeenCalled();
   });
 });
 
@@ -154,7 +161,7 @@ describe('EpgGrid.handleAction', () => {
     expect(onSelect).toHaveBeenCalledWith(0);
   });
 
-  it('right moves focus to the programmes column', () => {
+  it('right moves focus to the programs column', () => {
     grid.handleAction('right');
     expect(container.querySelector('.epg-programmes-pane')!.classList.contains('pane-focused')).toBe(true);
   });
@@ -197,5 +204,47 @@ describe('EpgGrid morph lifecycle', () => {
     const mouseovers = spy.mock.calls.filter(([t]) => t === 'mouseover').length;
     expect(clicks).toBe(1);
     expect(mouseovers).toBe(1);
+  });
+});
+
+describe('EpgGrid reminders', () => {
+  beforeEach(() => { reminderMock.has.mockReturnValue(false); grid.render(); });
+
+  it('OK on a future program adds a reminder and does not tune', () => {
+    grid.handleAction('right');            // focusCol → programmes (Morning, past)
+    grid.handleAction('down'); grid.handleAction('down'); // → "Afternoon" (13:00, future)
+    grid.handleAction('select');
+    expect(reminderMock.add).toHaveBeenCalledTimes(1);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('OK on a future program that already has a reminder removes it', () => {
+    reminderMock.has.mockReturnValue(true);
+    grid.render();
+    grid.handleAction('right');
+    grid.handleAction('down'); grid.handleAction('down');
+    grid.handleAction('select');
+    expect(reminderMock.remove).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders a dim (unset) bell on every future program as an affordance', () => {
+    reminderMock.has.mockReturnValue(false);
+    grid.render();
+    expect(container.querySelector('#epg-programmes .epg-bell-glyph.unset')).not.toBeNull();
+    expect(container.querySelector('#epg-programmes .epg-bell-glyph.set')).toBeNull();
+  });
+
+  it('renders an accent (set) bell on a reminded future program', () => {
+    reminderMock.has.mockReturnValue(true);
+    grid.render();
+    expect(container.querySelector('#epg-programmes .epg-bell-glyph.set')).not.toBeNull();
+  });
+
+  it('OK on a live program still tunes (no reminder)', () => {
+    grid.handleAction('right');
+    grid.handleAction('down'); // "Noon Show" (11:30-12:30, live at 12:00)
+    grid.handleAction('select');
+    expect(onSelect).toHaveBeenCalled();
+    expect(reminderMock.add).not.toHaveBeenCalled();
   });
 });

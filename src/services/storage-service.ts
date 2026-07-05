@@ -1,5 +1,5 @@
 import { CONFIG } from '../config';
-import type { AudioPref, Channel, PlaylistEntry, SubtitlePref, TzMode } from '../types';
+import type { AudioPref, Channel, PlaylistEntry, Reminder, SubtitlePref, TzMode } from '../types';
 import { channelKey } from '../utils/channel';
 import { genPlaylistId } from '../utils/playlist-id';
 
@@ -67,6 +67,13 @@ export const StorageService = {
   },
   setEpgUrl(url: string): void {
     set('epg_url', url);
+  },
+
+  getReminders(): Reminder[] {
+    return get<Reminder[]>('reminders', []);
+  },
+  setReminders(list: Reminder[]): void {
+    set('reminders', list);
   },
 
   getLastChannel(): number {
