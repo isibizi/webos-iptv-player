@@ -3,6 +3,7 @@ import { CONFIG } from '../config';
 import { StorageService } from './storage-service';
 import { PlaylistService } from './playlist-service';
 import { channelKey } from '../utils/channel';
+import { truncate } from '../utils/text';
 import { createLogger } from '../utils/logger';
 
 const log = createLogger('Reminder');
@@ -11,7 +12,25 @@ function activityName(chKey: string, startMs: number): string {
   return `iptvReminder-${chKey}-${startMs}`;
 }
 
+function parseReminderChannelKey(raw: unknown): string | null {
+  let obj: unknown = raw;
+  if (typeof raw === 'string') {
+    try { obj = JSON.parse(raw); } catch { return null; }
+  }
+  if (obj && typeof obj === 'object' && 'reminderChannelKey' in obj) {
+    const k = (obj as { reminderChannelKey?: unknown }).reminderChannelKey;
+    return typeof k === 'string' && k ? k : null;
+  }
+  return null;
+}
+
 class ReminderServiceImpl {
+  private _devMode = false;
+
+  setDevMode(v: boolean): void { this._devMode = v; }
+
+  get devMode(): boolean { return this._devMode; }
+
   list(): Reminder[] {
     return StorageService.getReminders();
   }
@@ -47,6 +66,14 @@ class ReminderServiceImpl {
     return PlaylistService.channels.findIndex(ch => channelKey(ch) === chKey);
   }
 
+  // Parse a reminderChannelKey out of a launch param (JSON string on cold
+  // launch, object on webOSRelaunch) and resolve it to a channel index (-1 if
+  // absent, malformed, or the channel is gone).
+  resolveLaunchChannel(rawLaunchParams: unknown): number {
+    const key = parseReminderChannelKey(rawLaunchParams);
+    return key ? this.resolveChannelIndex(key) : -1;
+  }
+
   dueNow(now = Date.now()): Reminder[] {
     return this.list().filter(r =>
       !r.answered && r.startMs <= now && now < r.stopMs && this.resolveChannelIndex(r.channelKey) >= 0);
@@ -78,7 +105,23 @@ class ReminderServiceImpl {
     const request = this.lunaRequest();
     if (!request) { log.debug('Luna unavailable — reminder is in-app only'); return; }
     const name = activityName(reminder.channelKey, reminder.startMs);
-    const message = `"${reminder.title}" is now live — open the app to watch`;
+    // Cap title/channel so a long name can't overflow the toast/alert.
+    const title = truncate(reminder.title, CONFIG.REMINDER.TITLE_MAX);
+    const channel = truncate(reminder.channelName, CONFIG.REMINDER.CHANNEL_MAX);
+    // Dev mode: fire an interactive system alert (app open or closed) via the
+    // bundled service. Retail: a passive toast (the actionable prompt is in-app).
+    const callback = this._devMode
+      ? {
+          method: `luna://${CONFIG.SERVICE_ID}/fireReminderAlert`,
+          params: { title, channelName: channel, channelKey: reminder.channelKey, appId: CONFIG.APP_ID },
+        }
+      : {
+          method: 'luna://com.webos.notification/createToast',
+          params: {
+            sourceId: CONFIG.APP_ID,
+            message: `${channel} - ${title} is now live — open the app to watch`,
+          },
+        };
     try {
       request('luna://com.webos.service.activitymanager', {
         method: 'create',
@@ -88,10 +131,7 @@ class ReminderServiceImpl {
             description: 'Program reminder',
             type: { foreground: true, persist: true },
             schedule: { start: this.localTimeString(reminder.startMs), local: true },
-            callback: {
-              method: 'luna://com.webos.notification/createToast',
-              params: { sourceId: CONFIG.APP_ID, message },
-            },
+            callback,
           },
           start: true,
           replace: true,

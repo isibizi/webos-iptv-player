@@ -15,6 +15,7 @@ import { ReminderService } from './services/reminder-service';
 import { ReminderPrompt } from './components/reminder-prompt';
 import { setDisplayTz } from './utils/time';
 import { channelKey } from './utils/channel';
+import { truncate } from './utils/text';
 import { $, show, hide } from './utils/dom';
 import { createLogger, installGlobalErrorHandlers, logEnvironment } from './utils/logger';
 import type { Action, NumberEvent, CatchupInfo } from './types';
@@ -89,7 +90,10 @@ class App {
     this.subscribeToUploadEvents();
     this.bindUploadServiceLifecycle();
     this.bindReminderLifecycle();
+    await this.queryDevMode();
     await this.loadData();
+    // Cold launch from a "Watch now" alert: channels are loaded now, so tune.
+    this.handleLaunchParams(this.coldLaunchParams());
   }
 
   /**
@@ -197,6 +201,49 @@ class App {
         clearTimeout(timer);
         log.error('Bundled service start threw:', e);
         finish('threw');
+      }
+    });
+  }
+
+  /**
+   * Ask the bundled service whether Developer Mode is on. In dev mode reminders
+   * fire an interactive system alert instead of the passive toast + in-app
+   * prompt. Guarded: with no Luna bus (desktop/e2e) dev-mode stays false and we
+   * keep the retail in-app path.
+   */
+  private async queryDevMode(): Promise<void> {
+    type LunaService = { request: (uri: string, opts: unknown) => void };
+    const w = window as unknown as { webOS?: { service?: LunaService } };
+    const request = w.webOS?.service?.request;
+    if (!request) {
+      log.debug('Luna unavailable — dev-mode alert disabled, using in-app prompt');
+      return;
+    }
+    await new Promise<void>((resolve) => {
+      let settled = false;
+      const finish = (): void => { if (!settled) { settled = true; resolve(); } };
+      const timer = setTimeout(finish, 3000);
+      try {
+        request(`luna://${CONFIG.SERVICE_ID}`, {
+          method: 'getDevMode',
+          parameters: {},
+          onSuccess: (resp: unknown) => {
+            clearTimeout(timer);
+            const dev = !!(resp && typeof resp === 'object' && (resp as { devmode?: unknown }).devmode);
+            ReminderService.setDevMode(dev);
+            log.info('getDevMode:', dev);
+            finish();
+          },
+          onFailure: (err: unknown) => {
+            clearTimeout(timer);
+            log.warn('getDevMode onFailure:', JSON.stringify(err));
+            finish();
+          },
+        });
+      } catch (e) {
+        clearTimeout(timer);
+        log.warn('getDevMode threw:', e);
+        finish();
       }
     });
   }
@@ -364,10 +411,30 @@ class App {
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') this.scanReminders();
     });
+    // "Watch now" on a dev-mode reminder alert relaunches us with a channel key.
+    document.addEventListener('webOSRelaunch', (e) => {
+      this.handleLaunchParams((e as CustomEvent).detail);
+    });
+  }
+
+  private coldLaunchParams(): unknown {
+    const w = window as unknown as { PalmSystem?: { launchParams?: string } };
+    return w.PalmSystem?.launchParams;
+  }
+
+  private handleLaunchParams(raw: unknown): void {
+    const idx = ReminderService.resolveLaunchChannel(raw);
+    if (idx >= 0) {
+      log.info('Reminder launch — tuning channel index', idx);
+      this.playChannel(idx);
+    }
   }
 
   private scanReminders(): void {
     ReminderService.prune();
+    // Dev mode: the interactive system alert is the single notification path,
+    // so skip the in-app prompt (prune still runs to clean up ended reminders).
+    if (ReminderService.devMode) return;
     this.showNextReminder();
   }
 
@@ -376,7 +443,10 @@ class App {
     const due = ReminderService.dueNow();
     const r = due[0];
     if (!r) return;
-    this.reminderPrompt.show(r.title, {
+    this.reminderPrompt.show(
+      truncate(r.title, CONFIG.REMINDER.TITLE_MAX),
+      truncate(r.channelName, CONFIG.REMINDER.CHANNEL_MAX),
+      {
       onConfirm: () => {
         ReminderService.markAnswered(r.channelKey, r.startMs);
         const idx = ReminderService.resolveChannelIndex(r.channelKey);

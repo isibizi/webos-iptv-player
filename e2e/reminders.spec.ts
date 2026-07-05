@@ -19,7 +19,7 @@ async function seedDueReminder(page: Page): Promise<void> {
   }, channelKey(CHAN_ONE));
 }
 
-test('a due reminder prompts on open and OK opens the player', async ({ page }) => {
+test('a due reminder prompts on open and Watch now opens the player', async ({ page }) => {
   await routePlaylist(page);
   await routeLiveManifest(page);
   await seedPlaylist(page);

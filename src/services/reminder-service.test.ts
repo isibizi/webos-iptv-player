@@ -9,6 +9,7 @@ vi.mock('./playlist-service', () => ({ PlaylistService: playlistMock }));
 
 import { ReminderService } from './reminder-service';
 import { channelKey } from '../utils/channel';
+import { CONFIG } from '../config';
 
 const chan = (url: string, name: string) => ({
   id: '', name, logo: '', group: '', url, extras: null,
@@ -63,7 +64,10 @@ describe('ReminderService scheduling', () => {
     (window as unknown as { webOS?: unknown }).webOS = { service: { request } };
     return request;
   }
-  beforeEach(() => { delete (window as unknown as { webOS?: unknown }).webOS; });
+  beforeEach(() => {
+    delete (window as unknown as { webOS?: unknown }).webOS;
+    ReminderService.setDevMode(false);
+  });
 
   it('schedules an activity with a createToast callback on add', () => {
     const request = mockLuna();
@@ -76,7 +80,8 @@ describe('ReminderService scheduling', () => {
     expect(a.name).toBe(`iptvReminder-${keyA}-${startMs}`);
     expect(a.schedule as { start: string; local: boolean }).toEqual({ start: '2030-01-02 15:04:05', local: true });
     expect((a.callback as { method: string }).method).toBe('luna://com.webos.notification/createToast');
-    expect((a.callback as { params: { message: string } }).params.message).toContain('Alpha');
+    expect((a.callback as { params: { message: string } }).params.message)
+      .toBe('A - Alpha is now live — open the app to watch');
   });
 
   it('cancels the activity by name on remove', () => {
@@ -91,5 +96,38 @@ describe('ReminderService scheduling', () => {
   it('no-ops scheduling when Luna is unavailable', () => {
     ReminderService.add(rem({ startMs: 5000 }));
     expect(ReminderService.has(keyA, 5000)).toBe(true); // still stored
+  });
+
+  it('schedules a fireReminderAlert callback in dev mode', () => {
+    const request = mockLuna();
+    ReminderService.setDevMode(true);
+    const startMs = new Date(2030, 0, 2, 15, 4, 5).getTime();
+    ReminderService.add(rem({ startMs, title: 'Alpha' }));
+
+    const [, opts] = request.mock.calls[0];
+    const a = (opts as { parameters: { activity: Record<string, unknown> } }).parameters.activity;
+    expect((a.callback as { method: string }).method)
+      .toBe(`luna://${CONFIG.SERVICE_ID}/fireReminderAlert`);
+    expect((a.callback as { params: { title: string; channelName: string; channelKey: string; appId: string } }).params)
+      .toEqual({ title: 'Alpha', channelName: 'A', channelKey: keyA, appId: CONFIG.APP_ID });
+    ReminderService.setDevMode(false);
+  });
+});
+
+describe('ReminderService launch params', () => {
+  it('resolves reminderChannelKey from a JSON string (cold launch)', () => {
+    expect(ReminderService.resolveLaunchChannel(JSON.stringify({ reminderChannelKey: keyA }))).toBe(0);
+  });
+
+  it('resolves reminderChannelKey from an object (relaunch detail)', () => {
+    expect(ReminderService.resolveLaunchChannel({ reminderChannelKey: keyA })).toBe(0);
+  });
+
+  it('returns -1 for missing, unresolvable, or malformed params', () => {
+    expect(ReminderService.resolveLaunchChannel(undefined)).toBe(-1);
+    expect(ReminderService.resolveLaunchChannel('not json')).toBe(-1);
+    expect(ReminderService.resolveLaunchChannel({})).toBe(-1);
+    expect(ReminderService.resolveLaunchChannel({ reminderChannelKey: 'gone' })).toBe(-1);
+    expect(ReminderService.resolveLaunchChannel({ reminderChannelKey: 42 })).toBe(-1);
   });
 });

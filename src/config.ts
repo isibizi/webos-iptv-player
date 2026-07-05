@@ -32,6 +32,13 @@ export const CONFIG = {
     TIME_SLOT_MINUTES: 30,
   },
 
+  // Max characters shown for a reminder's programme title and channel name
+  // before an ellipsis, so long names don't overflow the toast/alert/in-app prompt.
+  REMINDER: {
+    TITLE_MAX: 40,
+    CHANNEL_MAX: 24,
+  },
+
   KEYS: {
     UP: 38,
     DOWN: 40,

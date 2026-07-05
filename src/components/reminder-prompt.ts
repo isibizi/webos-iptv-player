@@ -12,15 +12,17 @@ export class ReminderPrompt {
   private handlers: PromptHandlers | null = null;
   private focus: 'ok' | 'cancel' = 'ok';
   private title = '';
+  private channelName = '';
 
   get visible(): boolean {
     return this.el !== null && !this.el.classList.contains('hidden');
   }
 
-  show(title: string, handlers: PromptHandlers): void {
+  show(title: string, channelName: string, handlers: PromptHandlers): void {
     this.handlers = handlers;
     this.focus = 'ok';
     this.title = title;
+    this.channelName = channelName;
     if (!this.el) {
       this.el = document.createElement('div');
       this.el.className = 'reminder-prompt';
@@ -54,10 +56,10 @@ export class ReminderPrompt {
     if (!this.el) return;
     morph(this.el, html`
       <div class="reminder-dialog">
-        <p class="reminder-message">${this.title} is now live — watch it?</p>
+        <p class="reminder-message">${this.channelName} - ${this.title} is now live — watch it?</p>
         <div class="reminder-buttons">
           <button class="reminder-btn ${this.focus === 'ok' ? 'focused' : ''}"
-                  data-key="ok" data-reminder-action="ok">OK</button>
+                  data-key="ok" data-reminder-action="ok">Watch now</button>
           <button class="reminder-btn ${this.focus === 'cancel' ? 'focused' : ''}"
                   data-key="cancel" data-reminder-action="cancel">Cancel</button>
         </div>
