@@ -61,7 +61,7 @@ export async function seedPlaylist(page: Page, url = PLAYLIST_URL): Promise<void
   }, url);
 }
 
-// Every spec imports `test` from here; it auto-stubs the upload-service probe
+// Every spec imports `test` from here; it auto-stubs the service probe
 // before each test so no file has to repeat it.
 export const test = base.extend({
   page: async ({ page }, use) => {

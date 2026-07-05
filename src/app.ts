@@ -93,7 +93,7 @@ class App {
   }
 
   /**
-   * Tie the upload service's lifetime to the app's foreground state. The
+   * Tie the bundled service's lifetime to the app's foreground state. The
    * service holds an open LAN HTTP port and a Luna keepAlive activity, so we
    * stop it when the app is backgrounded (visibility → hidden) so neither
    * the port nor the service process lingers across the rest of webOS. On
@@ -105,10 +105,10 @@ class App {
   private bindUploadServiceLifecycle(): void {
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') {
-        log.info('App backgrounded — stopping upload service');
+        log.info('App backgrounded — stopping bundled service');
         this.stopUploadService();
       } else if (document.visibilityState === 'visible') {
-        log.info('App foregrounded — restarting upload service');
+        log.info('App foregrounded — restarting bundled service');
         void (async () => {
           await this.startUploadService();
           this.subscribeToUploadEvents();
@@ -121,7 +121,7 @@ class App {
   }
 
   /**
-   * Fire-and-forget Luna call to gracefully shut down the upload service.
+   * Fire-and-forget Luna call to gracefully shut down the bundled service.
    * The service closes its HTTP listener, releases its keepAlive activity,
    * and lets the Node process exit so neither the port nor the process
    * persists in the background.
@@ -135,8 +135,8 @@ class App {
       request(`luna://${CONFIG.SERVICE_ID}`, {
         method: 'stop',
         parameters: {},
-        onSuccess: (resp: unknown) => log.info('Upload service stop onSuccess:', JSON.stringify(resp)),
-        onFailure: (err: unknown) => log.warn('Upload service stop onFailure:', JSON.stringify(err)),
+        onSuccess: (resp: unknown) => log.info('Bundled service stop onSuccess:', JSON.stringify(resp)),
+        onFailure: (err: unknown) => log.warn('Bundled service stop onFailure:', JSON.stringify(err)),
       });
     } catch (e) {
       log.warn('stopUploadService threw:', e);
@@ -147,8 +147,8 @@ class App {
 
   /**
    * Ask the webOS Luna service bus to start the bundled webOS JS service
-   * (see upload-service/). On non-webOS environments (desktop preview, e2e)
-   * this is a no-op — the upload service is only available on device.
+   * (see bundled-service/). On non-webOS environments (desktop preview, e2e)
+   * this is a no-op — the bundled service is only available on device.
    *
    * We log onSuccess/onFailure explicitly so device logs (ares-inspect or
    * ares-monitor-log) show what happened, instead of guessing from silence.
@@ -158,7 +158,7 @@ class App {
     const w = window as unknown as { webOS?: { service?: LunaService } };
     const request = w.webOS?.service?.request;
     if (!request) {
-      log.debug('webOS Luna service bus not available — skipping upload service start');
+      log.debug('webOS Luna service bus not available — skipping bundled service start');
       return;
     }
     log.info('Calling luna://' + CONFIG.SERVICE_ID + '/start ...');
@@ -184,25 +184,25 @@ class App {
               const p = (resp as { port?: unknown }).port;
               if (typeof p === 'number') setServicePort(p);
             }
-            log.info('Upload service start onSuccess:', JSON.stringify(resp));
+            log.info('Bundled service start onSuccess:', JSON.stringify(resp));
             finish('onSuccess');
           },
           onFailure: (err: unknown) => {
             clearTimeout(timer);
-            log.error('Upload service start onFailure:', JSON.stringify(err));
+            log.error('Bundled service start onFailure:', JSON.stringify(err));
             finish('onFailure');
           },
         });
       } catch (e) {
         clearTimeout(timer);
-        log.error('Upload service start threw:', e);
+        log.error('Bundled service start threw:', e);
         finish('threw');
       }
     });
   }
 
   /**
-   * Subscribe to the upload service's `uploadEvents` push channel. Whenever
+   * Subscribe to the bundled service's `uploadEvents` push channel. Whenever
    * the service writes/deletes an uploaded playlist (via the LAN /upload page
    * or DELETE /uploads/:id), it pushes a notification on this subscription
    * and we call Settings.refreshUploads() to re-sync storage + the upload
@@ -263,7 +263,7 @@ class App {
     this.epgGrid.resetDay(); // re-pick today; a tz change invalidates the remembered day index
 
     try {
-      // Pull in uploaded playlists from the local upload service before we
+      // Pull in uploaded playlists from the local bundled service before we
       // read the configured playlist list. Reconcile is a no-op if the
       // service is unreachable, so this never blocks data load on device.
       await UploadClient.reconcile();

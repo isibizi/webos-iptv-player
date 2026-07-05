@@ -7,13 +7,13 @@ through Luna and shows them in **Settings → Upload Playlist**.
 ## Architecture
 
 ```
-┌──────────────────┐  Luna  ┌─────────────────────┐  HTTP  ┌──────────────────┐
-│ App (browser)    │◀──────▶│  Upload service     │◀──────▶│  Phone / laptop  │
-│  src/app.ts      │        │  com.lennylxx.iptv  │  LAN   │  upload page     │
-│  upload-client.ts│        │  .upload (this dir) │        │  (/upload)       │
-└──────────────────┘        └─────────────────────┘        └──────────────────┘
-            ▲                          │
-            └──── uploadEvents ────────┘    push notification on every change
+┌──────────────────┐  Luna  ┌─────────────────────────────┐  HTTP  ┌──────────────────┐
+│ App (browser)    │◀──────▶│  Bundled service            │◀──────▶│  Phone / laptop  │
+│  src/app.ts      │        │  com.lennylxx.iptv.service  │  LAN   │  upload page     │
+│  upload-client.ts│        │                             │        │  (/upload)       │
+└──────────────────┘        └─────────────────────────────┘        └──────────────────┘
+            ▲                             │
+            └─────── uploadEvents ────────┘    push notification on every change
 ```
 
 - **Luna bus** — in-process IPC between the app and the service.

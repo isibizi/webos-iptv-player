@@ -11,7 +11,7 @@
     "forceConsistentCasingInFileNames": true,
     "sourceMap": false,
     "declaration": false,
-    "outDir": "../build/upload-service",
+    "outDir": "../build/bundled-service",
     "rootDir": "src"
   },
   "include": ["src/**/*.ts"],

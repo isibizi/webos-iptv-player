@@ -50,7 +50,7 @@ cpSync('assets/icon130.png', 'dist/largeIcon.png');
 cpSync('assets/group-icons', 'dist/assets/group-icons', { recursive: true });
 
 // Main app bundle — excludes hls.js and mpegts.js (only needed on desktop).
-const serviceId = JSON.parse(readFileSync('upload-service/src/services.json', 'utf8')).id;
+const serviceId = JSON.parse(readFileSync('bundled-service/src/services.json', 'utf8')).id;
 const define = {
   '__APP_VERSION__': JSON.stringify(version),
   '__APP_ID__': JSON.stringify(appinfo.id),

@@ -22,7 +22,7 @@ An IPTV player for LG webOS TVs. Supports M3U playlists, Xtream Codes accounts, 
 
 - **M3U Playlist Support** — Load multiple M3U/M3U8 playlists with auto-deduplication
 - **Xtream Codes Accounts** — Add an Xtream account (portal URL + username + password) in Settings; the app derives the `get.php` playlist and `xmltv.php` EPG from your credentials automatically
-- **LAN M3U Upload** — Drop `.m3u` files onto the TV from any phone/laptop on the same network via a QR-scannable upload page; new playlists appear in Settings within milliseconds (push, not polling). See [`upload-service/README.md`](upload-service/README.md) for details.
+- **LAN M3U Upload** — Drop `.m3u` files onto the TV from any phone/laptop on the same network via a QR-scannable upload page; new playlists appear in Settings within milliseconds (push, not polling). See [`docs/upload-service.md`](docs/upload-service.md) for details.
 - **Electronic Program Guide (EPG)** — Three-pane layout (channels / date bar / programs), date range auto-derived from EPG data, with IndexedDB caching for instant reopen
 - **Catch-up / Timeshift** — Play past programs using `catchup-source` URL templates from M3U; seek within a program by jumping ±30s with Left/Right (while the OSD is showing) or pointing at the seek bar with the Magic Remote
 - **Live DVR** — Pause, rewind, and jump back to the live edge within the window a live stream retains — a scrubber with a "behind live" offset and a Go-to-Live control, shown automatically when the stream exposes a seekable window. Works with the D-pad/OK and the Magic Remote pointer; hardware transport keys act as accelerators where present

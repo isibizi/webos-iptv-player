@@ -5,7 +5,7 @@ export const CONFIG = {
 
   STORAGE_PREFIX: 'iptv_',
 
-  // Bundled webOS JS service (see upload-service/) for LAN playlist uploads.
+  // Bundled webOS JS service (see bundled-service/src/upload) for LAN playlist uploads.
   SERVICE_ID: __SERVICE_ID__,
   SERVICE_HOST: '127.0.0.1',
 

@@ -2,7 +2,7 @@
 
 IPTV player for LG webOS TVs. Vanilla TypeScript (no UI framework), bundled with
 esbuild and packaged as a webOS `.ipk`. A separate bundled webOS JS service
-(`upload-service/`) provides LAN M3U uploads over Luna + HTTP. App id
+(`bundled-service/`) provides LAN M3U uploads over Luna + HTTP. App id
 `com.lennylxx.iptv`; targets webOS 5+.
 
 ## Commands
@@ -36,7 +36,7 @@ considering a change done.
 
 ## CI
 
-`.github/workflows/build.yml` runs typecheck (app **and** `upload-service`),
+`.github/workflows/build.yml` runs typecheck (app **and** `service`),
 `npm run lint` (the Chromium-68 compat gate), `vitest run`, the esbuild bundle, and
 packages the IPK. Pushes/PRs to `main` build; tagged `v*` pushes publish a GitHub
 release with the `.ipk`.
@@ -75,11 +75,11 @@ syncs it into `appinfo.json` and the `__APP_VERSION__` build constant;
   them tolerant of messy real-world feeds.
 - **Config** (`src/config.ts`) — `CONFIG` holds key codes, refresh intervals,
   player/EPG/storage constants. Prefer constants here over magic numbers.
-- **Upload service** (`upload-service/`) — a sandbox-separate Node (CommonJS) webOS
-  service. The app talks to it over the Luna bus (`start`/`stop`/`heartbeat`/
-  `uploadEvents`) and over HTTP; uploads **push** `uploadEvents` (no polling). Its
-  lifecycle is tied to app `visibilitychange`. **Read `upload-service/README.md`
-  before changing it**, and keep the Luna/HTTP contract aligned with
+- **Bundled service** (`bundled-service/`) — a sandbox-separate Node (CommonJS) webOS
+  service (`com.lennylxx.iptv.service`). The app talks to it over the Luna bus
+  (`start`/`stop`/`heartbeat`/`uploadEvents`) and over HTTP; uploads **push**
+  `uploadEvents` (no polling). Its lifecycle is tied to app `visibilitychange`.
+  **Read `docs/upload-service.md` before changing it**, and keep the Luna/HTTP contract aligned with
   `src/services/upload-client.ts`.
 
 ## Conventions
@@ -162,7 +162,7 @@ syncs it into `appinfo.json` and the `__APP_VERSION__` build constant;
 - When changing UI behavior, preserve the remote-control and desktop-preview
   experience; keep key handling, focus navigation, and view transitions consistent
   with the existing `App`/`KeyHandler`/component flow.
-- When changing parsers, services, or upload-service messaging, add or update the
+- When changing parsers, services, or bundled-service messaging, add or update the
   colocated tests for the touched module.
 
 ## Git

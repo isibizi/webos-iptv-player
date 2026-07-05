@@ -1,14 +1,15 @@
 /**
- * webOS JS service for LAN M3U playlist uploads.
+ * Bundled webOS JS service for the IPTV player. Currently hosts the LAN M3U
+ * upload feature (HTTP + Luna); see upload/server.ts.
  *
  * Entry point: resolves the data dir, registers Luna handlers, and starts
  * the HTTP server on an OS-assigned port. The bound port is reported back to
- * the in-app client via the Luna `start` response. All HTTP/storage code
- * lives in server.ts.
+ * the in-app client via the Luna `start` response. All upload HTTP/storage
+ * code lives in upload/server.ts.
  */
 
 import * as http from 'http';
-import { startServer, resolveDataDir } from './server';
+import { startServer, resolveDataDir } from './upload/server';
 
 // Service id from services.json — the file webOS hubd reads to register
 // this service on the Luna bus. Passing anything else into `new Service()`

@@ -57,7 +57,7 @@ export interface PlaylistEntry {
   /** For 'xtream' entries this is the normalized portal base (`http://host:port`);
    *  the get.php/xmltv.php URLs are derived from it + credentials at load time. */
   url: string;
-  /** 'upload' entries are auto-managed by the local upload service; 'xtream' is an
+  /** 'upload' entries are auto-managed by the local bundled service; 'xtream' is an
    *  Xtream Codes account; absent/'url' are user-entered M3U URLs. */
   source?: 'upload' | 'url' | 'xtream';
   /** Credentials for an 'xtream' entry. */
