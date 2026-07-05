@@ -29,7 +29,7 @@ jobs:
         run: npm install -g @webos-tools/cli@3.2.3
 
       - name: Type check
-        run: npx tsc --noEmit && npx tsc -p upload-service/tsconfig.json
+        run: npx tsc --noEmit && npx tsc -p bundled-service/tsconfig.json
 
       - name: Lint (webOS 5 / Chromium 68 compat gate)
         run: npm run lint
@@ -37,18 +37,33 @@ jobs:
       - name: Unit tests
         run: npx vitest run
 
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: E2E tests
+        run: npx playwright test
+
+      - name: Upload Playwright artifacts
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-artifacts
+          path: test-output/
+          retention-days: 7
+
       - name: Bundle
         run: node esbuild.config.mjs
 
-      - name: Build upload service
+      - name: Build service
         run: |
-          rm -rf build/upload-service
-          npx tsc -p upload-service/tsconfig.json
-          cp upload-service/package.json build/upload-service/
-          cp upload-service/src/services.json upload-service/src/upload-page.html build/upload-service/
+          rm -rf build/bundled-service
+          npx tsc -p bundled-service/tsconfig.json
+          cp bundled-service/package.json build/bundled-service/
+          cp bundled-service/src/services.json build/bundled-service/
+          cp bundled-service/src/upload/upload-page.html build/bundled-service/upload/
 
       - name: Package IPK
-        run: ares-package --no-minify -e "*preview-libs.js" dist build/upload-service -o .
+        run: ares-package --no-minify -e "*preview-libs.js" dist build/bundled-service -o .
 
       - name: Upload IPK
         uses: actions/upload-artifact@v7
