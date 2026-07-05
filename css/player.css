@@ -218,7 +218,8 @@
   box-shadow: 0 0 8px var(--accent-glow);
 }
 
-/* Live DVR (timeshift) row: play/pause + "behind live" offset + Go-to-Live. */
+/* Live DVR (timeshift) row: play/pause + "behind live" offset + Go-to-Live. The
+   play/pause button (.osd-dvr-btn) is also used in the catch-up progress row. */
 .osd-dvr-btn {
   display: inline-flex;
   align-items: center;

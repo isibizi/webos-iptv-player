@@ -29,16 +29,19 @@ const CATCHUP = { start: 1_000_000, end: 1_000_120, title: 'Prog', description: 
 function fakeVideo(duration: number): HTMLVideoElement {
   let currentTime = 0;
   let src = '';
+  let paused = false;
   const listeners: Record<string, Array<() => void>> = {};
   return {
     duration,
     get currentTime() { return currentTime; },
     set currentTime(t: number) { currentTime = t; },
+    get paused() { return paused; },
     get src() { return src; },
     set src(v: string) { src = v; },
     classList: { add() {}, remove() {} },
     canPlayType: () => '',
-    play: () => Promise.resolve(),
+    play: () => { paused = false; return Promise.resolve(); },
+    pause() { paused = true; },
     load() {}, removeAttribute() {}, appendChild() {}, set innerHTML(_: string) {},
     addEventListener(type: string, fn: () => void) { (listeners[type] ||= []).push(fn); },
     dispatchEvent(e: Event) { (listeners[e.type] || []).forEach((fn) => fn()); return true; },
@@ -157,26 +160,58 @@ describe('Player catch-up seeking', () => {
     expect(video.currentTime).toBe(30); // 0.25 * 120
   });
 
-  it('OK away from the bar toggles the OSD instead of seeking', () => {
+  it('OK away from the bar pauses playback instead of seeking', () => {
     stubBar();
     container.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 250, clientY: 500 })); // off the bar
     player.handleAction('select');
-    expect(video.currentTime).toBe(0);
-    expect(player.canSeek()).toBe(false); // OSD hidden
+    expect(video.currentTime).toBe(0); // not seeked
+    expect(video.paused).toBe(true); // paused instead
   });
 
-  it('a d-pad press clears the cursor so OK toggles the OSD', () => {
+  it('a d-pad press clears the cursor so OK pauses instead of seeking', () => {
     stubBar();
     container.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 250, clientY: 18 }));
     player.handleAction('right'); // d-pad seek clears the tracked cursor
     expect(video.currentTime).toBe(30);
     player.handleAction('select');
-    expect(player.canSeek()).toBe(false); // toggled (hidden), not seeked
+    expect(video.paused).toBe(true); // paused (cursor cleared), not seeked to the stale pointer
   });
 
   it('is no longer seekable once the OSD hides', () => {
     player.hideOSD();
     expect(player.canSeek()).toBe(false);
+  });
+});
+
+describe('Player catch-up pause/play', () => {
+  beforeEach(() => player.play(0, CATCHUP)); // catch-up → OSD shown, finite duration
+
+  it('renders a play/pause control', () => {
+    expect(container.querySelector('[data-playpause]')).not.toBeNull();
+  });
+
+  it('OK (OSD up, cursor off the bar) pauses then resumes playback', () => {
+    expect(video.paused).toBe(false);
+    player.handleAction('select'); // OSD up + catch-up → pause
+    expect(video.paused).toBe(true);
+    player.handleAction('select'); // resume
+    expect(video.paused).toBe(false);
+  });
+
+  it('the pause/play remote keys toggle playback', () => {
+    player.handleAction('pause');
+    expect(video.paused).toBe(true);
+    player.handleAction('play');
+    expect(video.paused).toBe(false);
+  });
+
+  // Magic Remote OK fires mouseup with no synthesized click, so the control is
+  // driven from mouseup by coordinates — mirror the live DVR play/pause test.
+  it('a pointer release (Magic Remote OK) on the play/pause control pauses playback', () => {
+    const btn = container.querySelector('[data-playpause]') as HTMLElement;
+    btn.getBoundingClientRect = () => ({ left: 10, right: 42, width: 32, top: 0, bottom: 32 }) as DOMRect;
+    container.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: 26, clientY: 16 }));
+    expect(video.paused).toBe(true);
   });
 });
 

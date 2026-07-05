@@ -493,7 +493,7 @@ export class Player {
 
   private resetOsdTimer(): void {
     if (this.osdTimer) clearTimeout(this.osdTimer);
-    // Keep the OSD up while paused (DVR): there is no playback to fall behind.
+    // Keep the OSD up while paused (live DVR or catch-up): nothing to fall behind.
     if (this.videoEl?.paused) return;
     this.osdTimer = setTimeout(() => this.hideOSD(), CONFIG.PLAYER.OSD_TIMEOUT);
   }
@@ -671,15 +671,23 @@ export class Player {
     return html`<img class="osd-programme-icon" data-key="prog-icon:${url}" src="${url}" alt="">`;
   }
 
-  private dvrProgressRow(st: DvrState): Safe {
+  /** The shared OSD play/pause button (live DVR and catch-up). Pointer-hit-tested
+   *  by onPointerRelease and toggled by OK from handleAction. */
+  private playPauseButton(): Safe {
     const paused = !!this.videoEl?.paused;
     return html`
+      <button class="osd-dvr-btn" data-playpause aria-label="${paused ? 'Play' : 'Pause'}">
+        ${paused
+          ? html`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`
+          : html`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>`}
+      </button>
+    `;
+  }
+
+  private dvrProgressRow(st: DvrState): Safe {
+    return html`
       <div class="osd-progress-row osd-dvr-row">
-        <button class="osd-dvr-btn" data-playpause aria-label="${paused ? 'Play' : 'Pause'}">
-          ${paused
-            ? html`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`
-            : html`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>`}
-        </button>
+        ${this.playPauseButton()}
         <span class="osd-time-current osd-dvr-behind">${st.atLiveEdge ? 'LIVE' : `-${formatPosition(st.behindLive)}`}</span>
         <div class="osd-progress" data-seekbar>
           <div class="osd-progress-bar" style="width: ${st.fraction * 100}%"></div>
@@ -721,6 +729,7 @@ export class Player {
             </div>
           </div>
           <div class="osd-progress-row">
+            ${this.playPauseButton()}
             <span class="osd-time-current">${formatPosition(pos)}</span>
             <div class="osd-progress" data-seekbar>
               <div class="osd-progress-bar" style="width: ${progress * 100}%"></div>
@@ -1169,7 +1178,8 @@ export class Player {
         break;
       case 'select':
         if (this.seekAtPointer(this.pointerX, this.pointerY)) break;
-        if (this.osdVisible && this.isLiveDvr()) this.pauseToggle();
+        // OSD up on a pausable stream (live DVR or catch-up): OK pauses/resumes.
+        if (this.canSeek()) this.pauseToggle();
         else this.toggleOSD();
         break;
       case 'left':
