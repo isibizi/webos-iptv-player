@@ -178,6 +178,17 @@ const HERO_SCHEDULE = [
   [23.25, 24.5, 'Feature Film: Midnight Protocol', 'An intelligence operative crosses continents to uncover the truth about his past. Action thriller.'],
 ];
 
+// Pre-set a reminder on one upcoming hero program (22:30 "Tomorrow's Papers", after
+// the 22:18 frozen clock) so the EPG shows the accent "set" bell on it — the other
+// future programs keep the dim "unset" bell.
+const REMINDER = {
+  url: `https://demo.local/stream/${CHANNELS[0].id}.m3u8`,
+  channelName: CHANNELS[0].name,
+  title: "Tomorrow's Papers",
+  startMs: at(22.5),
+  stopMs: at(23.25),
+};
+
 function epgXml() {
   const epgChannels = CHANNELS.slice(0, 14);
   const parts = ['<?xml version="1.0" encoding="UTF-8"?>', '<tv>'];
@@ -271,6 +282,19 @@ async function setupPage(page, { upload = false, fakeStream = false } = {}) {
     localStorage.setItem('iptv_epg_url', JSON.stringify('https://demo.local/epg.xml'));
     localStorage.setItem('iptv_favorites', JSON.stringify(favs));
   }, FAVORITE_IDS);
+
+  // Pre-set one reminder so the EPG shows the "set" bell. The program starts after
+  // the frozen clock, so it's a future reminder (no due prompt fires). Compute the
+  // channel key with the same FNV-1a the app derives from the stripped stream URL.
+  await page.addInitScript((r) => {
+    let h = 0x811c9dc5;
+    const stable = r.url.split('#')[0].split('?')[0];
+    for (let i = 0; i < stable.length; i++) { h ^= stable.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+    const channelKey = (h >>> 0).toString(16).padStart(8, '0');
+    localStorage.setItem('iptv_reminders', JSON.stringify([
+      { channelKey, channelName: r.channelName, title: r.title, startMs: r.startMs, stopMs: r.stopMs },
+    ]));
+  }, REMINDER);
 
   // Fake the Luna service bus so the upload service "runs" (settings QR).
   if (upload) {
@@ -391,7 +415,7 @@ try {
     await context.close();
   }
 
-  // 2) Programme guide (EPG).
+  // 2) Program guide (EPG).
   {
     const { context, page } = await newPage();
     await gotoChannels(page, base);

@@ -12,17 +12,18 @@ An IPTV player for LG webOS TVs. Supports M3U playlists, Xtream Codes accounts, 
 
 | Playback overlays | Subtitles |
 | --- | --- |
-| ![Playback overlays](https://github.com/user-attachments/assets/f48d7a56-33d1-4d5b-ab44-dbcfa1769930) | ![Subtitles](https://github.com/user-attachments/assets/5d1fab57-1087-414b-9a20-f900589eac4a) |
+| ![Playback overlays](https://github.com/user-attachments/assets/fd74f4cc-a0a0-4357-add6-2ce2e691af99) | ![Subtitles](https://github.com/user-attachments/assets/5d1fab57-1087-414b-9a20-f900589eac4a) |
 
 | Program guide | Settings |
 | --- | --- |
-| ![Program guide](https://github.com/user-attachments/assets/887acb03-a7a6-4a12-986e-f1f9054c6d6c) | ![Settings](https://github.com/user-attachments/assets/6dba6720-9ff9-4fd0-8dab-50484c2eafaf) |
+| ![Program guide](https://github.com/user-attachments/assets/3e203180-58ed-40f2-ad46-4c13939d23f6) | ![Settings](https://github.com/user-attachments/assets/6dba6720-9ff9-4fd0-8dab-50484c2eafaf) |
 
 ## Features
 
 - **M3U Playlist Support** — Load multiple M3U/M3U8 playlists with auto-deduplication
 - **Xtream Codes Accounts** — Add an Xtream account (portal URL + username + password) in Settings; the app derives the `get.php` playlist and `xmltv.php` EPG from your credentials automatically
 - **LAN M3U Upload** — Drop `.m3u` files onto the TV from any phone/laptop on the same network via a QR-scannable upload page; new playlists appear in Settings within milliseconds (push, not polling). See [`docs/upload-service.md`](docs/upload-service.md) for details.
+- **Program Reminders** — Set a reminder on any upcoming program in the EPG (press OK — a bell marks it). At air time you get a system notification even if the app is closed; opening it offers **Watch now** / **Cancel** to tune straight to the channel. On a Developer-Mode TV the notification is an interactive alert with those buttons inline (dismiss or tune without hunting for the app)
 - **Electronic Program Guide (EPG)** — Three-pane layout (channels / date bar / programs), date range auto-derived from EPG data, with IndexedDB caching for instant reopen
 - **Catch-up / Timeshift** — Play past programs using `catchup-source` URL templates from M3U; seek within a program by jumping ±30s with Left/Right (while the OSD is showing) or pointing at the seek bar with the Magic Remote
 - **Live DVR** — Pause, rewind, and jump back to the live edge within the window a live stream retains — a scrubber with a "behind live" offset and a Go-to-Live control, shown automatically when the stream exposes a seekable window. Works with the D-pad/OK and the Magic Remote pointer; hardware transport keys act as accelerators where present

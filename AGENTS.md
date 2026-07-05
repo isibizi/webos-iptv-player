@@ -65,9 +65,11 @@ syncs it into `appinfo.json` and the `__APP_VERSION__` build constant;
   listeners once (delegated), not per render.
 - **Services** (`src/services/`) are singletons (exported object or single class
   instance): `PlaylistService`, `EpgService`, `StorageService`, `UploadClient`,
-  `idb-cache`. `StorageService` wraps `localStorage` with the `iptv_` prefix + JSON
-  and evicts the playlist cache on quota errors. EPG is cached in IndexedDB for
-  instant reopen.
+  `ReminderService`, `idb-cache`. `StorageService` wraps `localStorage` with the
+  `iptv_` prefix + JSON and evicts the playlist cache on quota errors. EPG is cached
+  in IndexedDB for instant reopen. `ReminderService` stores reminders, schedules an
+  Activity Manager callback per reminder (dev-mode alert vs. retail toast), and
+  resolves a launch param back to a channel.
 - **Navigation** (`src/navigation/`) — `SpatialNav` does geometric D-pad focus
   among `[data-focusable]` elements (grouped by `[data-nav-container]`);
   `KeyHandler` also wires pointer/Magic-Remote and desktop mouse/wheel input.
@@ -76,9 +78,12 @@ syncs it into `appinfo.json` and the `__APP_VERSION__` build constant;
 - **Config** (`src/config.ts`) — `CONFIG` holds key codes, refresh intervals,
   player/EPG/storage constants. Prefer constants here over magic numbers.
 - **Bundled service** (`bundled-service/`) — a sandbox-separate Node (CommonJS) webOS
-  service (`com.lennylxx.iptv.service`). The app talks to it over the Luna bus
-  (`start`/`stop`/`heartbeat`/`uploadEvents`) and over HTTP; uploads **push**
-  `uploadEvents` (no polling). Its lifecycle is tied to app `visibilitychange`.
+  service (`com.lennylxx.iptv.service`) hosting two features: LAN M3U **uploads** and,
+  in Developer Mode, interactive program-reminder **alerts**. The app talks to it over
+  the Luna bus (`start`/`stop`/`heartbeat`/`uploadEvents` for uploads; `getDevMode`/
+  `fireReminderAlert` for reminders) and over HTTP; uploads **push** `uploadEvents` (no
+  polling). Its lifecycle is tied to app `visibilitychange`. `index.ts` is a thin entry
+  that wires the feature modules (`upload/`, `reminder/`).
   **Read `docs/upload-service.md` before changing it**, and keep the Luna/HTTP contract aligned with
   `src/services/upload-client.ts`.
 
@@ -151,6 +156,18 @@ syncs it into `appinfo.json` and the `__APP_VERSION__` build constant;
   GUI copy-paste), `tv.sh eval '<js>'` evaluates an expression in the app page over CDP
   (probe live DOM/app state from the terminal), and `tv.sh run '<cmd>'` / `push` /
   `shell` cover ssh/scp since `ares-shell`/`ares-push` are disabled in the `tv` profile.
+- **`createAlert` is denied to third-party apps; `createToast` isn't.** On webOS the
+  interactive `com.webos.notification/createAlert` (buttons) refuses every identity the
+  app or its service can present (the block is identity-based in the notification
+  daemon, not an `appinfo.json`/ACG gap). Passive `createToast` works. Only
+  `/usr/bin/luna-send-pub` (Luna role `type:"devmode"`) may raise `createAlert`, and
+  only while Developer Mode is on — so the bundled service execs it via
+  `child_process` for the dev-mode reminder alert, and retail falls back to a toast +
+  in-app prompt. Program reminders are scheduled through the Activity Manager
+  (`com.webos.service.activitymanager` `create` with a `callback` + `schedule.start`,
+  `local: true`), which fires the callback at air time **even with the app closed**;
+  the dev callback targets the service's `fireReminderAlert`, the retail callback a
+  `createToast`.
 - **Install needs a cold restart.** webOS keeps the old instance suspended through an
   in-place upgrade and a plain relaunch resumes the stale in-memory copy.
   `build.sh --install` closes then cold-starts the app to load the new bundle.
