@@ -10,11 +10,16 @@ vi.mock('../services/epg-service', () => ({
   EpgService: { findChannelId: () => null, getNowPlaying: () => null, getUpcoming: () => [] },
 }));
 vi.mock('../services/storage-service', () => ({
-  StorageService: { setLastChannel: vi.fn(), getSubtitlePref: vi.fn(), setSubtitlePref: vi.fn(), getAudioPref: vi.fn() },
+  StorageService: {
+    setLastChannel: vi.fn(), getSubtitlePref: vi.fn(), setSubtitlePref: vi.fn(), getAudioPref: vi.fn(),
+    setResume: vi.fn(), clearResume: vi.fn(),
+  },
 }));
+vi.mock('./toast', () => ({ showToast: vi.fn() }));
 
-import { Player } from './player';
+import { Player, containerMime, extFromUrl } from './player';
 import { StorageService } from '../services/storage-service';
+import { showToast } from './toast';
 import { CONFIG } from '../config';
 
 const CHANNEL = {
@@ -491,5 +496,137 @@ describe('Player subtitle self-render (webOS native path)', () => {
     expect(tracks.map((t) => t.label)).toEqual(['Track 1', 'Track 2']);
     expect(tracks.map((t) => t.active)).toEqual([false, true]);
     expect(tracks.every((t) => t.available)).toBe(true);
+  });
+});
+
+describe('Player VOD mode', () => {
+  const req = (over = {}) => ({
+    url: 'http://host:8080/movie/u/p/10.mp4', title: 'Movie One', poster: '',
+    accountId: 'x1', itemId: '10', kind: 'vod' as const, resumeSecs: 0, onBack: vi.fn(), ...over,
+  });
+
+  let player: Player;
+  let container: HTMLElement;
+  beforeEach(() => {
+    document.body.innerHTML = ''; // drop the outer beforeEach's #player-osd (a duplicate id breaks scoped querySelector)
+    container = document.createElement('div');
+    container.innerHTML = '<div id="player-osd"></div>';
+    document.body.appendChild(container);
+    player = new Player(container, () => {});
+  });
+  afterEach(() => { container.remove(); });
+
+  it('seeks to the resume position once metadata is known', () => {
+    const video = fakeVideo(3600);
+    player.init(video);
+    player.playVod(req({ resumeSecs: 900 }));
+    video.dispatchEvent(new Event('loadedmetadata'));
+    expect(video.currentTime).toBe(900);
+    expect(player.isVod()).toBe(true);
+  });
+
+  it('is seekable while the OSD is up (finite duration)', () => {
+    const video = fakeVideo(3600);
+    player.init(video);
+    player.playVod(req());
+    expect(player.canSeek()).toBe(true); // playVod shows the OSD
+  });
+
+  it('renders the VOD OSD through the Live markup (title + stream info, no .osd-vod)', () => {
+    const video = fakeVideo(3600);
+    (video as unknown as { videoHeight: number }).videoHeight = 1080;
+    player.init(video);
+    player.playVod(req());
+    video.dispatchEvent(new Event('loadedmetadata'));
+    const osd = container.querySelector('#player-osd')!;
+    expect(osd.querySelector('.osd-vod')).toBeNull();
+    expect(osd.querySelector('.osd-channel-name')?.textContent).toContain('Movie One');
+    expect(osd.querySelector('.osd-stream-info')?.textContent).toContain('1080p');
+    expect(osd.querySelector('.osd-progress[data-seekbar]')).not.toBeNull();
+  });
+
+  it('saves the resume point and calls onBack on Back', () => {
+    const video = fakeVideo(3600);
+    player.init(video);
+    const r = req();
+    player.playVod(r);
+    video.dispatchEvent(new Event('loadedmetadata'));
+    video.currentTime = 1200;
+    player.handleAction('back');
+    expect(StorageService.setResume).toHaveBeenCalledWith(expect.objectContaining({ itemId: '10', position: 1200, duration: 3600, ext: 'mp4' }));
+    expect(r.onBack).toHaveBeenCalled();
+    expect(player.isVod()).toBe(false); // stop() cleared VOD state
+  });
+
+  it('clears the resume point and calls onBack when the movie ends', () => {
+    const video = fakeVideo(3600);
+    player.init(video);
+    const r = req();
+    player.playVod(r);
+    video.dispatchEvent(new Event('ended'));
+    expect(StorageService.clearResume).toHaveBeenCalledWith('x1', 'vod', '10');
+    expect(r.onBack).toHaveBeenCalled();
+  });
+
+  it('ignores channel up/down in VOD mode', () => {
+    const video = fakeVideo(3600);
+    player.init(video);
+    player.playVod(req());
+    expect(() => { player.handleAction('channel_up'); player.handleAction('up'); }).not.toThrow();
+    expect(player.isVod()).toBe(true);
+  });
+
+  it('routes a playback error to onBack, not a channel change', () => {
+    const video = fakeVideo(3600);
+    player.init(video);
+    const r = req();
+    player.playVod(r);
+    playlistMock.channels = [{}, {}]; // non-empty so a stray channelUp would fire
+    playlistMock.getByIndex.mockClear();
+    vi.mocked(showToast).mockClear();
+    video.dispatchEvent(new Event('error'));
+    vi.advanceTimersByTime(3000); // let any (unwanted) channelUp timer run
+    expect(r.onBack).toHaveBeenCalled();
+    expect(player.isVod()).toBe(false);
+    expect(playlistMock.getByIndex).not.toHaveBeenCalled(); // no channel playback
+    expect(showToast).toHaveBeenCalled();
+  });
+
+  it('does not clobber the resume point when Back is pressed before metadata loads', () => {
+    const video = fakeVideo(NaN); // duration NaN — metadata not loaded yet
+    player.init(video);
+    const r = req();
+    player.playVod(r);
+    vi.mocked(StorageService.setResume).mockClear();
+    player.handleAction('back');
+    expect(StorageService.setResume).not.toHaveBeenCalled();
+    expect(r.onBack).toHaveBeenCalled();
+  });
+});
+
+describe('containerMime', () => {
+  it('maps known progressive extensions to their container MIME', () => {
+    expect(containerMime('http://host/movie/u/p/10.mp4')).toBe('video/mp4');
+    expect(containerMime('http://host/movie/u/p/10.mkv')).toBe('video/x-matroska');
+    expect(containerMime('http://host/movie/u/p/10.avi')).toBe('video/x-msvideo');
+  });
+
+  it('ignores query strings and fragments when reading the extension', () => {
+    expect(containerMime('http://host/movie/u/p/10.mp4?token=x')).toBe('video/mp4');
+    expect(containerMime('http://host/movie/u/p/10.mkv#frag')).toBe('video/x-matroska');
+  });
+
+  it('defaults to video/mp4 for unknown or extension-less URLs', () => {
+    expect(containerMime('http://host/movie/u/p/10.xyz')).toBe('video/mp4');
+    expect(containerMime('http://host/movie/u/p/10')).toBe('video/mp4');
+  });
+});
+
+describe('extFromUrl', () => {
+  it('reads the lowercased extension, ignoring query and fragment', () => {
+    expect(extFromUrl('http://host/movie/u/p/10.MP4')).toBe('mp4');
+    expect(extFromUrl('http://host/series/u/p/e1.mkv?token=x')).toBe('mkv');
+    expect(extFromUrl('http://host/series/u/p/e1.avi#frag')).toBe('avi');
+    expect(extFromUrl('http://host/movie/u/p/10')).toBe('');
   });
 });

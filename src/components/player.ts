@@ -1,5 +1,5 @@
 import type { Action, Channel, CatchupInfo, AudioTrackOption, AudioOption, AudioPref, ManifestAudio,
-  SubtitleTrackOption, SubtitleOption, SubtitlePref, ManifestSubtitle, ManifestClosedCaption } from '../types';
+  SubtitleTrackOption, SubtitleOption, SubtitlePref, ManifestSubtitle, ManifestClosedCaption, VodPlayback } from '../types';
 import { $, show, hide, html, Safe } from '../utils/dom';
 import { channelKey } from '../utils/channel';
 import { morph } from '../utils/morph';
@@ -24,6 +24,24 @@ const log = createLogger('Player');
 // True on the TV's webOS WebView; false in desktop preview / tests.
 const isWebOS = /webOS|Web0S/i.test(navigator.userAgent);
 
+// Progressive-container MIME by file extension, for VOD played natively on webOS.
+// A stream URL's file extension, lowercased (empty if none).
+export function extFromUrl(url: string): string {
+  return (url.split('?')[0].split('#')[0].match(/\.([a-z0-9]+)$/i)?.[1] ?? '').toLowerCase();
+}
+
+export function containerMime(url: string): string {
+  switch (extFromUrl(url)) {
+    case 'mp4': case 'm4v': return 'video/mp4';
+    case 'mkv': return 'video/x-matroska';
+    case 'avi': return 'video/x-msvideo';
+    case 'mov': return 'video/quicktime';
+    case 'webm': return 'video/webm';
+    case 'ts': return 'video/mp2t';
+    default: return 'video/mp4';
+  }
+}
+
 // Picker sentinel for the in-band CEA-608/708 toggle. -1 is the synthetic "Off"
 // row; -2 is the single closed-caption entry, drawn by the native compositor via
 // setSubtitleEnable (channel selection is impossible — selectTrack decode-freezes).
@@ -43,6 +61,8 @@ export class Player {
   private currentChannel: Channel | null = null;
   private currentIndex = -1;
   private catchupInfo: CatchupInfo | null = null;
+  private vod: VodPlayback | null = null;
+  private pendingResumeSecs = 0;
   private osdVisible = false;
   private pointerX: number | null = null;
   private pointerY: number | null = null;
@@ -141,6 +161,10 @@ export class Player {
     el.addEventListener('error', () => this.onError());
     el.addEventListener('loadedmetadata', () => {
       log.info('loadedmetadata', el.videoWidth + 'x' + el.videoHeight, '| duration:', el.duration);
+      if (this.vod && this.pendingResumeSecs > 0 && Number.isFinite(el.duration)) {
+        el.currentTime = Math.min(this.pendingResumeSecs, el.duration - 1);
+        this.pendingResumeSecs = 0;
+      }
       this.applyNativeAudioSelection();
       this.applyNativeSubtitleSelection();
       if (this.osdVisible) this.renderOSD();
@@ -233,6 +257,7 @@ export class Player {
     this.currentChannel = channel;
     this.currentIndex = channelIndex;
     this.catchupInfo = catchup || null;
+    this.vod = null;
     this.failedIcons.clear(); // fresh icon-load attempts per channel/programme visit
     StorageService.setLastChannel(channelIndex);
 
@@ -244,6 +269,73 @@ export class Player {
     this.showOSD();
     show(this.container);
     if (isWebOS) this.stallWatchdog.start();
+  }
+
+  isVod(): boolean { return this.vod !== null; }
+
+  playVod(v: VodPlayback): void {
+    this.stallWatchdog.stop();
+    if (!this.videoEl) { log.warn('playVod ignored — no video element'); return; }
+    log.info('playVod', v.title, '| resume', v.resumeSecs);
+    this.currentChannel = null;
+    this.currentIndex = -1;
+    this.catchupInfo = null;
+    this.vod = v;
+    this.pendingResumeSecs = v.resumeSecs > 0 ? v.resumeSecs : 0;
+    this.failedIcons.clear();
+    this.videoEl.classList.add('active');
+    this.loadStream(v.url, null, { direct: true });
+    this.showOSD();
+    show(this.container);
+  }
+
+  private saveVodResume(): void {
+    const v = this.vod;
+    const el = this.videoEl;
+    if (!v || !el) return;
+    const dur = Number.isFinite(el.duration) ? el.duration : 0;
+    if (dur <= 0) return; // metadata not loaded yet — currentTime is 0/unknown; don't clobber the stored point
+    StorageService.setResume({
+      accountId: v.accountId, kind: v.kind, itemId: v.itemId,
+      name: v.title, poster: v.poster, ext: extFromUrl(v.url),
+      position: el.currentTime || 0,
+      duration: dur,
+      updatedAt: Date.now(),
+    });
+  }
+
+  private handleVodAction(action: Action): void {
+    switch (action) {
+      case 'back':
+      case 'stop': {
+        const back = this.vod?.onBack;
+        this.stop();       // saves the resume point, clears VOD state
+        back?.();
+        break;
+      }
+      case 'select':
+        if (this.seekAtPointer(this.pointerX, this.pointerY)) break;
+        if (this.canSeek()) this.pauseToggle();
+        else this.toggleOSD();
+        break;
+      case 'left':
+        this.seekBy(-CONFIG.PLAYER.SEEK_STEP);
+        break;
+      case 'right':
+        this.seekBy(CONFIG.PLAYER.SEEK_STEP);
+        break;
+      case 'play':
+        if (this.videoEl?.paused) this.pauseToggle();
+        break;
+      case 'pause':
+        if (this.videoEl && !this.videoEl.paused) this.pauseToggle();
+        break;
+      case 'yellow':
+        this.showOSD();
+        break;
+      default:
+        break; // up/down/channel_up/channel_down are no-ops (no channels in VOD)
+    }
   }
 
   // Stall watchdog recovery: swap in a fresh <video> (kills the wedged native
@@ -261,6 +353,14 @@ export class Player {
   // A finished catch-up VOD would otherwise freeze on its last frame; fall back
   // to the channel's live stream instead.
   private onEnded(): void {
+    if (this.vod) {
+      const v = this.vod;
+      this.vod = null; // before stop(), so it doesn't re-save a resume point for a finished movie
+      StorageService.clearResume(v.accountId, v.kind, v.itemId);
+      this.stop();
+      v.onBack();
+      return;
+    }
     if (this.catchupInfo && this.currentIndex >= 0) {
       log.info('catch-up ended — resuming live');
       this.recreateVideoEl();
@@ -269,6 +369,7 @@ export class Player {
   }
 
   stop(): void {
+    if (this.vod) this.saveVodResume();
     this.stallWatchdog.stop();
     this.subs.stop();
     if (this.hls) {
@@ -288,9 +389,11 @@ export class Player {
     }
     this.hideOSD();
     hide(this.container);
+    this.vod = null;
+    this.pendingResumeSecs = 0;
   }
 
-  private loadStream(url: string, extras: Record<string, string> | null): void {
+  private loadStream(url: string, extras: Record<string, string> | null, opts?: { direct?: boolean }): void {
     if (!this.videoEl) return;
     this.manifestAudio = [];
     this.manifestSubtitles = [];
@@ -317,6 +420,12 @@ export class Player {
     // natively. The URL is enough to pick the <source> MIME (extension-less
     // proxied streams default to HLS) and it avoids an extra round-trip per zap.
     if (isWebOS) {
+      if (opts?.direct) {
+        const mime = containerMime(url);
+        log.info('loadStream url=', url, '| webOS native VOD | MIME', mime);
+        this.playNative(url, mime);
+        return;
+      }
       const mime = isFlvUrl ? 'video/x-flv' : isTsUrl ? 'video/mp2t' : 'application/vnd.apple.mpegurl';
       log.info('loadStream url=', url, '| webOS native | catchup:', !!this.catchupInfo, '| MIME', mime);
       // HLS only: read the master's EXT-X-MEDIA audio/subtitle names — native
@@ -330,6 +439,13 @@ export class Player {
     // always route through hls.js/mpegts.js. URL extensions lie — some providers
     // serve HLS with no .m3u8 suffix — so classify by the server's Content-Type,
     // falling back to the URL and defaulting to HLS.
+    if (opts?.direct) {
+      ++this.loadToken; // invalidate any in-flight detectContentType from a prior load
+      log.info('loadStream url=', url, '| desktop direct VOD');
+      this.videoEl.src = url;
+      this.videoEl.play().catch(e => log.warn('Direct play() rejected:', e));
+      return;
+    }
     const token = ++this.loadToken;
     this.detectContentType(url).then(ct => {
       if (token !== this.loadToken || !this.videoEl) return; // superseded by a newer load
@@ -477,6 +593,15 @@ export class Player {
   }
 
   private onError(): void {
+    if (this.vod) {
+      const v = this.vod;
+      this.vod = null;            // so stop() won't overwrite/wipe the resume point on error
+      log.warn('VOD playback error:', v.title);
+      this.stop();
+      showToast('Unable to play this title');
+      v.onBack();
+      return;
+    }
     const v = this.videoEl;
     log.error('video error', v?.error ? { code: v.error.code, message: v.error.message } : 'no error info',
       '| channel:', this.currentChannel?.name, '| url:', this.currentChannel?.url);
@@ -514,6 +639,7 @@ export class Player {
   canSeek(): boolean {
     const v = this.videoEl;
     if (!this.osdVisible || !v) return false;
+    if (this.vod) return Number.isFinite(v.duration) && v.duration > 0;
     if (this.catchupInfo) return Number.isFinite(v.duration) && v.duration > 0;
     return this.isLiveDvr();
   }
@@ -626,6 +752,14 @@ export class Player {
   private refreshProgress(): void {
     const v = this.videoEl;
     if (!this.osdVisible || !v) return;
+    if (this.vod) {
+      const dur = Number.isFinite(v.duration) ? v.duration : 0;
+      const bar = $('.osd-progress-bar', this.container) as HTMLElement | null;
+      if (bar && dur > 0) bar.style.width = `${(Math.min(v.currentTime, dur) / dur) * 100}%`;
+      const cur = $('.osd-time-current', this.container);
+      if (cur) cur.textContent = formatPosition(v.currentTime);
+      return;
+    }
     const win = this.liveDvrWindow();
     // DVR availability can flip after the OSD is already open (the seekable
     // window fills in a beat after tune-in). When the current layout no longer
@@ -697,8 +831,65 @@ export class Player {
     `;
   }
 
+  // The stream-info badges (resolution / HDR / fps / codecs / audio / subtitle),
+  // shared by the Live and VOD OSD. Resolution comes from the video element; the
+  // rest from the HLS manifest (empty for a direct-played VOD).
+  private buildStreamInfo(): Safe | '' {
+    const v = this.videoEl;
+    const lvl = this.hls?.loadLevelObj;
+    const badge = v ? resolutionBadge(v.videoHeight) : null;
+    const variant = !this.hls && v ? pickVariant(this.manifestVariants, v.videoWidth, v.videoHeight) : null;
+    const vCodec = codecName(lvl?.videoCodec ?? variant?.videoCodec ?? '');
+    const aCodecName = codecName(lvl?.audioCodec ?? variant?.audioCodec ?? '');
+    // Atmos (JOC): native path from the manifest variant's audio group; hls.js from
+    // the active audio track's channel layout — loadLevelObj carries no channels.
+    const hlsChannels = this.hls?.audioTracks?.[this.hls.audioTrack]?.channels ?? '';
+    const atmos = variant?.atmos || /\bJOC\b/i.test(hlsChannels);
+    const aCodec = aCodecName && atmos ? `${aCodecName} Atmos` : aCodecName;
+    const hdr = hdrLabel(lvl?.videoRange ?? variant?.videoRange ?? '');
+    const fps = frameRateLabel(lvl?.frameRate ?? variant?.frameRate ?? 0);
+    const audio = audioSummary(this.getAudioTracks());
+    const subtitle = subtitleSummary(this.getSubtitleTracks());
+    if (!(badge || hdr || fps || vCodec || aCodec || audio || subtitle)) return '';
+    return html`
+      <div class="osd-stream-info">
+        ${badge ? html`<span class="si-badge si-badge--${badge.tier}">${badge.label}</span>` : ''}
+        ${hdr ? html`<span class="si-badge si-badge--hdr">${hdr}</span>` : ''}
+        ${fps ? html`<span class="si-pill">${fps}fps</span>` : ''}
+        ${vCodec ? html`<span class="si-pill">${vCodec}</span>` : ''}
+        ${aCodec ? html`<span class="si-pill">${aCodec}</span>` : ''}
+        ${audio ? html`<span class="si-text">${audio}</span>` : ''}
+        ${subtitle ? html`<span class="si-text">CC: ${subtitle}</span>` : ''}
+      </div>
+    `;
+  }
+
+  // The VOD OSD reuses the Live markup: an `.osd-channel` header (movie/episode
+  // title + shared stream-info) over the shared seekable `.osd-progress-row`.
+  private renderVodOSD(osd: HTMLElement): void {
+    const v = this.videoEl;
+    const dur = v && Number.isFinite(v.duration) ? v.duration : 0;
+    const pos = v ? Math.min(v.currentTime || 0, dur || Infinity) : 0;
+    const fraction = dur > 0 ? pos / dur : 0;
+    morph(osd, html`
+      <div class="osd-channel">
+        <div class="osd-channel-name">${this.vod?.title ?? ''}</div>
+        ${this.buildStreamInfo()}
+      </div>
+      <div class="osd-progress-row">
+        ${this.playPauseButton()}
+        <span class="osd-time-current">${formatPosition(pos)}</span>
+        <div class="osd-progress" data-seekbar>
+          <div class="osd-progress-bar" style="width: ${fraction * 100}%"></div>
+        </div>
+        <span class="osd-time-end">${dur > 0 ? formatPosition(dur) : ''}</span>
+      </div>
+    `);
+  }
+
   private renderOSD(): void {
     const osd = $('#player-osd', this.container);
+    if (this.vod && osd) { this.renderVodOSD(osd); return; }
     if (!osd || !this.currentChannel) return;
 
     const ch = this.currentChannel;
@@ -786,32 +977,7 @@ export class Player {
       }
     }
 
-    const v = this.videoEl;
-    const lvl = this.hls?.loadLevelObj;
-    const badge = v ? resolutionBadge(v.videoHeight) : null;
-    const variant = !this.hls && v ? pickVariant(this.manifestVariants, v.videoWidth, v.videoHeight) : null;
-    const vCodec = codecName(lvl?.videoCodec ?? variant?.videoCodec ?? '');
-    const aCodecName = codecName(lvl?.audioCodec ?? variant?.audioCodec ?? '');
-    // Atmos (JOC): native path from the manifest variant's audio group; hls.js from
-    // the active audio track's channel layout — loadLevelObj carries no channels.
-    const hlsChannels = this.hls?.audioTracks?.[this.hls.audioTrack]?.channels ?? '';
-    const atmos = variant?.atmos || /\bJOC\b/i.test(hlsChannels);
-    const aCodec = aCodecName && atmos ? `${aCodecName} Atmos` : aCodecName;
-    const hdr = hdrLabel(lvl?.videoRange ?? variant?.videoRange ?? '');
-    const fps = frameRateLabel(lvl?.frameRate ?? variant?.frameRate ?? 0);
-    const audio = audioSummary(this.getAudioTracks());
-    const subtitle = subtitleSummary(this.getSubtitleTracks());
-    const streamInfoHtml = (badge || hdr || fps || vCodec || aCodec || audio || subtitle) ? html`
-      <div class="osd-stream-info">
-        ${badge ? html`<span class="si-badge si-badge--${badge.tier}">${badge.label}</span>` : ''}
-        ${hdr ? html`<span class="si-badge si-badge--hdr">${hdr}</span>` : ''}
-        ${fps ? html`<span class="si-pill">${fps}fps</span>` : ''}
-        ${vCodec ? html`<span class="si-pill">${vCodec}</span>` : ''}
-        ${aCodec ? html`<span class="si-pill">${aCodec}</span>` : ''}
-        ${audio ? html`<span class="si-text">${audio}</span>` : ''}
-        ${subtitle ? html`<span class="si-text">CC: ${subtitle}</span>` : ''}
-      </div>
-    ` : '';
+    const streamInfoHtml = this.buildStreamInfo();
 
     morph(osd, html`
       <div class="osd-channel">
@@ -1170,6 +1336,7 @@ export class Player {
     // Any non-OK button means 5-way/button input, so a tracked cursor position
     // is stale — drop it so OK toggles the OSD rather than seeking.
     if (action !== 'select') { this.pointerX = null; this.pointerY = null; }
+    if (this.vod) { this.handleVodAction(action); return; }
     switch (action) {
       case 'back':
       case 'stop':
