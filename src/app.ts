@@ -11,6 +11,8 @@ import { Settings, type SaveAction } from './components/settings';
 import { Sidebar } from './components/sidebar';
 import { PlayerMenu } from './components/player-menu';
 import { TabBar, type Section, sectionForView } from './components/tab-bar';
+import { Movies } from './components/movies';
+import { Series } from './components/series';
 import { Search } from './components/search';
 import { showToast } from './components/toast';
 import { ReminderService } from './services/reminder-service';
@@ -24,7 +26,7 @@ import type { Action, NumberEvent, CatchupInfo, PlaylistEntry } from './types';
 
 const log = createLogger('App');
 
-type ViewName = 'channels' | 'player' | 'epg' | 'settings' | 'loading' | 'search';
+type ViewName = 'channels' | 'player' | 'epg' | 'settings' | 'loading' | 'movies' | 'series' | 'search';
 
 class App {
   private views!: Record<ViewName, HTMLElement>;
@@ -40,6 +42,8 @@ class App {
   private reminderPrompt = new ReminderPrompt();
   private tabBar!: TabBar;
   private search!: Search;
+  private movies!: Movies;
+  private series!: Series;
 
   async init(): Promise<void> {
     const done = log.time('init');
@@ -49,6 +53,8 @@ class App {
       player: $('#view-player')!,
       epg: $('#view-epg')!,
       settings: $('#view-settings')!,
+      movies: $('#view-movies')!,
+      series: $('#view-series')!,
       search: $('#view-search')!,
       loading: $('#view-loading')!,
     };
@@ -82,12 +88,34 @@ class App {
       (index) => this.player.selectSubtitleTrack(index),
     );
 
+    this.movies = new Movies(this.views.movies, {
+      onRevealTabBar: () => this.tabBar.focus(),
+      onBack: () => this.goLive(),
+      onPlayVod: (req) => {
+        this.showView('player');
+        this.player.playVod({ ...req, onBack: () => this.showView('movies') });
+      },
+    });
+    this.series = new Series(this.views.series, {
+      onRevealTabBar: () => this.tabBar.focus(),
+      onBack: () => this.goLive(),
+      onPlayVod: (req) => {
+        this.showView('player');
+        this.player.playVod({ ...req, onBack: () => this.showView('series') });
+      },
+    });
     this.search = new Search(this.views.search, {
       onRevealTabBar: () => this.tabBar.focus(),
       onBack: () => this.goLive(),
       onPlayChannel: (idx) => this.playChannel(idx),
-      onOpenMovie: () => {},
-      onOpenSeries: () => {},
+      onOpenMovie: (account, vod) => {
+        this.showView('movies');
+        this.movies.openItem(account, vod, () => this.showView('search')).catch((err) => log.error('Open movie failed:', err));
+      },
+      onOpenSeries: (account, series) => {
+        this.showView('series');
+        this.series.openItem(account, series, () => this.showView('search')).catch((err) => log.error('Open series failed:', err));
+      },
     });
     this.tabBar = new TabBar({
       onSwitch: (section) => this.switchSection(section),
@@ -439,7 +467,18 @@ class App {
     // player) must tear down playback, like Back / red / blue do.
     this.player.stop();
     if (section === 'live') { this.showView('channels'); this.channelList.render(); return; }
-    if (section === 'movies' || section === 'series') return;
+    if (section === 'movies') {
+      this.showView('movies');
+      const account = this.activeXtreamAccount();
+      if (account) this.movies.open(account).catch((err) => log.error('Movies open failed:', err));
+      return;
+    }
+    if (section === 'series') {
+      this.showView('series');
+      const seriesAccount = this.activeXtreamAccount();
+      if (seriesAccount) this.series.open(seriesAccount).catch((err) => log.error('Series open failed:', err));
+      return;
+    }
     if (section === 'settings') {
       this.settings.render();
       this.showView('settings');
@@ -606,6 +645,8 @@ class App {
         }
         return;
       }
+      if (currentView === 'movies') { this.movies.handleAction('back'); return; }
+      if (currentView === 'series') { this.series.handleAction('back'); return; }
       if (currentView === 'search') { this.search.handleAction('back'); return; }
       if (currentView === 'epg' || currentView === 'settings') {
         this.tabBar.setActive('live');
@@ -634,10 +675,17 @@ class App {
         if (action === 'up' && !moved && this.tabBar.shown) this.tabBar.focus();
         break;
       }
+      case 'movies':
+        this.movies.handleAction(action);
+        break;
+      case 'series':
+        this.series.handleAction(action);
+        break;
       case 'search':
         this.search.handleAction(action);
         break;
       case 'player':
+        if (this.player.isVod()) { this.player.handleAction(action); break; }
         // While the OSD is up on seekable catch-up, Left/Right seek instead of
         // opening the sidebar/menu (which stay reachable once the OSD hides).
         if ((action === 'left' || action === 'right')
