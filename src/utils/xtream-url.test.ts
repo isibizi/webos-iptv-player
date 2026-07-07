@@ -4,6 +4,8 @@ import {
   xtreamPlaylistUrl,
   xtreamEpgUrl,
   xtreamPlayerApi,
+  xtreamVodUrl,
+  xtreamEpisodeUrl,
 } from './xtream-url';
 
 const creds = { baseUrl: 'http://host:8080', username: 'u1', password: 'p1' };
@@ -81,5 +83,25 @@ describe('xtreamPlayerApi', () => {
     expect(xtreamPlayerApi(creds, 'get_vod_streams', { category_id: 5 })).toBe(
       'http://host:8080/player_api.php?username=u1&password=p1&action=get_vod_streams&category_id=5',
     );
+  });
+});
+
+describe('xtreamVodUrl', () => {
+  it('builds /movie/{user}/{pass}/{id}.{ext} on the normalized base', () => {
+    expect(xtreamVodUrl(creds, '10', 'mp4')).toBe('http://host:8080/movie/u1/p1/10.mp4');
+  });
+  it('normalizes a bare host and strips a trailing slash', () => {
+    expect(xtreamVodUrl({ baseUrl: 'host:8080/', username: 'u1', password: 'p1' }, '10', 'mkv'))
+      .toBe('http://host:8080/movie/u1/p1/10.mkv');
+  });
+  it('URL-encodes credentials', () => {
+    expect(xtreamVodUrl({ baseUrl: 'http://host', username: 'a b', password: 'p/1' }, '5', 'mp4'))
+      .toBe('http://host/movie/a%20b/p%2F1/5.mp4');
+  });
+});
+
+describe('xtreamEpisodeUrl', () => {
+  it('builds /series/{user}/{pass}/{id}.{ext} on the normalized base', () => {
+    expect(xtreamEpisodeUrl(creds, '42', 'mkv')).toBe('http://host:8080/series/u1/p1/42.mkv');
   });
 });

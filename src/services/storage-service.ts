@@ -1,5 +1,5 @@
 import { CONFIG } from '../config';
-import type { AudioPref, Channel, PlaylistEntry, Reminder, SubtitlePref, TzMode } from '../types';
+import type { AudioPref, Channel, PlaylistEntry, Reminder, ResumeEntry, ResumeKind, SubtitlePref, TzMode } from '../types';
 import { channelKey } from '../utils/channel';
 import { genPlaylistId } from '../utils/playlist-id';
 
@@ -181,6 +181,34 @@ export const StorageService = {
   setCachedPlaylist(channels: Channel[], epgUrls: string[] = []): void {
     if (!channels.length) return;
     set('cached_playlist', { version: CACHE_VERSION, channels, epgUrls, timestamp: Date.now() });
+  },
+
+  // Resume points, one localStorage map keyed `${accountId}|${kind}|${itemId}`.
+  getResume(accountId: string, kind: ResumeKind, itemId: string): ResumeEntry | null {
+    return get<Record<string, ResumeEntry>>('resume', {})[`${accountId}|${kind}|${itemId}`] ?? null;
+  },
+  setResume(entry: ResumeEntry): void {
+    const all = get<Record<string, ResumeEntry>>('resume', {});
+    const key = `${entry.accountId}|${entry.kind}|${entry.itemId}`;
+    const finished = entry.duration > 0 && entry.position >= entry.duration - CONFIG.XTREAM.RESUME_FINISH_PAD;
+    if (finished || entry.position < CONFIG.XTREAM.RESUME_MIN_SECS) {
+      delete all[key];
+    } else {
+      all[key] = entry;
+    }
+    set('resume', all);
+  },
+  getResumeList(accountId: string): ResumeEntry[] {
+    const all = get<Record<string, ResumeEntry>>('resume', {});
+    return Object.keys(all)
+      .map((k) => all[k])
+      .filter((e) => e.accountId === accountId)
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+  },
+  clearResume(accountId: string, kind: ResumeKind, itemId: string): void {
+    const all = get<Record<string, ResumeEntry>>('resume', {});
+    delete all[`${accountId}|${kind}|${itemId}`];
+    set('resume', all);
   },
 
 };

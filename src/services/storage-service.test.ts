@@ -140,3 +140,50 @@ describe('StorageService', () => {
     });
   });
 });
+
+import type { ResumeEntry } from '../types';
+
+const resume = (over: Partial<ResumeEntry>): ResumeEntry => ({
+  accountId: 'x1', kind: 'vod', itemId: '10', name: 'Movie One', poster: '', ext: 'mp4',
+  position: 100, duration: 6000, updatedAt: 1000, ...over,
+});
+
+describe('StorageService resume store', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('round-trips a resume entry keyed by account + kind + item', () => {
+    StorageService.setResume(resume({}));
+    expect(StorageService.getResume('x1', 'vod', '10')?.position).toBe(100);
+    // Different account / kind / item are distinct keys.
+    expect(StorageService.getResume('x2', 'vod', '10')).toBeNull();
+    expect(StorageService.getResume('x1', 'episode', '10')).toBeNull();
+    expect(StorageService.getResume('x1', 'vod', '11')).toBeNull();
+  });
+
+  it('clears a finished entry (near the end) instead of storing it', () => {
+    StorageService.setResume(resume({ position: 100 }));
+    StorageService.setResume(resume({ position: 5990, duration: 6000 })); // within RESUME_FINISH_PAD
+    expect(StorageService.getResume('x1', 'vod', '10')).toBeNull();
+  });
+
+  it('does not store a position below RESUME_MIN_SECS, and clears an existing one', () => {
+    StorageService.setResume(resume({ position: 5 }));
+    expect(StorageService.getResume('x1', 'vod', '10')).toBeNull();
+    // An existing resume point rewound below the threshold is cleared.
+    StorageService.setResume(resume({ position: 100 }));
+    StorageService.setResume(resume({ position: 5 }));
+    expect(StorageService.getResume('x1', 'vod', '10')).toBeNull();
+  });
+
+  it('lists an account\'s entries newest first and clears on demand', () => {
+    StorageService.setResume(resume({ itemId: '10', updatedAt: 1000 }));
+    StorageService.setResume(resume({ itemId: '11', updatedAt: 2000 }));
+    StorageService.setResume(resume({ accountId: 'x2', itemId: '12', updatedAt: 3000 }));
+    const list = StorageService.getResumeList('x1');
+    expect(list.map((e) => e.itemId)).toEqual(['11', '10']);
+    StorageService.clearResume('x1', 'vod', '11');
+    expect(StorageService.getResumeList('x1').map((e) => e.itemId)).toEqual(['10']);
+  });
+});

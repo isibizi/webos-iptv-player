@@ -187,3 +187,93 @@ export interface ManifestClosedCaption {
   instreamId: string;
   isDefault: boolean;
 }
+
+// --- Xtream Codes catalog (Movies & Series).
+// Kept separate from Channel. Every item carries accountId (the PlaylistEntry.id
+// of its Xtream account) so per-account scoping and resume keys stay unambiguous.
+
+export interface VodCategory {
+  id: string;
+  name: string;
+}
+
+export interface VodItem {
+  accountId: string;
+  streamId: string;
+  name: string;
+  poster: string;
+  rating: string;
+  categoryId: string;
+  containerExtension: string;
+}
+
+export interface VodInfo {
+  plot: string;
+  cast: string;
+  director: string;
+  genre: string;
+  releaseDate: string;
+  durationSecs: number;
+  poster: string;
+}
+
+export interface SeriesCategory {
+  id: string;
+  name: string;
+}
+
+export interface SeriesItem {
+  accountId: string;
+  seriesId: string;
+  name: string;
+  poster: string;
+  rating: string;
+  categoryId: string;
+}
+
+export interface Episode {
+  id: string;
+  title: string;
+  season: number;
+  episode: number;
+  containerExtension: string;
+  durationSecs: number;
+  plot: string;
+  poster: string;
+}
+
+export interface SeriesInfo {
+  seasons: number[];
+  episodesBySeason: Record<number, Episode[]>;
+}
+
+// Local resume store: last playback position per catalog item. Kept in
+// localStorage (Xtream doesn't persist third-party resume). `kind` lets Movies
+// and Series share one store. name/poster are denormalized so the
+// "Continue watching" rail renders without a catalog round-trip.
+export type ResumeKind = 'vod' | 'episode';
+
+export interface ResumeEntry {
+  accountId: string;
+  kind: ResumeKind;
+  itemId: string;
+  name: string;
+  poster: string;
+  ext: string;        // container extension, to rebuild the stream URL when resuming from the Continue rail
+  position: number;   // seconds into the stream
+  duration: number;   // total seconds, or 0 if unknown
+  updatedAt: number;  // epoch ms, for recency ordering
+}
+
+// A VOD playback request handed to the player's VOD mode. The player derives no
+// channel context from this; onBack returns the UI to the originating screen.
+export interface VodPlayback {
+  url: string;
+  title: string;
+  poster: string;
+  accountId: string;
+  itemId: string;
+  kind: ResumeKind;
+  resumeSecs: number;
+  onBack: () => void;
+}

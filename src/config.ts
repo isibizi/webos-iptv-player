@@ -32,6 +32,16 @@ export const CONFIG = {
     TIME_SLOT_MINUTES: 30,
   },
 
+  // Xtream Movies/Series catalog + resume tuning.
+  XTREAM: {
+    CATALOG_TTL_MS: 6 * 60 * 60 * 1000, // catalog cache freshness before a re-fetch
+    RAIL_CATEGORIES: 6,                 // categories preloaded as rails in the browse view
+    RAIL_ITEMS: 20,                     // posters shown per rail before the "all categories" drill-in
+    RESUME_MIN_SECS: 15,                // below this, treat as "start over" (don't store a resume point)
+    RESUME_FINISH_PAD: 30,              // within this of the end = finished (clear the resume point)
+    SEARCH_RESULT_CAP: 30,              // max results rendered per Search group (Channels/Movies/Series)
+  },
+
   // Max characters shown for a reminder's programme title and channel name
   // before an ellipsis, so long names don't overflow the toast/alert/in-app prompt.
   REMINDER: {

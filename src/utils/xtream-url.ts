@@ -48,3 +48,16 @@ export function xtreamPlayerApi(
   }
   return url;
 }
+
+/** VOD (movie) stream URL: `{base}/movie/{user}/{pass}/{streamId}.{ext}`.
+ *  Played by the native pipeline; container_extension comes from the catalog. */
+export function xtreamVodUrl(c: XtreamCredentials, streamId: string, ext: string): string {
+  const base = normalizeXtreamBaseUrl(c.baseUrl);
+  return `${base}/movie/${encodeURIComponent(c.username)}/${encodeURIComponent(c.password)}/${streamId}.${ext}`;
+}
+
+/** Series episode stream URL: `{base}/series/{user}/{pass}/{episodeId}.{ext}`. */
+export function xtreamEpisodeUrl(c: XtreamCredentials, episodeId: string, ext: string): string {
+  const base = normalizeXtreamBaseUrl(c.baseUrl);
+  return `${base}/series/${encodeURIComponent(c.username)}/${encodeURIComponent(c.password)}/${episodeId}.${ext}`;
+}

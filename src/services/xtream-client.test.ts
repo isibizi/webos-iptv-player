@@ -91,3 +91,132 @@ describe('XtreamClient.getAccountInfo', () => {
     expect(await createXtreamClient(creds).getAccountInfo()).toBeNull();
   });
 });
+
+describe('XtreamClient VOD', () => {
+  it('lists VOD categories, dropping entries with no id', async () => {
+    fetchTextMock.mockResolvedValue(JSON.stringify([
+      { category_id: '1', category_name: 'Cat A' },
+      { category_name: 'no id' },
+    ]));
+    const cats = await createXtreamClient(creds).getVodCategories();
+    expect(fetchTextMock).toHaveBeenCalledWith(
+      expect.stringContaining('action=get_vod_categories'),
+      expect.any(Number),
+    );
+    expect(cats).toEqual([{ id: '1', name: 'Cat A' }]);
+  });
+
+  it('maps VOD streams and stamps the accountId', async () => {
+    fetchTextMock.mockResolvedValue(JSON.stringify([
+      { stream_id: 10, name: 'Movie One', stream_icon: 'http://host/a.png',
+        rating: '7.5', category_id: '1', container_extension: 'mp4' },
+    ]));
+    const items = await createXtreamClient(creds, 'acc1').getVodStreams('1');
+    expect(fetchTextMock).toHaveBeenCalledWith(
+      expect.stringMatching(/action=get_vod_streams.*category_id=1/),
+      expect.any(Number),
+    );
+    expect(items).toEqual([{
+      accountId: 'acc1', streamId: '10', name: 'Movie One', poster: 'http://host/a.png',
+      rating: '7.5', categoryId: '1', containerExtension: 'mp4',
+    }]);
+  });
+
+  it('getVodStreams with no category omits the category_id param', async () => {
+    fetchTextMock.mockResolvedValue('[]');
+    await createXtreamClient(creds).getVodStreams();
+    const noCatUrl = fetchTextMock.mock.calls[fetchTextMock.mock.calls.length - 1][0];
+    expect(noCatUrl).toContain('action=get_vod_streams');
+    expect(noCatUrl).not.toContain('category_id');
+  });
+
+  it('parses VOD info, tolerating alternate field names', async () => {
+    fetchTextMock.mockResolvedValue(JSON.stringify({
+      info: { plot: 'A plot', cast: 'Actor', director: 'Dir', genre: 'Drama',
+        release_date: '2020-01-01', duration_secs: 5400, cover_big: 'http://host/p.png' },
+      movie_data: { stream_id: 10 },
+    }));
+    const info = await createXtreamClient(creds).getVodInfo('10');
+    expect(fetchTextMock).toHaveBeenCalledWith(
+      expect.stringMatching(/action=get_vod_info.*vod_id=10/),
+      expect.any(Number),
+    );
+    expect(info).toEqual({
+      plot: 'A plot', cast: 'Actor', director: 'Dir', genre: 'Drama',
+      releaseDate: '2020-01-01', durationSecs: 5400, poster: 'http://host/p.png',
+    });
+  });
+
+  it('returns [] / null on malformed JSON, not throwing', async () => {
+    fetchTextMock.mockResolvedValue('<html>not json</html>');
+    expect(await createXtreamClient(creds).getVodCategories()).toEqual([]);
+    expect(await createXtreamClient(creds).getVodStreams()).toEqual([]);
+    expect(await createXtreamClient(creds).getVodInfo('10')).toBeNull();
+  });
+});
+
+describe('XtreamClient Series', () => {
+  it('lists series categories, dropping entries with no id', async () => {
+    fetchTextMock.mockResolvedValue(JSON.stringify([
+      { category_id: '2', category_name: 'Cat B' },
+      { category_name: 'no id' },
+    ]));
+    const cats = await createXtreamClient(creds).getSeriesCategories();
+    expect(fetchTextMock).toHaveBeenCalledWith(
+      expect.stringContaining('action=get_series_categories'),
+      expect.any(Number),
+    );
+    expect(cats).toEqual([{ id: '2', name: 'Cat B' }]);
+  });
+
+  it('maps series and stamps the accountId', async () => {
+    fetchTextMock.mockResolvedValue(JSON.stringify([
+      { series_id: 7, name: 'Series One', cover: 'http://host/c.png', rating: '8', category_id: '2' },
+    ]));
+    const items = await createXtreamClient(creds, 'acc1').getSeries('2');
+    expect(fetchTextMock).toHaveBeenCalledWith(
+      expect.stringMatching(/action=get_series.*category_id=2/),
+      expect.any(Number),
+    );
+    expect(items).toEqual([{
+      accountId: 'acc1', seriesId: '7', name: 'Series One', poster: 'http://host/c.png',
+      rating: '8', categoryId: '2',
+    }]);
+  });
+
+  it('parses series info into sorted seasons + episodesBySeason', async () => {
+    fetchTextMock.mockResolvedValue(JSON.stringify({
+      seasons: [],
+      episodes: {
+        '2': [{ id: '201', title: 'S2E1', episode_num: 1, container_extension: 'mkv',
+          info: { duration_secs: 1200, plot: 'p2', movie_image: 'http://host/2.png' } }],
+        '1': [{ id: '101', title: 'S1E1', episode_num: 1, container_extension: 'mp4',
+          info: { duration_secs: 1000, plot: 'p1', movie_image: 'http://host/1.png' } }],
+      },
+    }));
+    const info = await createXtreamClient(creds).getSeriesInfo('7');
+    expect(fetchTextMock).toHaveBeenCalledWith(
+      expect.stringMatching(/action=get_series_info.*series_id=7/),
+      expect.any(Number),
+    );
+    expect(info!.seasons).toEqual([1, 2]);
+    expect(info!.episodesBySeason[1]).toEqual([{
+      id: '101', title: 'S1E1', season: 1, episode: 1, containerExtension: 'mp4',
+      durationSecs: 1000, plot: 'p1', poster: 'http://host/1.png',
+    }]);
+    expect(info!.episodesBySeason[2][0].id).toBe('201');
+  });
+
+  it('returns [] / null on malformed JSON, not throwing', async () => {
+    fetchTextMock.mockResolvedValue('nope');
+    expect(await createXtreamClient(creds).getSeriesCategories()).toEqual([]);
+    expect(await createXtreamClient(creds).getSeries()).toEqual([]);
+    expect(await createXtreamClient(creds).getSeriesInfo('7')).toBeNull();
+  });
+
+  it('getSeriesInfo returns empty seasons when episodes is absent', async () => {
+    fetchTextMock.mockResolvedValue(JSON.stringify({ info: { name: 'x' } }));
+    const info = await createXtreamClient(creds).getSeriesInfo('7');
+    expect(info).toEqual({ seasons: [], episodesBySeason: {} });
+  });
+});
