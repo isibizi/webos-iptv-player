@@ -61,6 +61,22 @@ export async function seedPlaylist(page: Page, url = PLAYLIST_URL): Promise<void
   }, url);
 }
 
+/** Enter a section via the docked tab bar (always visible for an Xtream account).
+ *  Uses a coordinate mouseup, not click, because the bar activates on a mouseup
+ *  hit-test (Magic Remote OK fires no click). */
+export async function enterTab(
+  page: Page,
+  section: 'live' | 'movies' | 'series' | 'settings' | 'search',
+): Promise<void> {
+  const tab = page.locator(`.tab-bar-item[data-section="${section}"]`);
+  await expect(tab).toBeVisible();
+  const box = await tab.boundingBox();
+  if (!box) throw new Error(`tab ${section} has no bounding box`);
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.up();
+}
+
 // Every spec imports `test` from here; it auto-stubs the service probe
 // before each test so no file has to repeat it.
 export const test = base.extend({

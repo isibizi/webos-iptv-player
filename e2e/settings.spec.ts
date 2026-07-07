@@ -1,30 +1,30 @@
-import { test, expect, type Page, routePlaylist, seedPlaylist, PLAYLIST_URL } from './helpers';
+import { test, expect, type Page, routePlaylist, seedPlaylist, PLAYLIST_URL, enterTab } from './helpers';
 
 // All Settings coverage: navigation, playlist save/removal, Xtream, and uploads.
 
 test.describe('Settings navigation', () => {
-  test('gear button on the channel list opens settings', async ({ page }) => {
+  test('the Settings tab on the channel list opens settings', async ({ page }) => {
     await routePlaylist(page);
     await seedPlaylist(page);
 
     await page.goto('/');
     await expect(page.locator('#view-channels')).toBeVisible();
 
-    await page.locator('.settings-btn').click();
+    await enterTab(page, 'settings');
 
     await expect(page.locator('#view-settings')).toBeVisible();
     // The configured playlist URL is populated in the settings form.
     await expect(page.locator('.playlist-url').first()).toHaveValue(PLAYLIST_URL);
   });
 
-  test('clicking Cancel in settings (opened via gear) returns to the channel list, not the player', async ({ page }) => {
+  test('clicking Cancel in settings (opened via the tab bar) returns to the channel list, not the player', async ({ page }) => {
     await routePlaylist(page);
     await seedPlaylist(page);
     await page.goto('/');
     await expect(page.locator('#view-channels')).toBeVisible();
 
-    // Open settings via the gear, then dismiss with Cancel.
-    await page.locator('.settings-btn').click();
+    // Open settings via the tab bar, then dismiss with Cancel.
+    await enterTab(page, 'settings');
     await expect(page.locator('#view-settings')).toBeVisible();
     await page.locator('#cancel-settings').click();
 
@@ -78,7 +78,7 @@ test.describe('Settings playlists', () => {
     await expect(page.locator('.channel-main .channel-item')).toHaveCount(2);
 
     // Open settings, remove the only playlist, and save.
-    await page.locator('.settings-btn').click();
+    await enterTab(page, 'settings');
     await expect(page.locator('#view-settings')).toBeVisible();
     await page.locator('.remove-playlist').first().click();
     await expect(page.locator('#playlist-entries .settings-row')).toHaveCount(0);
@@ -141,8 +141,8 @@ test.describe('Settings playlists', () => {
 
     async function openSettings(page: Page): Promise<void> {
       await page.goto('/');
-      await page.waitForSelector('.settings-btn', { timeout: 20000 });
-      await page.click('.settings-btn');
+      await page.waitForSelector('.tab-bar-item[data-section="settings"]', { timeout: 20000 });
+      await enterTab(page, 'settings');
       await page.waitForSelector('.remove-playlist');
     }
 
@@ -196,8 +196,8 @@ test.describe('Settings Xtream: add -> cancel -> re-enter', () => {
   }
 
   async function openSettings(page: Page): Promise<void> {
-    await page.waitForSelector('.settings-btn', { timeout: 20000 });
-    await page.click('.settings-btn');
+    await page.waitForSelector('.tab-bar-item[data-section="settings"]', { timeout: 20000 });
+    await enterTab(page, 'settings');
     await page.waitForSelector('#add-xtream');
   }
 
@@ -216,7 +216,7 @@ test.describe('Settings Xtream: add -> cancel -> re-enter', () => {
 
     // 3) Cancel.
     await page.click('#cancel-settings');
-    await page.waitForSelector('.settings-btn'); // back on channels
+    await expect(page.locator('#view-channels')).toBeVisible(); // back on channels
 
     // 4) Re-enter Settings.
     await openSettings(page);
@@ -306,8 +306,8 @@ test.describe('Settings upload', () => {
     // Boots into channels from the seeded URL playlist.
     await expect(page.locator('#view-channels')).toBeVisible();
 
-    // Open settings via the gear; the upload list starts empty.
-    await page.locator('.settings-btn').click();
+    // Open settings via the tab bar; the upload list starts empty.
+    await enterTab(page, 'settings');
     await expect(page.locator('#view-settings')).toBeVisible();
     await expect(page.locator('#upload-entries .empty-hint')).toHaveText('No uploaded playlists');
 

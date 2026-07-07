@@ -260,3 +260,30 @@ describe('morph — unchanged-subtree fast path', () => {
     expect(root.querySelector('li')).toBe(li);
   });
 });
+
+describe('morph — data-morph-preserve', () => {
+  it('reuses the node but leaves sub-component-owned children untouched', () => {
+    morph(root, html`<div><span data-key="slot" data-morph-preserve></span></div>`);
+    const slot = root.querySelector('span')!;
+    // A sub-component renders its own DOM into the slot.
+    slot.innerHTML = '<button>owned</button>';
+    const owned = slot.querySelector('button')!;
+
+    // The host re-renders with the same (empty) template slot.
+    morph(root, html`<div><span data-key="slot" data-morph-preserve></span></div>`);
+
+    expect(root.querySelector('span')).toBe(slot);          // same node reused
+    expect(slot.querySelector('button')).toBe(owned);       // children preserved
+    expect(slot.textContent).toBe('owned');
+  });
+
+  it('still syncs the preserved node\'s own attributes', () => {
+    morph(root, html`<div><span data-key="slot" data-morph-preserve class="a"></span></div>`);
+    const slot = root.querySelector('span')!;
+    slot.innerHTML = '<i>x</i>';
+    morph(root, html`<div><span data-key="slot" data-morph-preserve class="b"></span></div>`);
+    expect(root.querySelector('span')).toBe(slot);
+    expect(slot.getAttribute('class')).toBe('b');           // attribute synced
+    expect(slot.querySelector('i')).not.toBeNull();         // children preserved
+  });
+});

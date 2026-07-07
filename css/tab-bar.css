@@ -1,0 +1,127 @@
+.tab-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 60;
+  height: 96px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  padding: 0 80px;
+  background: rgb(6, 8, 14);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Hidden on the full-screen player / EPG. */
+.tab-bar--hidden {
+  display: none;
+}
+
+/* When the bar is docked, the section views sit below it (never overlapping);
+   the full-screen player / EPG / loading views keep top:0 / full height. */
+body.tabbar-docked #view-channels,
+body.tabbar-docked #view-movies,
+body.tabbar-docked #view-series,
+body.tabbar-docked #view-search,
+body.tabbar-docked #view-settings {
+  top: 96px;
+  height: 984px;
+}
+
+.tab-bar-inner {
+  display: flex;
+  align-items: center;
+  gap: 44px;
+  width: 100%;
+}
+
+.tab-bar-title {
+  font-size: 30px;
+  font-weight: 700;
+  color: var(--accent);
+  padding: 4px 2px;
+  border-bottom: 3px solid transparent;
+  margin-left: -24px;
+  margin-right: 52px;
+  white-space: nowrap;
+}
+
+.tab-bar-item {
+  font-family: inherit;
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.4;
+  color: #8b97b0;
+  background: transparent;
+  border: none;
+  padding: 4px 2px;
+  border-bottom: 3px solid transparent;
+  cursor: pointer;
+}
+
+.tab-bar-item.active {
+  color: #fff;
+  border-bottom-color: #5b8cff;
+}
+
+.tab-bar-item.focused {
+  color: #fff;
+}
+
+.tab-bar-search {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+}
+
+.tab-bar-search-input {
+  width: 0;
+  opacity: 0;
+  padding: 0;
+  margin: 0;
+  border: none;
+  box-sizing: border-box;
+  height: 52px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 26px;
+  border-radius: 8px;
+  transition: width 260ms ease, opacity 200ms ease, padding 260ms ease, margin 260ms ease;
+}
+
+.tab-bar-search.expanded .tab-bar-search-input {
+  opacity: 1;
+  padding: 0 18px;
+  margin-right: 14px;
+}
+
+.tab-bar-search-input:focus {
+  outline: none;
+}
+
+.search-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 6px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.search-icon svg {
+  width: 32px;
+  height: 32px;
+  display: block;
+}
+
+.search-icon.focused,
+.search-icon.active {
+  color: var(--text-primary);
+  border: none;
+  box-shadow: none;
+}

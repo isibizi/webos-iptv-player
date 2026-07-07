@@ -131,6 +131,10 @@ function patchNode(oldNode: Node, newNode: Node): void {
     // (the common re-render case) skip the whole subtree.
     if ((oldNode as Element).isEqualNode(newNode)) return;
     syncAttributes(oldNode as Element, newNode as Element);
+    // A `data-morph-preserve` node is a mount point owned by a sub-component:
+    // reuse the node and sync its attributes, but never reconcile its children
+    // (the template supplies none — the component renders into it separately).
+    if ((newNode as Element).hasAttribute('data-morph-preserve')) return;
     patchChildren(oldNode, Array.from(newNode.childNodes));
   }
 }

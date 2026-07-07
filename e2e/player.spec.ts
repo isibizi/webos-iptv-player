@@ -9,8 +9,7 @@ test('remote arrow keys move focus and Enter starts playback', async ({ page }) 
 
   await expect(page.locator('#view-channels')).toBeVisible();
 
-  // Initial focus is the search box; Arrow Down enters the list at the first channel.
-  await page.keyboard.press('ArrowDown');
+  // Initial focus is the first channel (search + settings now live in the tab bar).
   const focused = page.locator('.channel-main .channel-item.focused');
   await expect(focused).toHaveCount(1);
   await expect(focused).toContainText('Channel One');
@@ -89,7 +88,6 @@ test('a long player-menu list scrolls with the Magic-Remote wheel, not the chann
   await page.goto('/');
   await expect(page.locator('#view-channels')).toBeVisible();
 
-  await page.keyboard.press('ArrowDown');
   await page.keyboard.press('Enter');
   await expect(page.locator('#view-player')).toBeVisible();
   await expect(page.locator('.osd-channel-number')).toHaveText('1');
@@ -130,7 +128,6 @@ test('starting playback shows the OSD with channel info; the yellow key re-opens
   await page.goto('/');
   await expect(page.locator('#view-channels')).toBeVisible();
 
-  await page.keyboard.press('ArrowDown');
   await page.keyboard.press('Enter');
   await expect(page.locator('#view-player')).toBeVisible();
 

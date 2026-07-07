@@ -172,4 +172,70 @@ describe('SpatialNav', () => {
       expect(nav.focused).toBe(visible);
     });
   });
+
+  describe('move return value', () => {
+    it('returns true when focus moves to a target', () => {
+      const a = focusable({ x: 0, y: 0 });
+      const b = focusable({ x: 0, y: 100 });
+      const nav = new SpatialNav(makeContainer(a, b));
+      nav.focus(a);
+      expect(nav.move('down')).toBe(true);
+      expect(nav.focused).toBe(b);
+    });
+
+    it('returns false at an edge (no target in that direction)', () => {
+      const a = focusable({ x: 0, y: 0 });
+      const b = focusable({ x: 0, y: 100 });
+      const nav = new SpatialNav(makeContainer(a, b));
+      nav.focus(a);
+      expect(nav.move('up')).toBe(false);
+      expect(nav.focused).toBe(a);
+    });
+
+    it('returns true when nothing was focused yet (focuses the first item)', () => {
+      const a = focusable({ x: 0, y: 0 });
+      const nav = new SpatialNav(makeContainer(a));
+      expect(nav.move('down')).toBe(true);
+      expect(nav.focused).toBe(a);
+    });
+
+    it('returns false when there are no focusables', () => {
+      const empty = document.createElement('div');
+      document.body.appendChild(empty);
+      const nav = new SpatialNav(empty);
+      expect(nav.move('down')).toBe(false);
+    });
+  });
+
+  describe('onFocusChange', () => {
+    it('fires with the newly focused element on focus() and move()', () => {
+      const a = focusable({ x: 0, y: 0 });
+      const b = focusable({ x: 0, y: 100 });
+      const cb = vi.fn();
+      const nav = new SpatialNav(makeContainer(a, b), cb);
+      nav.focus(a);
+      expect(cb).toHaveBeenLastCalledWith(a);
+      nav.move('down');
+      expect(cb).toHaveBeenLastCalledWith(b);
+    });
+
+    it('does not fire when re-focusing the already-focused element', () => {
+      const a = focusable({ x: 0, y: 0 });
+      const cb = vi.fn();
+      const nav = new SpatialNav(makeContainer(a), cb);
+      nav.focus(a);
+      cb.mockClear();
+      nav.focus(a);
+      expect(cb).not.toHaveBeenCalled();
+    });
+
+    it('fires on nav:hover over a focusable', () => {
+      const a = focusable({ x: 0, y: 0 });
+      const cb = vi.fn();
+      const nav = new SpatialNav(makeContainer(a), cb);
+      a.dispatchEvent(new CustomEvent('nav:hover', { bubbles: true }));
+      expect(cb).toHaveBeenCalledWith(a);
+      expect(nav.focused).toBe(a);
+    });
+  });
 });

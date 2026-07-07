@@ -1,7 +1,7 @@
 .settings-view {
   padding: 40px 60px;
   overflow-y: auto;
-  height: 1080px;
+  height: 100%;
   background: var(--bg-primary);
 }
 

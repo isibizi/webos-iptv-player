@@ -10,6 +10,8 @@ import { EpgGrid } from './components/epg-grid';
 import { Settings, type SaveAction } from './components/settings';
 import { Sidebar } from './components/sidebar';
 import { PlayerMenu } from './components/player-menu';
+import { TabBar, type Section, sectionForView } from './components/tab-bar';
+import { Search } from './components/search';
 import { showToast } from './components/toast';
 import { ReminderService } from './services/reminder-service';
 import { ReminderPrompt } from './components/reminder-prompt';
@@ -18,16 +20,17 @@ import { channelKey } from './utils/channel';
 import { truncate } from './utils/text';
 import { $, show, hide } from './utils/dom';
 import { createLogger, installGlobalErrorHandlers, logEnvironment } from './utils/logger';
-import type { Action, NumberEvent, CatchupInfo } from './types';
+import type { Action, NumberEvent, CatchupInfo, PlaylistEntry } from './types';
 
 const log = createLogger('App');
 
-type ViewName = 'channels' | 'player' | 'epg' | 'settings' | 'loading';
+type ViewName = 'channels' | 'player' | 'epg' | 'settings' | 'loading' | 'search';
 
 class App {
   private views!: Record<ViewName, HTMLElement>;
   private viewStack: ViewName[] = ['channels'];
   private backPressTime = 0;
+  private viewBeforeSearch: ViewName | null = null;
   private channelList!: ChannelList;
   private player!: Player;
   private epgGrid!: EpgGrid;
@@ -35,6 +38,8 @@ class App {
   private sidebar!: Sidebar;
   private menu!: PlayerMenu;
   private reminderPrompt = new ReminderPrompt();
+  private tabBar!: TabBar;
+  private search!: Search;
 
   async init(): Promise<void> {
     const done = log.time('init');
@@ -44,16 +49,13 @@ class App {
       player: $('#view-player')!,
       epg: $('#view-epg')!,
       settings: $('#view-settings')!,
+      search: $('#view-search')!,
       loading: $('#view-loading')!,
     };
 
     this.channelList = new ChannelList(
       this.views.channels,
       (idx) => this.playChannel(idx),
-      () => {
-        this.settings.render();
-        this.showView('settings');
-      },
     );
     this.player = new Player(this.views.player, () => {
       this.channelList.setPlayingIndex(this.player.getCurrentIndex());
@@ -79,6 +81,22 @@ class App {
       () => this.player.getSubtitleTracks(),
       (index) => this.player.selectSubtitleTrack(index),
     );
+
+    this.search = new Search(this.views.search, {
+      onRevealTabBar: () => this.tabBar.focus(),
+      onBack: () => this.goLive(),
+      onPlayChannel: (idx) => this.playChannel(idx),
+      onOpenMovie: () => {},
+      onOpenSeries: () => {},
+    });
+    this.tabBar = new TabBar({
+      onSwitch: (section) => this.switchSection(section),
+      onEnter: (section) => this.enterSection(section),
+      onSearchQuery: (query) => this.handleSearchQuery(query),
+      onSearchLeave: () => this.search.focusFirstResult(),
+      onSearchClose: () => this.handleSearchClose(),
+    });
+    this.tabBar.init();
 
     KeyHandler.init();
     KeyHandler.setHandler((action, event) => this.handleKey(action, event));
@@ -348,6 +366,9 @@ class App {
         log.warn('No EPG URL configured');
       }
 
+      const hasXtream = StorageService.getPlaylists().some((p) => p.source === 'xtream');
+      this.tabBar.setSections(hasXtream);
+
       this.showView('channels');
       this.channelList.render();
 
@@ -396,8 +417,77 @@ class App {
       this.viewStack = [name];
     }
 
-    // Focus search box (or gear if empty) on entry. No-op on first load (render runs after).
-    if (name === 'channels') this.channelList.highlightEntryPoint();
+    // The docked tab bar shows on the section views and hides on the full-screen
+    // player / EPG (and the loading splash), which render edge-to-edge.
+    const section = sectionForView(name);
+    this.tabBar.setShown(section !== null);
+
+    // Focus the channel entry point on entry — but not while the tab bar holds
+    // focus (a live Left/Right preview updates the view beneath it without
+    // stealing the focus ring). No-op on first load (render runs after).
+    if (name === 'channels' && !this.tabBar.focused) this.channelList.highlightEntryPoint();
+
+    // Keep the active tab bound to the shown section view (so returning from
+    // Settings, EPG, the player, etc. updates the underline). Skipped while the
+    // search box is open — it overlays other views but stays "Search".
+    if (section && !this.tabBar.searchOpen) this.tabBar.setActive(section);
+  }
+
+  // Map a tab-bar section to its view and show it (Live = the channels view).
+  private switchSection(section: Section): void {
+    // Leaving the player via the tab bar (the pointer can reveal it over the
+    // player) must tear down playback, like Back / red / blue do.
+    this.player.stop();
+    if (section === 'live') { this.showView('channels'); this.channelList.render(); return; }
+    if (section === 'movies' || section === 'series') return;
+    if (section === 'settings') {
+      this.settings.render();
+      this.showView('settings');
+      return;
+    }
+    // Search: keep the current view; the results view only covers it once a
+    // query is typed (handleSearchQuery). Remember where to return to.
+    if (this.viewStack[this.viewStack.length - 1] !== 'search') {
+      this.viewBeforeSearch = this.viewStack[this.viewStack.length - 1];
+    }
+    // Prep the results (loads the catalog once) into the still-hidden search view.
+    this.search.open(this.activeXtreamAccount()).catch((err) => log.error('Search open failed:', err));
+  }
+
+  // The tab bar's search box query changed: show the results view over the
+  // current one while non-empty; restore the underlying view when cleared.
+  private handleSearchQuery(query: string): void {
+    this.search.setQuery(query);
+    const hasQuery = query.trim().length > 0;
+    const onSearch = this.viewStack[this.viewStack.length - 1] === 'search';
+    if (hasQuery && !onSearch) this.showView('search');
+    else if (!hasQuery && onSearch) this.showView(this.viewBeforeSearch ?? 'channels');
+  }
+
+  // The search box was closed: clear it and return to the view it opened from
+  // (showView re-syncs the active tab, since the box is already collapsed).
+  private handleSearchClose(): void {
+    this.search.setQuery('');
+    const rv = this.viewBeforeSearch ?? 'channels';
+    this.viewBeforeSearch = null;
+    this.showView(rv);
+  }
+
+  // Down/Select from the bar: switch to the section and drop focus into content.
+  private enterSection(section: Section): void {
+    this.tabBar.setActive(section);
+    this.switchSection(section);
+  }
+
+  private goLive(): void {
+    this.player.stop();
+    this.tabBar.setActive('live');
+    this.showView('channels');
+    this.channelList.render();
+  }
+
+  private activeXtreamAccount(): PlaylistEntry | null {
+    return StorageService.getPlaylists().find((p) => p.source === 'xtream' && p.xtream) ?? null;
   }
 
   private playChannel(index: number, catchup?: CatchupInfo): void {
@@ -469,6 +559,12 @@ class App {
       return;
     }
 
+    // The docked tab bar consumes input while it holds focus.
+    if (this.tabBar.focused) {
+      this.tabBar.handleAction(action);
+      return;
+    }
+
     // Global shortcuts
     if (action === 'red' && currentView !== 'epg') {
       this.sidebar.hide();
@@ -510,13 +606,14 @@ class App {
         }
         return;
       }
+      if (currentView === 'search') { this.search.handleAction('back'); return; }
       if (currentView === 'epg' || currentView === 'settings') {
+        this.tabBar.setActive('live');
         this.channelList.render();
         this.showView('channels');
         return;
       }
       if (currentView === 'channels') {
-        if (this.channelList.clearSearchIfActive()) return;
         const now = Date.now();
         if (now - this.backPressTime < 3000) {
           const webOS = (window as unknown as Record<string, { platformBack?: () => void }>).webOS;
@@ -532,8 +629,13 @@ class App {
 
     // Delegate to active view
     switch (currentView) {
-      case 'channels':
-        this.channelList.handleAction(action, event);
+      case 'channels': {
+        const moved = this.channelList.handleAction(action, event);
+        if (action === 'up' && !moved && this.tabBar.shown) this.tabBar.focus();
+        break;
+      }
+      case 'search':
+        this.search.handleAction(action);
         break;
       case 'player':
         // While the OSD is up on seekable catch-up, Left/Right seek instead of

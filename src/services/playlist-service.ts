@@ -3,7 +3,7 @@ import { parseM3U } from '../parsers/m3u-parser';
 import { fetchText } from '../utils/fetch-helper';
 import { xtreamPlaylistUrl, xtreamEpgUrl } from '../utils/xtream-url';
 import { channelKey } from '../utils/channel';
-import { rankChannels } from '../utils/channel-search';
+import { rankByName } from '../utils/channel-search';
 import { createLogger } from '../utils/logger';
 import { StorageService } from './storage-service';
 
@@ -163,7 +163,7 @@ class PlaylistServiceImpl {
   /** Relevance-ranked name search, optionally scoped to one playlist. Empty query → []. */
   search(query: string, playlist?: string): Channel[] {
     const pool = playlist ? this.channels.filter(ch => ch.playlistIds.includes(playlist)) : this.channels;
-    return rankChannels(pool, query);
+    return rankByName(pool, query);
   }
 
   getGroupsForPlaylist(playlist?: string): string[] {

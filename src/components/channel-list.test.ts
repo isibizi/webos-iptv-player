@@ -20,13 +20,6 @@ const { data, playlistMock, epgMock, storageMock } = vi.hoisted(() => {
     return channels.filter(c => c.group === group);
   };
 
-  const search = (q: string, playlist?: string): Channel[] => {
-    const needle = q.trim().toLowerCase();
-    if (!needle) return [];
-    const pool = playlist ? channels.filter(c => c.playlistIds.includes(playlist)) : channels;
-    return pool.filter(c => c.name.toLowerCase().includes(needle));
-  };
-
   return {
     data,
     playlistMock: {
@@ -34,7 +27,6 @@ const { data, playlistMock, epgMock, storageMock } = vi.hoisted(() => {
       playlistTabs: [] as { id: string; name: string }[],
       getGroupsForPlaylist: () => ['News', 'Sports'],
       getByGroup,
-      search,
       indexOf: (ch: Channel) => channels.indexOf(ch),
       getByIndex: (i: number) => channels[i] ?? null,
     },
@@ -55,7 +47,6 @@ import { channelKey } from '../utils/channel';
 
 let container: HTMLElement;
 let onSelect: ReturnType<typeof vi.fn>;
-let onSettings: ReturnType<typeof vi.fn>;
 let list: ChannelList;
 
 beforeEach(() => {
@@ -66,8 +57,7 @@ beforeEach(() => {
   container = document.createElement('div');
   document.body.appendChild(container);
   onSelect = vi.fn();
-  onSettings = vi.fn();
-  list = new ChannelList(container, onSelect, onSettings);
+  list = new ChannelList(container, onSelect);
 });
 
 function channelItems(): HTMLElement[] {
@@ -79,21 +69,15 @@ function hover(el: HTMLElement): void {
 }
 
 describe('ChannelList.render', () => {
-  it('initial focus is the search box when channels exist', () => {
+  it('initial focus is the first channel when channels exist', () => {
     list.render();
-    expect(container.querySelector('.channel-search-input.focused')).not.toBeNull();
-    expect(channelItems()[0].classList.contains('focused')).toBe(false);
+    expect(channelItems()[0].classList.contains('focused')).toBe(true);
   });
 
-  it('initial focus is the settings gear when there are no channels', () => {
-    const saved = playlistMock.channels.splice(0);
-    try {
-      list.render();
-      expect(container.querySelector('.settings-btn.focused')).not.toBeNull();
-      expect(container.querySelector('.channel-search-input.focused')).toBeNull();
-    } finally {
-      playlistMock.channels.push(...saved);
-    }
+  it('renders no title heading or settings gear (the tab bar owns those)', () => {
+    list.render();
+    expect(container.querySelector('.sidebar-title')).toBeNull();
+    expect(container.querySelector('.settings-btn')).toBeNull();
   });
 
   it('renders the channel count and all channels for the default group', () => {
@@ -101,6 +85,12 @@ describe('ChannelList.render', () => {
     expect(container.querySelector('.channel-count')?.textContent).toBe('3 channels');
     expect(channelItems()).toHaveLength(3);
     expect(container.textContent).toContain('Alpha');
+  });
+
+  it('renders no inline search magnifier (the tab bar owns search)', () => {
+    list.render();
+    expect(container.querySelector('.channel-search')).toBeNull();
+    expect(container.querySelector('.search-icon')).toBeNull();
   });
 
   it('renders the group list including All and Favorites', () => {
@@ -140,12 +130,6 @@ describe('ChannelList.render', () => {
 
 describe('ChannelList interaction', () => {
   beforeEach(() => list.render());
-
-  it('clicking the settings gear opens settings', () => {
-    container.querySelector<HTMLElement>('.settings-btn')!
-      .dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    expect(onSettings).toHaveBeenCalled();
-  });
 
   it('selecting a focused channel plays it', () => {
     hover(channelItems()[1]);
@@ -189,81 +173,10 @@ describe('ChannelList interaction', () => {
     list.render();
     expect(channelItems()[2].classList.contains('playing')).toBe(true);
   });
-});
 
-describe('ChannelList search', () => {
-  beforeEach(() => list.render());
-
-  function searchInput(): HTMLInputElement {
-    return container.querySelector<HTMLInputElement>('.channel-search-input')!;
-  }
-
-  it('renders a search box at the top of the channel list', () => {
-    expect(searchInput()).not.toBeNull();
-  });
-
-  it('filters channels by name across all groups as the user types', () => {
-    const input = searchInput();
-    input.value = 'char';
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    const names = channelItems().map(i => i.querySelector('.channel-name')?.textContent);
-    expect(names).toEqual(['Charlie']);
-  });
-
-  it('shows a search-specific empty state when nothing matches', () => {
-    const input = searchInput();
-    input.value = 'zzz';
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    expect(container.querySelector('.empty-state')?.textContent)
-      .toBe('No channels match your search');
-  });
-
-  it('search ignores the selected group (spans all channels)', () => {
-    // Narrow to Sports first, then search for a News channel.
-    hover(container.querySelector<HTMLElement>('[data-group="Sports"]')!);
-    list.handleAction('select');
-    const input = searchInput();
-    input.value = 'alpha';
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    expect(channelItems().map(i => i.querySelector('.channel-name')?.textContent))
-      .toEqual(['Alpha']);
-  });
-
-  it('clearSearchIfActive clears the query and reports it consumed the action', () => {
-    const input = searchInput();
-    input.value = 'char';
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    expect(channelItems()).toHaveLength(1);
-
-    expect(list.clearSearchIfActive()).toBe(true);
-    expect(channelItems()).toHaveLength(3);
-    // Nothing to clear the second time.
-    expect(list.clearSearchIfActive()).toBe(false);
-  });
-
-  it('Escape in the search box clears the query and restores the full list', () => {
-    const input = searchInput();
-    input.value = 'char';
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    expect(channelItems()).toHaveLength(1);
-    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    expect(channelItems()).toHaveLength(3);
-  });
-
-  it('highlightEntryPoint highlights the search box without taking the caret', () => {
+  it('highlightEntryPoint focuses the first channel without taking the caret', () => {
     list.highlightEntryPoint();
-    expect(searchInput().classList.contains('focused')).toBe(true);
-    expect(document.activeElement).not.toBe(searchInput());
-  });
-
-  it('pressing OK on the highlighted search box gives it the caret at the end', () => {
-    const input = searchInput();
-    input.value = 'bra';
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    list.highlightEntryPoint();  // highlight (nav.focused = input)
-    list.handleAction('select'); // OK
-    expect(document.activeElement).toBe(input);
-    expect(input.selectionStart).toBe(input.value.length);
+    expect(channelItems()[0].classList.contains('focused')).toBe(true);
   });
 });
 
@@ -284,25 +197,12 @@ describe('ChannelList listener lifecycle', () => {
     const c = document.createElement('div');
     document.body.appendChild(c);
     const spy = vi.spyOn(c, 'addEventListener');
-    const l = new ChannelList(c, vi.fn(), vi.fn());
+    const l = new ChannelList(c, vi.fn());
     l.render();
     l.render();
     l.render();
     const navHover = spy.mock.calls.filter(([type]) => type === 'nav:hover');
     expect(navHover).toHaveLength(1);
-  });
-
-  it('binds the settings-btn click handler once, not per render', () => {
-    const onSettings = vi.fn();
-    const c = document.createElement('div');
-    document.body.appendChild(c);
-    const l = new ChannelList(c, vi.fn(), onSettings);
-    l.render();
-    l.render();
-    l.render();
-    c.querySelector<HTMLElement>('.settings-btn')!
-      .dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    expect(onSettings).toHaveBeenCalledTimes(1);
   });
 });
 

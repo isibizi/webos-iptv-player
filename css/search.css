@@ -1,0 +1,71 @@
+/* Search results: a query box over Channels / Movies / Series result rails.
+   The poster rails reuse the shared catalog tile/poster visuals; these are the
+   search-only bits (the query box and the M3U vertical channel list). */
+.search-view {
+  width: 1920px;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 40px 80px 60px;
+  overflow-y: auto;
+}
+.search-bar { margin-bottom: 32px; }
+.search-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 20px 28px;
+  font-size: 34px;
+  color: var(--text-primary);
+  background: #14161c;
+  border: 3px solid #23262f;
+  border-radius: 12px;
+  outline: none;
+}
+.search-input.focused { border-color: var(--accent, #3ea6ff); }
+.search-results { display: block; }
+.search-empty { margin-top: 40px; }
+
+/* Channel results carry 16:9-ish logos, not portrait posters — use a landscape
+   box and contain the logo so it isn't cropped. */
+.search-channel-tile .catalog-poster-wrap { height: 124px; }
+.search-channel-tile .catalog-poster { object-fit: contain; }
+
+/* M3U-only Search: a vertical list of channel rows (Xtream uses the poster
+   rails above). */
+.search-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.search-channel-row {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 12px 20px;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.search-channel-row.focused {
+  background: var(--bg-tertiary);
+  border-color: var(--focus-ring);
+}
+.search-row-logo {
+  width: 84px;
+  height: 52px;
+  object-fit: contain;
+  flex: none;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+}
+.search-row-logo-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+.search-row-name {
+  font-size: 30px;
+  color: var(--text-primary);
+}

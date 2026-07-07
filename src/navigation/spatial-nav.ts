@@ -2,10 +2,12 @@ import type { NavDirection } from '../types';
 
 export class SpatialNav {
   private container: HTMLElement;
+  private onFocusChange?: (el: HTMLElement | null) => void;
   focused: HTMLElement | null = null;
 
-  constructor(container: HTMLElement) {
+  constructor(container: HTMLElement, onFocusChange?: (el: HTMLElement | null) => void) {
     this.container = container;
+    this.onFocusChange = onFocusChange;
     this.container.addEventListener('nav:hover', (e: Event) => {
       const target = e.target as HTMLElement;
       if (target.hasAttribute('data-focusable')) {
@@ -34,6 +36,7 @@ export class SpatialNav {
       el.classList.add('focused');
       el.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
     }
+    this.onFocusChange?.(el);
   }
 
   /** Remove the visual highlight but keep `focused` so d-pad/hover can re-show it. */
@@ -51,13 +54,13 @@ export class SpatialNav {
     if (el) this.focus(el);
   }
 
-  move(direction: NavDirection): void {
+  move(direction: NavDirection): boolean {
     const items = this.getFocusables();
-    if (!items.length) return;
+    if (!items.length) return false;
 
     if (!this.focused || !items.includes(this.focused)) {
       this.focus(items[0]);
-      return;
+      return true;
     }
 
     const rect = this.focused.getBoundingClientRect();
@@ -124,6 +127,10 @@ export class SpatialNav {
       }
     }
 
-    if (best) this.focus(best);
+    if (best) {
+      this.focus(best);
+      return true;
+    }
+    return false;
   }
 }

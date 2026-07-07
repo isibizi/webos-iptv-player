@@ -139,8 +139,12 @@ export const KeyHandler = {
       // Settings; it lives in the channels view, so without listing it here the
       // deferred select would leak into the freshly-opened Settings and "press"
       // its first focusable.
+      //
+      // `.search-view` self-handles pointer activation on mouseup (Magic Remote OK
+      // fires no click), so excluding it here keeps the desktop mouse from
+      // double-firing select on top of that.
       const t = e.target as HTMLElement;
-      if (!t.isConnected || t.closest('.player-sidebar, .player-menu, .settings-view, .settings-btn')) return;
+      if (!t.isConnected || t.closest('.player-sidebar, .player-menu, .settings-view, .settings-btn, .search-view')) return;
       const target = t.closest<HTMLElement>('[data-focusable]');
       if (target && activeHandler) {
         target.dispatchEvent(new CustomEvent('nav:hover', { bubbles: true }));
