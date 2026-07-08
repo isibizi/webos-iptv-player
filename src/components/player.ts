@@ -11,6 +11,7 @@ import { PlaylistService } from '../services/playlist-service';
 import { EpgService } from '../services/epg-service';
 import { StorageService } from '../services/storage-service';
 import { HlsSubtitles } from '../services/hls-subtitles';
+import { VodSubtitles } from '../services/vod-subtitles';
 import { CONFIG } from '../config';
 import { formatTime, formatPosition, formatDuration, getProgress } from '../utils/time';
 import { getLenientLoaders } from '../utils/hls-stable-loader';
@@ -84,6 +85,7 @@ export class Player {
   private manifestVariants: StreamVariant[] = []; // HLS master variants for best-effort codec readout
   private manifestSeq = 0;
   private subs = new HlsSubtitles(); // self-rendered subtitles on the webOS native path
+  private vodSubs = new VodSubtitles(); // sidecar SRT/WebVTT tracks for VOD (Xtream)
   private stallWatchdog: StallWatchdog;
   constructor(container: HTMLElement, onBack: () => void) {
     this.container = container;
@@ -285,6 +287,7 @@ export class Player {
     this.failedIcons.clear();
     this.videoEl.classList.add('active');
     this.loadStream(v.url, null, { direct: true });
+    this.vodSubs.attach(this.videoEl, v.subtitles); // after loadStream — it resets the <video>'s children
     this.showOSD();
     show(this.container);
   }
@@ -372,6 +375,7 @@ export class Player {
     if (this.vod) this.saveVodResume();
     this.stallWatchdog.stop();
     this.subs.stop();
+    this.vodSubs.clear();
     if (this.hls) {
       this.hls.destroy();
       this.hls = null;
@@ -1280,6 +1284,7 @@ export class Player {
         if (t.kind !== 'subtitles' && t.kind !== 'captions') continue;
         t.mode = i === index ? 'showing' : 'disabled';
       }
+      if (index >= 0 && list[index]) void this.vodSubs.ensureLoaded(list[index]); // lazy-load a sidecar's cues
       return;
     }
     const m = index >= 0 ? this.manifestSubtitles[index] : undefined;

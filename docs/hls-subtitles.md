@@ -67,13 +67,8 @@ the subtitle media playlist itself, parses each segment, and injects `VTTCue`s i
 (§3) — started per the §2 selection (off unless `FORCED` or a saved pick), not automatically. Self-rendering
 runs the **same on-device and in the preview** and gives `::cue` styling — it's necessary here, not a choice.
 
-**VOD is different — in-container subtitles _are_ switchable native tracks.** Progressive VOD (Xtream
-movies/episodes, an mp4/mkv played via `<video src>`, `this.hls` null) exposes any in-container subtitle
-streams as real `video.textTracks`, so no self-render is needed: `nativeSubtitleOptions` enumerates the
-`subtitles`/`captions` tracks and a pick just sets `textTracks[i].mode` (`'showing'`/`'disabled'`, `-1` =
-all off). Off by default unless a saved pick applies; the choice is remembered per item under a
-`vod:<account>:<kind>:<itemId>` key (audio memory shares the same key). Sidecar subtitle files delivered
-alongside a VOD stream are a separate, not-yet-wired path.
+> **VOD subtitles** (Xtream movies/episodes — in-container native tracks and sidecar SRT/WebVTT files)
+> are a separate path, covered in [`vod-subtitles.md`](vod-subtitles.md).
 
 ---
 

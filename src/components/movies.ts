@@ -76,6 +76,7 @@ export class Movies extends CatalogView<VodCategory, VodItem> {
       itemId: vod.streamId,
       kind: 'vod',
       resumeSecs: resume && saved ? saved.position : 0,
+      subtitles: this.currentInfo?.subtitles ?? [],
     });
   }
 

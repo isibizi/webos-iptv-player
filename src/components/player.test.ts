@@ -555,6 +555,25 @@ describe('Player VOD audio/subtitle track selection (native, in-container)', () 
     expect(StorageService.setSubtitlePref).toHaveBeenCalledWith('vod:x1:vod:10', { off: true, name: '', lang: '' });
   });
 
+  it('lazily loads a sidecar track when it is shown', () => {
+    const text = [textTrack('disabled', { label: 'Track 1' })];
+    setup({ text });
+    const vodSubs = { attach: vi.fn(), ensureLoaded: vi.fn(), clear: vi.fn() };
+    (player as unknown as { vodSubs: unknown }).vodSubs = vodSubs;
+    player.selectSubtitleTrack(0);
+    expect(text[0].mode).toBe('showing');
+    expect(vodSubs.ensureLoaded).toHaveBeenCalledWith(text[0]);
+  });
+
+  it('does not load anything when subtitles are turned off', () => {
+    const text = [textTrack('showing', { label: 'Track 1' })];
+    setup({ text });
+    const vodSubs = { attach: vi.fn(), ensureLoaded: vi.fn(), clear: vi.fn() };
+    (player as unknown as { vodSubs: unknown }).vodSubs = vodSubs;
+    player.selectSubtitleTrack(-1);
+    expect(vodSubs.ensureLoaded).not.toHaveBeenCalled();
+  });
+
   it('re-applies a saved subtitle pick when tracks arrive', () => {
     const text = [
       textTrack('disabled', { label: 'Track 1', language: 'l1' }),
@@ -600,7 +619,7 @@ describe('Player VOD audio/subtitle track selection (native, in-container)', () 
 describe('Player VOD mode', () => {
   const req = (over = {}) => ({
     url: 'http://host:8080/movie/u/p/10.mp4', title: 'Movie One', poster: '',
-    accountId: 'x1', itemId: '10', kind: 'vod' as const, resumeSecs: 0, onBack: vi.fn(), ...over,
+    accountId: 'x1', itemId: '10', kind: 'vod' as const, resumeSecs: 0, subtitles: [], onBack: vi.fn(), ...over,
   });
 
   let player: Player;
@@ -621,6 +640,16 @@ describe('Player VOD mode', () => {
     video.dispatchEvent(new Event('loadedmetadata'));
     expect(video.currentTime).toBe(900);
     expect(player.isVod()).toBe(true);
+  });
+
+  it('attaches the sidecar subtitle tracks on playVod', () => {
+    const video = fakeVideo(3600);
+    player.init(video);
+    const vodSubs = { attach: vi.fn(), ensureLoaded: vi.fn(), clear: vi.fn() };
+    (player as unknown as { vodSubs: unknown }).vodSubs = vodSubs;
+    const subs = [{ id: '1', name: 'Track 1', lang: 'l1', url: 'http://host/a.srt' }];
+    player.playVod(req({ subtitles: subs }));
+    expect(vodSubs.attach).toHaveBeenCalledWith(video, subs);
   });
 
   it('is seekable while the OSD is up (finite duration)', () => {

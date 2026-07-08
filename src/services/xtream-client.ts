@@ -1,7 +1,7 @@
 import { fetchText } from '../utils/fetch-helper';
 import { xtreamPlayerApi, type XtreamCredentials } from '../utils/xtream-url';
 import { createLogger } from '../utils/logger';
-import type { VodCategory, VodItem, VodInfo, SeriesCategory, SeriesItem, SeriesInfo, Episode } from '../types';
+import type { VodCategory, VodItem, VodInfo, SeriesCategory, SeriesItem, SeriesInfo, Episode, SidecarSubtitle } from '../types';
 
 const log = createLogger('Xtream');
 
@@ -45,6 +45,20 @@ function asArray(v: unknown): Record<string, unknown>[] {
   return Array.isArray(v)
     ? v.filter((x): x is Record<string, unknown> => !!x && typeof x === 'object')
     : [];
+}
+
+// Sidecar subtitles from a VOD / episode info block. Only entries with an
+// absolute http(s) URL are kept — panels vary, and a filename we can't resolve
+// to a URL is useless (and unsafe to guess at).
+function parseSubtitles(v: unknown): SidecarSubtitle[] {
+  return asArray(v)
+    .map((s) => ({
+      id: toStr(s.subtitle_id ?? s.id),
+      name: toStr(s.title ?? s.name),
+      lang: toStr(s.language ?? s.lang),
+      url: toStr(s.url ?? s.subtitle_url),
+    }))
+    .filter((s) => /^https?:\/\//i.test(s.url));
 }
 
 /** A per-account handle over the Xtream `player_api.php` JSON endpoint. Flat
@@ -109,6 +123,7 @@ export function createXtreamClient(creds: XtreamCredentials, accountId = '') {
         releaseDate: toStr(i.releasedate ?? i.release_date),
         durationSecs: toNumber(i.duration_secs),
         poster: toStr(i.movie_image ?? i.cover_big),
+        subtitles: parseSubtitles(i.subtitles),
       };
     },
 
@@ -155,6 +170,7 @@ export function createXtreamClient(creds: XtreamCredentials, accountId = '') {
                 durationSecs: toNumber(einfo.duration_secs),
                 plot: toStr(einfo.plot),
                 poster: toStr(einfo.movie_image),
+                subtitles: parseSubtitles(e.subtitles ?? einfo.subtitles),
               };
             })
             .filter((ep) => ep.id !== '');

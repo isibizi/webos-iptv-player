@@ -1,0 +1,59 @@
+import type { SidecarSubtitle } from '../types';
+import { parseSubtitleFile } from '../utils/srt';
+import { fetchText } from '../utils/fetch-helper';
+import { createLogger } from '../utils/logger';
+
+const log = createLogger('VodSubs');
+
+/**
+ * Loads Xtream sidecar subtitle files (SRT / WebVTT) as native `<track>` text
+ * tracks on the VOD player. Each sidecar becomes an empty `<track>` up front so
+ * it lists in the subtitle picker immediately; its cues are fetched and parsed
+ * the first time it's actually shown. The `<track>` elements are children of the
+ * `<video>`, so the player's `innerHTML` reset between streams removes them and
+ * their tracks — no leakage from one item into the next.
+ */
+export class VodSubtitles {
+  private entries: { track: TextTrack; url: string; loaded: boolean }[] = [];
+  private gen = 0; // bumped on each attach/clear; in-flight loads bail when it changes
+
+  attach(video: HTMLVideoElement, sidecars: SidecarSubtitle[]): void {
+    this.gen++;
+    this.entries = [];
+    for (const s of sidecars) {
+      const el = document.createElement('track');
+      el.kind = 'subtitles';
+      el.label = s.name || s.lang || 'Subtitle';
+      if (s.lang) el.srclang = s.lang;
+      video.appendChild(el);
+      const track = el.track;
+      if (!track) continue;
+      track.mode = 'disabled';
+      this.entries.push({ track, url: s.url, loaded: false });
+    }
+    if (sidecars.length) log.info('attached', this.entries.length, 'sidecar track(s)');
+  }
+
+  // Fetch + parse + populate the cues for `track` the first time it's shown.
+  // No-op for a track we don't own or one already loaded.
+  async ensureLoaded(track: TextTrack): Promise<void> {
+    const entry = this.entries.find((e) => e.track === track);
+    if (!entry || entry.loaded) return;
+    entry.loaded = true; // claim before await so a repeated show doesn't double-fetch
+    const gen = this.gen;
+    try {
+      const cues = parseSubtitleFile(await fetchText(entry.url));
+      if (gen !== this.gen) return; // a new item was attached while this was fetching
+      for (const c of cues) entry.track.addCue(new VTTCue(c.start, c.end, c.text));
+      log.info('loaded', cues.length, 'cues from', entry.url);
+    } catch (e) {
+      entry.loaded = false; // allow a retry on the next show
+      log.warn('sidecar load failed:', e);
+    }
+  }
+
+  clear(): void {
+    this.gen++;
+    this.entries = [];
+  }
+}

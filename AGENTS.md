@@ -138,7 +138,10 @@ syncs it into `appinfo.json` and the `__APP_VERSION__` build constant;
   channel, and real names come from parsing the master `EXT-X-MEDIA:TYPE=SUBTITLES`. On-device
   the native compositor draws the cues using the TV's caption settings (it ignores `::cue`); the
   preview's `::cue` mirrors Safari. Full writeup in `docs/hls-subtitles.md` (helpers in
-  `src/utils/subtitle-tracks.ts`, `src/utils/webvtt.ts`, `src/services/hls-subtitles.ts`).
+  `src/utils/subtitle-tracks.ts`, `src/utils/webvtt.ts`, `src/services/hls-subtitles.ts`). VOD
+  (Xtream movies/episodes) subtitles — in-container native tracks and sidecar SRT/WebVTT files —
+  are a separate path in `docs/vod-subtitles.md` (`src/services/vod-subtitles.ts`,
+  `src/utils/srt.ts`).
 - **Magic Remote OK fires pointer events, not `click`.** Pressing OK with the Magic
   Remote pointer over an element dispatches `mousedown`/`mouseup` (and pointer events)
   but **no synthesized `click`**, and the event target can be the native video plane

@@ -207,6 +207,16 @@ export interface VodItem {
   containerExtension: string;
 }
 
+// A sidecar subtitle file (SRT or WebVTT) delivered alongside an Xtream VOD
+// stream, listed in get_vod_info / get_series_info. Loaded on demand and drawn
+// as a native text track, not muxed into the video.
+export interface SidecarSubtitle {
+  id: string;
+  name: string;
+  lang: string;
+  url: string;
+}
+
 export interface VodInfo {
   plot: string;
   cast: string;
@@ -215,6 +225,7 @@ export interface VodInfo {
   releaseDate: string;
   durationSecs: number;
   poster: string;
+  subtitles: SidecarSubtitle[];
 }
 
 export interface SeriesCategory {
@@ -240,6 +251,7 @@ export interface Episode {
   durationSecs: number;
   plot: string;
   poster: string;
+  subtitles: SidecarSubtitle[];
 }
 
 export interface SeriesInfo {
@@ -275,5 +287,6 @@ export interface VodPlayback {
   itemId: string;
   kind: ResumeKind;
   resumeSecs: number;
+  subtitles: SidecarSubtitle[];
   onBack: () => void;
 }

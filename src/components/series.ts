@@ -94,6 +94,7 @@ export class Series extends CatalogView<SeriesCategory, SeriesItem> {
       itemId: ep.id,
       kind: 'episode',
       resumeSecs: saved ? saved.position : 0,
+      subtitles: ep.subtitles,
     });
   }
 
@@ -117,6 +118,7 @@ export class Series extends CatalogView<SeriesCategory, SeriesItem> {
       itemId: r.itemId,
       kind: 'episode',
       resumeSecs: r.position,
+      subtitles: [],
     });
   }
 

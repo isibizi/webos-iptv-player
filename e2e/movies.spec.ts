@@ -1,8 +1,12 @@
 import { test, expect, routeLiveManifest, SAMPLE_M3U, enterTab } from './helpers';
 
 // Seed one Xtream account (enables the tab bar) and stub the player_api.php
-// catalog calls + the get.php/xmltv.php the live path uses.
-async function seedMovies(page: import('@playwright/test').Page): Promise<void> {
+// catalog calls + the get.php/xmltv.php the live path uses. With `subtitles`,
+// get_vod_info advertises one sidecar and the .srt URL is routed.
+async function seedMovies(
+  page: import('@playwright/test').Page,
+  opts: { subtitles?: boolean } = {},
+): Promise<void> {
   await page.route('**/get.php*', (route) =>
     route.fulfill({ status: 200, contentType: 'application/x-mpegurl', body: SAMPLE_M3U }));
   await page.route('**/xmltv.php*', (route) =>
@@ -18,10 +22,20 @@ async function seedMovies(page: import('@playwright/test').Page): Promise<void> 
       ]) });
     }
     if (url.includes('get_vod_info')) {
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ info: { plot: 'A plot.', duration_secs: 3600 } }) });
+      const info: Record<string, unknown> = { plot: 'A plot.', duration_secs: 3600 };
+      if (opts.subtitles) {
+        info.subtitles = [{ subtitle_id: '1', title: 'Track 1', language: 'l1',
+          url: 'http://host.example.com:8080/subs/10.srt' }];
+      }
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ info }) });
     }
     return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
   });
+  if (opts.subtitles) {
+    await page.route('**/subs/**', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/x-subrip',
+        body: '1\n00:00:01,000 --> 00:00:04,000\nHello\n\n2\n00:00:05,000 --> 00:00:07,000\nWorld\n' }));
+  }
   // The movie file itself: a small response so play() doesn't hang the test.
   await page.route('**/movie/**', (route) =>
     route.fulfill({ status: 200, contentType: 'video/mp4', body: '' }));
@@ -143,4 +157,55 @@ test('VOD playback suppresses the live channel sidebar and shows a VOD-only menu
   expect(await menu.textContent()).not.toContain('Program Guide');
   expect(await menu.textContent()).not.toContain('Toggle Favorite');
   expect(await menu.textContent()).not.toContain('Playing:');
+});
+
+test('a VOD sidecar subtitle attaches as a native text track and loads its cues when selected', async ({ page }) => {
+  await seedMovies(page, { subtitles: true });
+  await routeLiveManifest(page);
+  // Keep VOD alive so the neutered <video> doesn't eject before we probe tracks.
+  await page.addInitScript(() => {
+    const P = HTMLMediaElement.prototype;
+    P.load = function () { /* no-op */ };
+    P.play = function () { return Promise.resolve(); };
+    Object.defineProperty(P, 'src', { configurable: true, set() { /* no-op */ }, get() { return ''; } });
+  });
+  await page.goto('/');
+  await expect(page.locator('#view-channels')).toBeVisible();
+
+  await enterTab(page, 'movies');
+  await page.locator('.catalog-tile[data-item-id="10"]')
+    .evaluate((el) => el.dispatchEvent(new CustomEvent('nav:hover', { bubbles: true })));
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#view-movies .detail-plot')).toContainText('A plot.');
+  await page.locator('[data-action="play"]')
+    .evaluate((el) => el.dispatchEvent(new CustomEvent('nav:hover', { bubbles: true })));
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#view-player')).toBeVisible();
+  await expect(page.locator('#player-osd .osd-channel-name')).toBeVisible();
+
+  // The sidecar becomes a real subtitles text track on the <video>, off by default.
+  const attached = await page.evaluate(() => {
+    const v = document.getElementById('video-player') as HTMLVideoElement;
+    const t = v.textTracks[0];
+    return t ? { count: v.textTracks.length, label: t.label, kind: t.kind, mode: t.mode } : null;
+  });
+  expect(attached).toEqual({ count: 1, label: 'Track 1', kind: 'subtitles', mode: 'disabled' });
+
+  // Open the right-edge menu into the Subtitles sub-menu; the sidecar is listed.
+  await page.evaluate(() =>
+    document.dispatchEvent(new PointerEvent('pointermove', { clientX: 1900, clientY: 540, bubbles: true })));
+  const menu = page.locator('#player-menu');
+  await expect(menu).toBeVisible();
+  await page.keyboard.press('ArrowDown'); // Title Info -> Settings
+  await page.keyboard.press('ArrowDown'); // Settings -> Subtitles
+  await page.keyboard.press('Enter');     // open the Subtitles sub-menu
+  await expect(menu).toContainText('Track 1');
+
+  // Select the sidecar; it starts showing and its cues load from the routed SRT.
+  await page.keyboard.press('ArrowDown'); // Off -> Track 1
+  await page.keyboard.press('Enter');
+  await expect.poll(async () => page.evaluate(() => {
+    const t = (document.getElementById('video-player') as HTMLVideoElement).textTracks[0];
+    return t.mode === 'showing' && t.cues ? t.cues.length : 0;
+  })).toBe(2);
 });

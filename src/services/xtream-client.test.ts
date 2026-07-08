@@ -143,7 +143,7 @@ describe('XtreamClient VOD', () => {
     );
     expect(info).toEqual({
       plot: 'A plot', cast: 'Actor', director: 'Dir', genre: 'Drama',
-      releaseDate: '2020-01-01', durationSecs: 5400, poster: 'http://host/p.png',
+      releaseDate: '2020-01-01', durationSecs: 5400, poster: 'http://host/p.png', subtitles: [],
     });
   });
 
@@ -152,6 +152,31 @@ describe('XtreamClient VOD', () => {
     expect(await createXtreamClient(creds).getVodCategories()).toEqual([]);
     expect(await createXtreamClient(creds).getVodStreams()).toEqual([]);
     expect(await createXtreamClient(creds).getVodInfo('10')).toBeNull();
+  });
+
+  it('parses VOD sidecar subtitles, keeping only http(s)-URL entries', async () => {
+    fetchTextMock.mockResolvedValue(JSON.stringify({
+      info: {
+        plot: 'p',
+        subtitles: [
+          { subtitle_id: '1', title: 'Track 1', language: 'l1', url: 'http://host/a.srt' },
+          { subtitle_id: '2', title: 'Track 2', language: 'l2', url: 'https://host/b.vtt' },
+          { subtitle_id: '3', title: 'Track 3', language: 'l3', url: 'ftp://host/c' }, // non-http → dropped
+          { subtitle_id: '4', title: 'Track 4', language: 'l4' },                      // no url → dropped
+        ],
+      },
+      movie_data: { stream_id: 10 },
+    }));
+    const info = await createXtreamClient(creds).getVodInfo('10');
+    expect(info!.subtitles).toEqual([
+      { id: '1', name: 'Track 1', lang: 'l1', url: 'http://host/a.srt' },
+      { id: '2', name: 'Track 2', lang: 'l2', url: 'https://host/b.vtt' },
+    ]);
+  });
+
+  it('defaults VOD subtitles to [] when the field is absent', async () => {
+    fetchTextMock.mockResolvedValue(JSON.stringify({ info: { plot: 'p' }, movie_data: {} }));
+    expect((await createXtreamClient(creds).getVodInfo('10'))!.subtitles).toEqual([]);
   });
 });
 
@@ -202,7 +227,7 @@ describe('XtreamClient Series', () => {
     expect(info!.seasons).toEqual([1, 2]);
     expect(info!.episodesBySeason[1]).toEqual([{
       id: '101', title: 'S1E1', season: 1, episode: 1, containerExtension: 'mp4',
-      durationSecs: 1000, plot: 'p1', poster: 'http://host/1.png',
+      durationSecs: 1000, plot: 'p1', poster: 'http://host/1.png', subtitles: [],
     }]);
     expect(info!.episodesBySeason[2][0].id).toBe('201');
   });
@@ -218,5 +243,21 @@ describe('XtreamClient Series', () => {
     fetchTextMock.mockResolvedValue(JSON.stringify({ info: { name: 'x' } }));
     const info = await createXtreamClient(creds).getSeriesInfo('7');
     expect(info).toEqual({ seasons: [], episodesBySeason: {} });
+  });
+
+  it('parses per-episode sidecar subtitles from the episode info block', async () => {
+    fetchTextMock.mockResolvedValue(JSON.stringify({
+      episodes: {
+        '1': [{ id: '101', title: 'S1E1', episode_num: 1, container_extension: 'mkv',
+          info: {
+            duration_secs: 1000, plot: 'p', movie_image: 'http://host/1.png',
+            subtitles: [{ subtitle_id: '1', title: 'Track 1', language: 'l1', url: 'http://host/e.srt' }],
+          } }],
+      },
+    }));
+    const info = await createXtreamClient(creds).getSeriesInfo('7');
+    expect(info!.episodesBySeason[1][0].subtitles).toEqual([
+      { id: '1', name: 'Track 1', lang: 'l1', url: 'http://host/e.srt' },
+    ]);
   });
 });
