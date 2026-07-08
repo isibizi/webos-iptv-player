@@ -57,6 +57,22 @@ export function manifestSubtitleOptions(manifest: readonly ManifestSubtitle[], a
   }));
 }
 
+/** Picker options from the native `HTMLMediaElement.textTracks` — the VOD path,
+ *  where in-container subtitles surface as switchable text tracks. Only
+ *  subtitle/caption kinds are kept (chapters/metadata are ignored), each carrying
+ *  its original textTracks index so a pick maps straight back to the list. The
+ *  active one is whichever has `mode === 'showing'`. */
+export function nativeSubtitleOptions(list: TextTrackList): SubtitleOption[] {
+  const out: SubtitleOption[] = [];
+  for (let i = 0; i < list.length; i++) {
+    const t = list[i];
+    if (t.kind !== 'subtitles' && t.kind !== 'captions') continue;
+    const lang = t.language && t.language !== 'und' ? t.language : '';
+    out.push({ index: i, name: t.label || '', lang, isDefault: false, isForced: false, active: t.mode === 'showing' });
+  }
+  return out;
+}
+
 /** Pick a subtitle index for `options`, or -1 for off. Honors an explicit "off"
  *  pref, else matches by name then language; with no usable pref the stream
  *  default is the forced track if any, otherwise off (subtitles stay off). */

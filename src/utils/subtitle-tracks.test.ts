@@ -10,6 +10,7 @@ import {
   parseSubtitleRenditions,
   parseClosedCaptions,
   closedCaptionLabel,
+  nativeSubtitleOptions,
 } from './subtitle-tracks';
 
 const opt = (over: Partial<SubtitleOption>): SubtitleOption => ({
@@ -246,5 +247,42 @@ describe('closedCaptionLabel', () => {
       { name: 'Track 1', lang: 'l1', instreamId: 'CC1', isDefault: true },
       { name: 'Track 2', lang: 'l2', instreamId: 'CC3', isDefault: false },
     ])).toBe('Closed Captions');
+  });
+});
+
+describe('nativeSubtitleOptions', () => {
+  type FakeTrack = { kind: string; label: string; language: string; mode: TextTrackMode };
+  const list = (...tracks: FakeTrack[]): TextTrackList => {
+    const l = tracks.slice() as unknown as TextTrackList & FakeTrack[];
+    Object.defineProperty(l, 'length', { value: tracks.length });
+    return l;
+  };
+
+  it('maps native text tracks to options (name from label, active from mode)', () => {
+    const opts = nativeSubtitleOptions(list(
+      { kind: 'subtitles', label: 'Track 1', language: 'l1', mode: 'disabled' },
+      { kind: 'subtitles', label: 'Track 2', language: 'l2', mode: 'showing' },
+    ));
+    expect(opts).toEqual([
+      { index: 0, name: 'Track 1', lang: 'l1', isDefault: false, isForced: false, active: false },
+      { index: 1, name: 'Track 2', lang: 'l2', isDefault: false, isForced: false, active: true },
+    ]);
+  });
+
+  it('keeps only subtitle/caption kinds but preserves their original index', () => {
+    const opts = nativeSubtitleOptions(list(
+      { kind: 'metadata', label: 'meta', language: '', mode: 'hidden' },
+      { kind: 'subtitles', label: 'Track 1', language: 'l1', mode: 'disabled' },
+      { kind: 'captions', label: 'Track 2', language: 'l2', mode: 'showing' },
+    ));
+    expect(opts.map((o) => [o.index, o.name])).toEqual([[1, 'Track 1'], [2, 'Track 2']]);
+  });
+
+  it('treats an "und" or empty language as no language', () => {
+    const opts = nativeSubtitleOptions(list(
+      { kind: 'subtitles', label: '', language: 'und', mode: 'disabled' },
+      { kind: 'subtitles', label: '', language: '', mode: 'disabled' },
+    ));
+    expect(opts.map((o) => o.lang)).toEqual(['', '']);
   });
 });

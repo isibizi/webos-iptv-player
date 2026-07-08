@@ -94,3 +94,53 @@ test('Back walks Movies detail -> browse -> Live instead of ejecting', async ({ 
   await page.evaluate(() => document.dispatchEvent(new KeyboardEvent('keydown', { keyCode: 461, bubbles: true })));
   await expect(page.locator('#view-channels')).toBeVisible();
 });
+
+test('VOD playback suppresses the live channel sidebar and shows a VOD-only menu at the pointer edges', async ({ page }) => {
+  await seedMovies(page);
+  await routeLiveManifest(page);
+  // Keep VOD alive in the player: neuter the <video> so the empty mock movie
+  // file doesn't fire `error` and eject back to Movies before we probe the edges.
+  await page.addInitScript(() => {
+    const P = HTMLMediaElement.prototype;
+    P.load = function () { /* no-op */ };
+    P.play = function () { return Promise.resolve(); };
+    Object.defineProperty(P, 'src', { configurable: true, set() { /* no-op */ }, get() { return ''; } });
+  });
+  await page.goto('/');
+  await expect(page.locator('#view-channels')).toBeVisible();
+
+  // Enter Movies, open a detail, and start playback (VOD mode).
+  await enterTab(page, 'movies');
+  await page.locator('.catalog-tile[data-item-id="10"]')
+    .evaluate((el) => el.dispatchEvent(new CustomEvent('nav:hover', { bubbles: true })));
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#view-movies .detail-plot')).toContainText('A plot.');
+  await page.locator('[data-action="play"]')
+    .evaluate((el) => el.dispatchEvent(new CustomEvent('nav:hover', { bubbles: true })));
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#view-player')).toBeVisible();
+  // Wait until VOD playback has fully settled (the VOD OSD shows the title and,
+  // being paused, stays up) so the pointer probe isn't racing the transition.
+  await expect(page.locator('#player-osd .osd-channel-name')).toBeVisible();
+
+  // The left edge opens the channel switcher during live playback; VOD has no
+  // channels, so the pointer must not summon it. Check once (not a retrying
+  // wait) — the sidebar auto-hides, which would mask a wrong show.
+  await page.mouse.move(10, 540);
+  await page.waitForTimeout(200);
+  expect(await page.locator('#player-sidebar.visible').count()).toBe(0);
+
+  // The right edge opens the menu for VOD too, but as the VOD variant: Title
+  // Info and Settings only (this VOD exposes no audio/subtitle tracks) — never
+  // the live channel rows or the "Playing:" channel name. The 1920-based edge
+  // coordinate is off the 1280-wide test viewport, so dispatch the pointermove directly.
+  await page.evaluate(() =>
+    document.dispatchEvent(new PointerEvent('pointermove', { clientX: 1900, clientY: 540, bubbles: true })));
+  const menu = page.locator('#player-menu');
+  await expect(menu).toBeVisible();
+  await expect(menu).toContainText('Title Info');
+  await expect(menu).toContainText('Settings');
+  expect(await menu.textContent()).not.toContain('Program Guide');
+  expect(await menu.textContent()).not.toContain('Toggle Favorite');
+  expect(await menu.textContent()).not.toContain('Playing:');
+});

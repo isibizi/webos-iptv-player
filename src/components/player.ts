@@ -6,7 +6,7 @@ import { morph } from '../utils/morph';
 import { dvrWindow, dvrState, type DvrWindow, type DvrState } from '../utils/dvr';
 import { fetchText } from '../utils/fetch-helper';
 import { audioLabel, hlsAudioOptions, nativeAudioOptions, chooseAudioIndex, isPrefMatch, parseAudioRenditions, mergeManifestNames } from '../utils/audio-tracks';
-import { subtitleLabel, hlsSubtitleOptions, manifestSubtitleOptions, chooseSubtitleIndex, isSubtitlePrefMatch, parseSubtitleRenditions, parseClosedCaptions, closedCaptionLabel } from '../utils/subtitle-tracks';
+import { subtitleLabel, hlsSubtitleOptions, manifestSubtitleOptions, nativeSubtitleOptions, chooseSubtitleIndex, isSubtitlePrefMatch, parseSubtitleRenditions, parseClosedCaptions, closedCaptionLabel } from '../utils/subtitle-tracks';
 import { PlaylistService } from '../services/playlist-service';
 import { EpgService } from '../services/epg-service';
 import { StorageService } from '../services/storage-service';
@@ -1114,6 +1114,7 @@ export class Player {
   }
 
   private channelPrefKey(): string {
+    if (this.vod) return `vod:${this.vod.accountId}:${this.vod.kind}:${this.vod.itemId}`;
     return this.currentChannel ? channelKey(this.currentChannel) : '';
   }
 
@@ -1166,9 +1167,14 @@ export class Player {
    */
   private subtitleOptions(): SubtitleOption[] {
     if (this.hls) return hlsSubtitleOptions(this.hls.subtitleTracks || [], this.hls.subtitleTrack);
-    // webOS native: in-manifest WebVTT is self-rendered (not surfaced as switchable
-    // textTracks), so the choices are the parsed master renditions and the active one
-    // is what we self-render.
+    // VOD: in-container subtitles (mp4/mkv) surface as switchable native textTracks.
+    if (this.vod) {
+      const list = this.videoEl?.textTracks;
+      return list ? nativeSubtitleOptions(list) : [];
+    }
+    // webOS native live/catch-up: in-manifest WebVTT is self-rendered (not surfaced
+    // as switchable textTracks), so the choices are the parsed master renditions and
+    // the active one is what we self-render.
     return manifestSubtitleOptions(this.manifestSubtitles, this.selfRenderIndex);
   }
 
@@ -1265,6 +1271,17 @@ export class Player {
       if (index < (this.hls.subtitleTracks?.length || 0)) this.hls.subtitleTrack = index;
       return;
     }
+    // VOD: toggle the native textTrack modes directly (index -1 = all off).
+    if (this.vod) {
+      const list = this.videoEl?.textTracks;
+      if (!list) return;
+      for (let i = 0; i < list.length; i++) {
+        const t = list[i];
+        if (t.kind !== 'subtitles' && t.kind !== 'captions') continue;
+        t.mode = i === index ? 'showing' : 'disabled';
+      }
+      return;
+    }
     const m = index >= 0 ? this.manifestSubtitles[index] : undefined;
     if (!m || !this.videoEl || !this.masterUrl) {
       this.subs.stop();
@@ -1319,12 +1336,21 @@ export class Player {
     if (this.hls.subtitleTrack !== idx) this.hls.subtitleTrack = idx;
   }
 
-  // Re-apply a remembered Closed-Captions choice once the pipeline/manifest
-  // confirms captions exist (fires on loadedmetadata, an addtrack event, and
-  // after the manifest parse). WebVTT is handled by applySelfRenderSelection.
+  // Re-apply a remembered subtitle choice on the native path once the pipeline/
+  // manifest confirms tracks exist (fires on loadedmetadata, an addtrack event,
+  // and after the manifest parse). VOD picks from the in-container textTracks;
+  // live/catch-up WebVTT is handled by applySelfRenderSelection, CC below.
   private applyNativeSubtitleSelection(): void {
     if (this.hls) return; // hls.js owns the rendition and its native text tracks
     const pref = StorageService.getSubtitlePref(this.channelPrefKey());
+    if (this.vod) {
+      const options = this.subtitleOptions();
+      if (!options.length) return;
+      const idx = chooseSubtitleIndex(options, pref);
+      this.logSubtitleChoice('vod-native', options, pref, idx);
+      this.applySubtitleChoice(idx);
+      return;
+    }
     if (this.ccAvailable() && pref?.cc) {
       this.subs.stop(); // self-render and the native compositor can't both draw
       this.selfRenderIndex = -1;

@@ -685,7 +685,17 @@ class App {
         this.search.handleAction(action);
         break;
       case 'player':
-        if (this.player.isVod()) { this.player.handleAction(action); break; }
+        if (this.player.isVod()) {
+          // A VOD menu (opened by the pointer) captures D-pad nav; Left closes
+          // it. Otherwise D-pad drives VOD playback (seek / pause / OSD).
+          if (this.menu.visible) {
+            if (action === 'up' || action === 'down' || action === 'select') this.menu.handleAction(action);
+            else if (action === 'left') this.menu.hide();
+          } else {
+            this.player.handleAction(action);
+          }
+          break;
+        }
         // While the OSD is up on seekable catch-up, Left/Right seek instead of
         // opening the sidebar/menu (which stay reachable once the OSD hides).
         if ((action === 'left' || action === 'right')
@@ -739,8 +749,13 @@ class App {
       const currentView = this.viewStack[this.viewStack.length - 1];
       if (currentView !== 'player') return;
 
+      // VOD (movies/series) has no channels and no live menu — only the OSD
+      // (title + seek bar) is pointer-revealable; suppress the channel sidebar
+      // and the live player menu.
+      const vod = this.player.isVod();
+
       // Left sidebar (channels)
-      if (e.clientX < 80 && !this.menu.visible) {
+      if (!vod && e.clientX < 80 && !this.menu.visible) {
         this.sidebar.show();
       } else if (this.sidebar.visible) {
         const overSidebar = !!(e.target as HTMLElement).closest('.player-sidebar');
@@ -753,7 +768,9 @@ class App {
         }
       }
 
-      // Right menu
+      // Right menu. Live/catch-up and VOD alike; for VOD it shows the VOD action
+      // set (Info, Settings) plus any audio/subtitle tracks — the channel rows
+      // are hidden, so it's never empty.
       if (e.clientX > 1840 && !this.sidebar.visible) {
         this.menu.show();
       } else if (this.menu.visible) {

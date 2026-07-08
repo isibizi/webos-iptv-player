@@ -12,6 +12,11 @@ const MENU_ITEMS = [
   { action: 'blue' as const, color: 'blue', label: 'Settings' },
 ];
 
+const VOD_MENU_ITEMS = [
+  { action: 'yellow' as const, color: 'yellow', label: 'Title Info' },
+  { action: 'blue' as const, color: 'blue', label: 'Settings' },
+];
+
 const SUBTITLE_ICON = raw(
   '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">' +
   '<path d="M4 5h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zm2 7v2h6v-2H6zm8 0v2h4v-2h-4zM6 8v2h4V8H6zm6 0v2h6V8h-6z"/>' +
@@ -214,14 +219,16 @@ export class PlayerMenu {
 
     const ch = PlaylistService.getByIndex(this.getCurrentIndex());
     const chName = ch?.name || '';
+    // VOD (no channel, index < 0) swaps in its own action set for the channel one.
+    const rows = this.getCurrentIndex() < 0 ? VOD_MENU_ITEMS : MENU_ITEMS;
     const tracks = this.getAudioTracks();
     const activeTrack = tracks.find(t => t.active);
     const subtitles = this.getSubtitleTracks();
     const activeSub = subtitles.find(t => t.active);
 
     const audioShown = tracks.length >= 2;
-    const audioRowIdx = MENU_ITEMS.length;
-    const subsRowIdx = MENU_ITEMS.length + (audioShown ? 1 : 0);
+    const audioRowIdx = rows.length;
+    const subsRowIdx = rows.length + (audioShown ? 1 : 0);
 
     morph(el, html`
       <div class="menu-header">
@@ -229,7 +236,7 @@ export class PlayerMenu {
         ${chName ? html`<div class="menu-subtitle">Playing: ${chName}</div>` : ''}
       </div>
       <div class="menu-items">
-        ${MENU_ITEMS.map((item, i) => html`
+        ${rows.map((item, i) => html`
           <div class="menu-item ${i === this.focusIdx ? 'focused' : ''}"
                data-key="${item.action}"
                data-focusable data-menu-action="${item.action}">

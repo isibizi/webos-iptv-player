@@ -320,4 +320,43 @@ describe('PlayerMenu', () => {
       expect(rows[2].classList.contains('unavailable')).toBe(true);  // the track greyed
     });
   });
+
+  describe('VOD mode (no channel)', () => {
+    beforeEach(() => getCurrentIndex.mockReturnValue(-1));
+
+    it('keeps only the Info and Settings color rows, dropping Program Guide / Toggle Favorite', () => {
+      audioTracks = [
+        { index: 0, label: 'Track 1', active: true, available: true },
+        { index: 1, label: 'Track 2', active: false, available: true },
+      ];
+      subtitleTracks = [{ index: 0, label: 'Track 1', active: false, available: true }];
+      menu.show();
+      const actions = items().map(i => i.dataset.menuAction);
+      expect(actions).not.toContain('red');   // Program Guide — no EPG for VOD
+      expect(actions).not.toContain('green');  // Toggle Favorite — channels only
+      expect(actions).toContain('yellow');     // Title Info
+      expect(actions).toContain('blue');       // Settings
+      expect(el.textContent).toContain('Title Info');
+      expect(el.textContent).not.toContain('Channel Info'); // relabeled for VOD
+      expect(el.textContent).toContain('Settings');
+      expect(el.textContent).toContain('Audio Track');
+      expect(el.textContent).toContain('Subtitles');
+      expect(el.textContent).not.toContain('Playing:'); // no channel name
+    });
+
+    it('still shows Info and Settings even without any tracks', () => {
+      menu.show();
+      expect(items().map(i => i.dataset.menuAction)).toEqual(['yellow', 'blue']);
+    });
+
+    it('selecting Info or Settings emits the color action to the host', () => {
+      menu.show();
+      menu.handleAction('select'); // Info (first row)
+      expect(onAction).toHaveBeenCalledWith('yellow');
+      menu.show();
+      menu.handleAction('down');
+      menu.handleAction('select'); // Settings (second row)
+      expect(onAction).toHaveBeenCalledWith('blue');
+    });
+  });
 });

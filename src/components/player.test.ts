@@ -11,7 +11,8 @@ vi.mock('../services/epg-service', () => ({
 }));
 vi.mock('../services/storage-service', () => ({
   StorageService: {
-    setLastChannel: vi.fn(), getSubtitlePref: vi.fn(), setSubtitlePref: vi.fn(), getAudioPref: vi.fn(),
+    setLastChannel: vi.fn(), getSubtitlePref: vi.fn(), setSubtitlePref: vi.fn(),
+    getAudioPref: vi.fn(), setAudioPref: vi.fn(),
     setResume: vi.fn(), clearResume: vi.fn(),
   },
 }));
@@ -496,6 +497,103 @@ describe('Player subtitle self-render (webOS native path)', () => {
     expect(tracks.map((t) => t.label)).toEqual(['Track 1', 'Track 2']);
     expect(tracks.map((t) => t.active)).toEqual([false, true]);
     expect(tracks.every((t) => t.available)).toBe(true);
+  });
+});
+
+describe('Player VOD audio/subtitle track selection (native, in-container)', () => {
+  // Plain arrays satisfy the length + indexed reads/writes the player does on
+  // audioTracks / textTracks, so they stand in for the native track lists.
+  const audioTrack = (enabled: boolean, over: { label?: string; language?: string } = {}) =>
+    ({ label: over.label ?? '', language: over.language ?? '', enabled });
+  const textTrack = (mode: TextTrackMode, over: { kind?: string; label?: string; language?: string } = {}) =>
+    ({ kind: over.kind ?? 'subtitles', label: over.label ?? '', language: over.language ?? '', mode });
+
+  const setup = (opts: { audio?: unknown[]; text?: unknown[] } = {}) => {
+    const p = player as unknown as Record<string, unknown>;
+    p.hls = null;
+    p.vod = {
+      url: 'http://host/movie.mkv', title: 'Movie One', poster: '',
+      accountId: 'x1', itemId: '10', kind: 'vod', resumeSecs: 0, onBack: vi.fn(),
+    };
+    p.videoEl = { audioTracks: opts.audio, textTracks: opts.text };
+    p.currentChannel = null;
+  };
+  const applyAudio = () => (player as unknown as { applyNativeAudioSelection(): void }).applyNativeAudioSelection();
+  const applySubs = () => (player as unknown as { applyNativeSubtitleSelection(): void }).applyNativeSubtitleSelection();
+
+  beforeEach(() => {
+    vi.mocked(StorageService.getSubtitlePref).mockReset();
+    vi.mocked(StorageService.setSubtitlePref).mockReset();
+    vi.mocked(StorageService.getAudioPref).mockReset();
+    vi.mocked(StorageService.setAudioPref).mockReset();
+  });
+
+  it('lists subtitle tracks from the native textTracks with the showing one active', () => {
+    setup({ text: [
+      textTrack('disabled', { label: 'Track 1', language: 'l1' }),
+      textTrack('showing', { label: 'Track 2', language: 'l2' }),
+    ] });
+    const tracks = player.getSubtitleTracks();
+    expect(tracks.map((t) => t.label)).toEqual(['Track 1', 'Track 2']);
+    expect(tracks.map((t) => t.active)).toEqual([false, true]);
+    expect(tracks.every((t) => t.available)).toBe(true);
+  });
+
+  it('selecting a subtitle shows that textTrack, disables the others, and remembers it', () => {
+    const text = [textTrack('disabled', { label: 'Track 1' }), textTrack('disabled', { label: 'Track 2' })];
+    setup({ text });
+    player.selectSubtitleTrack(1);
+    expect(text.map((t) => t.mode)).toEqual(['disabled', 'showing']);
+    expect(StorageService.setSubtitlePref).toHaveBeenCalledWith('vod:x1:vod:10', { off: false, name: 'Track 2', lang: '' });
+  });
+
+  it('selecting Off disables every native textTrack and remembers off', () => {
+    const text = [textTrack('showing', { label: 'Track 1' }), textTrack('disabled', { label: 'Track 2' })];
+    setup({ text });
+    player.selectSubtitleTrack(-1);
+    expect(text.map((t) => t.mode)).toEqual(['disabled', 'disabled']);
+    expect(StorageService.setSubtitlePref).toHaveBeenCalledWith('vod:x1:vod:10', { off: true, name: '', lang: '' });
+  });
+
+  it('re-applies a saved subtitle pick when tracks arrive', () => {
+    const text = [
+      textTrack('disabled', { label: 'Track 1', language: 'l1' }),
+      textTrack('disabled', { label: 'Track 2', language: 'l2' }),
+    ];
+    setup({ text });
+    vi.mocked(StorageService.getSubtitlePref).mockReturnValue({ off: false, name: 'Track 2', lang: 'l2' });
+    applySubs();
+    expect(text.map((t) => t.mode)).toEqual(['disabled', 'showing']);
+  });
+
+  it('leaves subtitles off by default when there is no saved pick', () => {
+    const text = [textTrack('showing', { label: 'Track 1' })]; // pipeline auto-enabled one
+    setup({ text });
+    vi.mocked(StorageService.getSubtitlePref).mockReturnValue(null);
+    applySubs();
+    expect(text.map((t) => t.mode)).toEqual(['disabled']);
+  });
+
+  it('remembers the audio pick under the VOD key and switches the native track', () => {
+    const audio = [
+      audioTrack(true, { label: 'Track 1', language: 'l1' }),
+      audioTrack(false, { label: 'Track 2', language: 'l2' }),
+    ];
+    setup({ audio });
+    player.selectAudioTrack(1);
+    expect(audio.map((t) => t.enabled)).toEqual([false, true]);
+    expect(StorageService.setAudioPref).toHaveBeenCalledWith('vod:x1:vod:10', { name: 'Track 2', lang: 'l2' });
+  });
+
+  it('re-applies the saved audio pick when tracks arrive', () => {
+    const audio = [
+      audioTrack(true, { label: 'Track 1', language: 'l1' }),
+      audioTrack(false, { label: 'Track 2', language: 'l2' }),
+    ];
+    setup({ audio });
+    vi.mocked(StorageService.getAudioPref).mockReturnValue({ name: 'Track 2', lang: 'l2' });
+    applyAudio();
+    expect(audio.map((t) => t.enabled)).toEqual([false, true]);
   });
 });
 
