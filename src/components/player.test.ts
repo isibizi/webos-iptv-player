@@ -17,10 +17,13 @@ vi.mock('../services/storage-service', () => ({
   },
 }));
 vi.mock('./toast', () => ({ showToast: vi.fn() }));
+vi.mock('../services/media-probe', () => ({ probeMedia: vi.fn() }));
 
-import { Player, containerMime, extFromUrl, ASS_SUBTITLE_BASE } from './player';
+import { Player, ASS_SUBTITLE_BASE } from './player';
+import { containerMime, extFromUrl } from '../utils/url';
 import { StorageService } from '../services/storage-service';
 import { showToast } from './toast';
+import { probeMedia } from '../services/media-probe';
 import { CONFIG } from '../config';
 
 const CHANNEL = {
@@ -105,6 +108,7 @@ beforeEach(() => {
   container.appendChild(osd);
   document.body.appendChild(container);
   playlistMock.getByIndex.mockReturnValue(CHANNEL);
+  vi.mocked(probeMedia).mockResolvedValue(null);
   player = new Player(container, vi.fn());
   video = fakeVideo(120);
   player.init(video);
@@ -776,6 +780,22 @@ describe('Player VOD mode', () => {
     expect(osd.querySelector('.osd-channel-name')?.textContent).toContain('Movie One');
     expect(osd.querySelector('.osd-stream-info')?.textContent).toContain('1080p');
     expect(osd.querySelector('.osd-progress[data-seekbar]')).not.toBeNull();
+  });
+
+  it('merges probed codec/fps/HDR into the VOD OSD when the probe resolves', async () => {
+    vi.mocked(probeMedia).mockResolvedValue({ videoCodec: 'hvc1', audioCodec: 'ec-3', width: 3840, height: 2160, fps: 24, hdr: 'PQ' });
+    const video = fakeVideo(3600);
+    (video as unknown as { videoHeight: number }).videoHeight = 2160;
+    player.init(video);
+    player.playVod(req());
+    video.dispatchEvent(new Event('loadedmetadata'));
+    await flush(); // let the probe promise resolve and re-render the OSD
+    const info = container.querySelector('.osd-stream-info')?.textContent ?? '';
+    expect(probeMedia).toHaveBeenCalledWith('http://host:8080/movie/u/p/10.mp4', 'x1|media_probe|vod|10');
+    expect(info).toContain('4K');
+    expect(info).toContain('HEVC');
+    expect(info).toContain('24fps');
+    expect(info).toContain('HDR');
   });
 
   it('saves the resume point and calls onBack on Back', () => {

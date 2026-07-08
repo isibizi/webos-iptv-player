@@ -17,7 +17,9 @@ import { CONFIG } from '../config';
 import { formatTime, formatPosition, formatDuration, getProgress } from '../utils/time';
 import { getLenientLoaders } from '../utils/hls-stable-loader';
 import { StallWatchdog, type StallProbe } from '../utils/stall-watchdog';
-import { resolutionBadge, hdrLabel, frameRateLabel, parseVariants, pickVariant, codecName, audioSummary, subtitleSummary, type StreamVariant } from '../utils/stream-info';
+import { resolutionBadge, hdrLabel, frameRateLabel, parseVariants, pickVariant, codecName, audioSummary, subtitleSummary, type StreamVariant, type MediaInfo } from '../utils/stream-info';
+import { extFromUrl, containerMime } from '../utils/url';
+import { probeMedia } from '../services/media-probe';
 import { createLogger } from '../utils/logger';
 import { showToast } from './toast';
 
@@ -25,24 +27,6 @@ const log = createLogger('Player');
 
 // True on the TV's webOS WebView; false in desktop preview / tests.
 const isWebOS = /webOS|Web0S/i.test(navigator.userAgent);
-
-// Progressive-container MIME by file extension, for VOD played natively on webOS.
-// A stream URL's file extension, lowercased (empty if none).
-export function extFromUrl(url: string): string {
-  return (url.split('?')[0].split('#')[0].match(/\.([a-z0-9]+)$/i)?.[1] ?? '').toLowerCase();
-}
-
-export function containerMime(url: string): string {
-  switch (extFromUrl(url)) {
-    case 'mp4': case 'm4v': return 'video/mp4';
-    case 'mkv': return 'video/x-matroska';
-    case 'avi': return 'video/x-msvideo';
-    case 'mov': return 'video/quicktime';
-    case 'webm': return 'video/webm';
-    case 'ts': return 'video/mp2t';
-    default: return 'video/mp4';
-  }
-}
 
 // Picker sentinel for the in-band CEA-608/708 toggle. -1 is the synthetic "Off"
 // row; -2 is the single closed-caption entry, drawn by the native compositor via
@@ -90,6 +74,7 @@ export class Player {
   private selfRenderIndex = -1; // manifest subtitle rendition currently self-rendered (-1 = off)
   private masterUrl = ''; // HLS master URL of the active stream, for re-pointing self-render
   private manifestVariants: StreamVariant[] = []; // HLS master variants for best-effort codec readout
+  private vodInfo: MediaInfo | null = null; // container-header stream info for the active VOD (codec/fps/HDR)
   private manifestSeq = 0;
   private subs = new HlsSubtitles(); // self-rendered subtitles on the webOS native path
   private vodSubs = new VodSubtitles(); // sidecar SRT/WebVTT tracks for VOD (Xtream)
@@ -303,6 +288,15 @@ export class Player {
     this.vodAssSidecars = v.subtitles.filter((s) => isAssSidecar(s.url));
     this.vodSubs.attach(this.videoEl, v.subtitles.filter((s) => !isAssSidecar(s.url)));
     this.assSubs.attach(this.videoEl, this.videoEl.parentElement ?? document.body, this.vodAssSidecars);
+    // Read codec/fps/HDR from the container header — the video element can't
+    // expose them on webOS. Fires once, off the playback path; re-renders the OSD
+    // when it resolves. Guarded so a stale probe can't clobber a newer VOD.
+    this.vodInfo = null;
+    void probeMedia(v.url, `${v.accountId}|media_probe|${v.kind}|${v.itemId}`).then((info) => {
+      if (this.vod !== v || !info) return;
+      this.vodInfo = info;
+      if (this.osdVisible) this.renderOSD();
+    });
     this.showOSD();
     show(this.container);
   }
@@ -859,17 +853,18 @@ export class Player {
   private buildStreamInfo(): Safe | '' {
     const v = this.videoEl;
     const lvl = this.hls?.loadLevelObj;
-    const badge = v ? resolutionBadge(v.videoHeight) : null;
+    const info = this.vod ? this.vodInfo : null; // container-header readout for VOD; null on the Live path
+    const badge = resolutionBadge((v ? v.videoHeight : 0) || info?.height || 0);
     const variant = !this.hls && v ? pickVariant(this.manifestVariants, v.videoWidth, v.videoHeight) : null;
-    const vCodec = codecName(lvl?.videoCodec ?? variant?.videoCodec ?? '');
-    const aCodecName = codecName(lvl?.audioCodec ?? variant?.audioCodec ?? '');
+    const vCodec = codecName(lvl?.videoCodec ?? variant?.videoCodec ?? info?.videoCodec ?? '');
+    const aCodecName = codecName(lvl?.audioCodec ?? variant?.audioCodec ?? info?.audioCodec ?? '');
     // Atmos (JOC): native path from the manifest variant's audio group; hls.js from
     // the active audio track's channel layout — loadLevelObj carries no channels.
     const hlsChannels = this.hls?.audioTracks?.[this.hls.audioTrack]?.channels ?? '';
     const atmos = variant?.atmos || /\bJOC\b/i.test(hlsChannels);
     const aCodec = aCodecName && atmos ? `${aCodecName} Atmos` : aCodecName;
-    const hdr = hdrLabel(lvl?.videoRange ?? variant?.videoRange ?? '');
-    const fps = frameRateLabel(lvl?.frameRate ?? variant?.frameRate ?? 0);
+    const hdr = hdrLabel(lvl?.videoRange ?? variant?.videoRange ?? info?.hdr ?? '');
+    const fps = frameRateLabel(lvl?.frameRate ?? variant?.frameRate ?? info?.fps ?? 0);
     const audio = audioSummary(this.getAudioTracks());
     const subtitle = subtitleSummary(this.getSubtitleTracks());
     if (!(badge || hdr || fps || vCodec || aCodec || audio || subtitle)) return '';

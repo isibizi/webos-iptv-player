@@ -6,6 +6,19 @@ export type StreamVariant = {
 };
 export type ResolutionBadge = { label: string; tier: 'uhd' | 'fhd' | 'hd' | 'sd' };
 
+// Container-header readout for VOD, produced by the media-probe parsers. Fields
+// feed the existing helpers: `videoCodec`/`audioCodec` are fourCC keys for
+// `codecName()`, `hdr` is a VIDEO-RANGE string for `hdrLabel()` ('PQ'/'HLG'/''),
+// `fps` for `frameRateLabel()`. Any field may be zero/'' when the header omits it.
+export interface MediaInfo {
+  videoCodec: string;
+  audioCodec: string;
+  width: number;
+  height: number;
+  fps: number;
+  hdr: string;
+}
+
 // Height-based resolution tier. 0/falsy → null (resolution not known yet).
 export function resolutionBadge(height: number): ResolutionBadge | null {
   if (!height) return null;
@@ -21,6 +34,14 @@ export function hdrLabel(videoRange: string): string {
   const r = videoRange.trim().toUpperCase();
   if (r === 'PQ') return 'HDR';
   if (r === 'HLG') return 'HLG';
+  return '';
+}
+
+// ITU-T H.273 (CICP) transfer-characteristics code → VIDEO-RANGE token for
+// hdrLabel(). Shared by the MP4 (`colr`) and MKV (`Colour`) header parsers.
+export function hdrFromTransfer(transfer: number): string {
+  if (transfer === 16) return 'PQ'; // SMPTE ST 2084
+  if (transfer === 18) return 'HLG'; // ARIB STD-B67
   return '';
 }
 

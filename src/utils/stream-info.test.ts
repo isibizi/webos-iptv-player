@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, it, expect } from 'vitest';
 import type { AudioTrackOption, SubtitleTrackOption } from '../types';
-import { resolutionBadge, hdrLabel, frameRateLabel, parseVariants, pickVariant, codecName, audioSummary, subtitleSummary } from './stream-info';
+import { resolutionBadge, hdrLabel, hdrFromTransfer, frameRateLabel, parseVariants, pickVariant, codecName, audioSummary, subtitleSummary } from './stream-info';
 
 const a = (over: Partial<AudioTrackOption>): AudioTrackOption => ({ index: 0, label: '', active: false, ...over });
 const s = (over: Partial<SubtitleTrackOption>): SubtitleTrackOption => ({ index: 0, label: '', active: false, ...over });
@@ -38,6 +38,17 @@ describe('hdrLabel', () => {
   it('returns "" for SDR or unknown', () => {
     expect(hdrLabel('SDR')).toBe('');
     expect(hdrLabel('')).toBe('');
+  });
+});
+
+describe('hdrFromTransfer', () => {
+  it('maps CICP transfer codes to a VIDEO-RANGE token', () => {
+    expect(hdrFromTransfer(16)).toBe('PQ'); // SMPTE ST 2084
+    expect(hdrFromTransfer(18)).toBe('HLG'); // ARIB STD-B67
+  });
+  it('returns "" for SDR or unknown transfer codes', () => {
+    expect(hdrFromTransfer(1)).toBe('');
+    expect(hdrFromTransfer(0)).toBe('');
   });
 });
 
