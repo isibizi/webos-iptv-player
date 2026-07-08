@@ -1,5 +1,5 @@
 import type { Action, Channel, CatchupInfo, AudioTrackOption, AudioOption, AudioPref, ManifestAudio,
-  SubtitleTrackOption, SubtitleOption, SubtitlePref, ManifestSubtitle, ManifestClosedCaption, VodPlayback } from '../types';
+  SubtitleTrackOption, SubtitleOption, SubtitlePref, ManifestSubtitle, ManifestClosedCaption, VodPlayback, SidecarSubtitle } from '../types';
 import { $, show, hide, html, Safe } from '../utils/dom';
 import { channelKey } from '../utils/channel';
 import { morph } from '../utils/morph';
@@ -12,6 +12,7 @@ import { EpgService } from '../services/epg-service';
 import { StorageService } from '../services/storage-service';
 import { HlsSubtitles } from '../services/hls-subtitles';
 import { VodSubtitles } from '../services/vod-subtitles';
+import { AssSubtitles, isAssSidecar } from '../services/ass-subtitles';
 import { CONFIG } from '../config';
 import { formatTime, formatPosition, formatDuration, getProgress } from '../utils/time';
 import { getLenientLoaders } from '../utils/hls-stable-loader';
@@ -47,6 +48,12 @@ export function containerMime(url: string): string {
 // row; -2 is the single closed-caption entry, drawn by the native compositor via
 // setSubtitleEnable (channel selection is impossible — selectTrack decode-freezes).
 const CC_SUBTITLE_INDEX = -2;
+
+// Base for the synthetic picker indices of ASS/SSA sidecars, which can't surface
+// as native <track>s (assjs draws them). Kept high so it never collides with a
+// real textTracks index or the -1 Off / -2 CC sentinels; the i-th ASS sidecar is
+// ASS_SUBTITLE_BASE + i.
+export const ASS_SUBTITLE_BASE = 1000;
 
 // hls.js and mpegts.js are loaded as globals via preview-libs.js (desktop preview only)
 const win = window as unknown as Record<string, unknown>;
@@ -86,6 +93,9 @@ export class Player {
   private manifestSeq = 0;
   private subs = new HlsSubtitles(); // self-rendered subtitles on the webOS native path
   private vodSubs = new VodSubtitles(); // sidecar SRT/WebVTT tracks for VOD (Xtream)
+  private assSubs = new AssSubtitles(); // sidecar ASS/SSA subtitles for VOD, drawn by assjs
+  private vodAssSidecars: SidecarSubtitle[] = []; // the ASS/SSA sidecars of the current VOD item
+  private activeAssIndex = -1; // index into vodAssSidecars currently shown (-1 = none)
   private stallWatchdog: StallWatchdog;
   constructor(container: HTMLElement, onBack: () => void) {
     this.container = container;
@@ -287,7 +297,12 @@ export class Player {
     this.failedIcons.clear();
     this.videoEl.classList.add('active');
     this.loadStream(v.url, null, { direct: true });
-    this.vodSubs.attach(this.videoEl, v.subtitles); // after loadStream — it resets the <video>'s children
+    // Split sidecars: SRT/WebVTT render as native <track>s; ASS/SSA are drawn by
+    // assjs into an overlay. Both after loadStream — it resets the <video>'s children.
+    this.activeAssIndex = -1;
+    this.vodAssSidecars = v.subtitles.filter((s) => isAssSidecar(s.url));
+    this.vodSubs.attach(this.videoEl, v.subtitles.filter((s) => !isAssSidecar(s.url)));
+    this.assSubs.attach(this.videoEl, this.videoEl.parentElement ?? document.body, this.vodAssSidecars);
     this.showOSD();
     show(this.container);
   }
@@ -376,6 +391,7 @@ export class Player {
     this.stallWatchdog.stop();
     this.subs.stop();
     this.vodSubs.clear();
+    this.assSubs.destroy();
     if (this.hls) {
       this.hls.destroy();
       this.hls = null;
@@ -394,6 +410,8 @@ export class Player {
     this.hideOSD();
     hide(this.container);
     this.vod = null;
+    this.vodAssSidecars = [];
+    this.activeAssIndex = -1;
     this.pendingResumeSecs = 0;
   }
 
@@ -1171,10 +1189,19 @@ export class Player {
    */
   private subtitleOptions(): SubtitleOption[] {
     if (this.hls) return hlsSubtitleOptions(this.hls.subtitleTracks || [], this.hls.subtitleTrack);
-    // VOD: in-container subtitles (mp4/mkv) surface as switchable native textTracks.
+    // VOD: in-container + SRT/WebVTT sidecars surface as switchable native
+    // textTracks; ASS/SSA sidecars can't, so they're appended as synthetic
+    // options at ASS_SUBTITLE_BASE + i (assjs draws them).
     if (this.vod) {
       const list = this.videoEl?.textTracks;
-      return list ? nativeSubtitleOptions(list) : [];
+      const native = list ? nativeSubtitleOptions(list) : [];
+      const ass = this.vodAssSidecars.map((s, i) => ({
+        index: ASS_SUBTITLE_BASE + i,
+        name: s.name, lang: s.lang,
+        isDefault: false, isForced: false,
+        active: this.activeAssIndex === i,
+      }));
+      return native.concat(ass);
     }
     // webOS native live/catch-up: in-manifest WebVTT is self-rendered (not surfaced
     // as switchable textTracks), so the choices are the parsed master renditions and
@@ -1275,9 +1302,23 @@ export class Player {
       if (index < (this.hls.subtitleTracks?.length || 0)) this.hls.subtitleTrack = index;
       return;
     }
-    // VOD: toggle the native textTrack modes directly (index -1 = all off).
+    // VOD: an ASS/SSA sidecar (index >= ASS_SUBTITLE_BASE) is drawn by assjs;
+    // otherwise toggle the native textTrack modes directly (index -1 = all off).
+    // One path draws at a time, so each disables the other.
     if (this.vod) {
       const list = this.videoEl?.textTracks;
+      if (index >= ASS_SUBTITLE_BASE) {
+        if (list) for (let i = 0; i < list.length; i++) {
+          const t = list[i];
+          if (t.kind === 'subtitles' || t.kind === 'captions') t.mode = 'disabled';
+        }
+        const sidecar = this.vodAssSidecars[index - ASS_SUBTITLE_BASE];
+        this.activeAssIndex = sidecar ? index - ASS_SUBTITLE_BASE : -1;
+        if (sidecar) void this.assSubs.show(index - ASS_SUBTITLE_BASE);
+        return;
+      }
+      this.activeAssIndex = -1;
+      this.assSubs.hide();
       if (!list) return;
       for (let i = 0; i < list.length; i++) {
         const t = list[i];

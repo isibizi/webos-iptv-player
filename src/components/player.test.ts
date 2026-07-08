@@ -18,7 +18,7 @@ vi.mock('../services/storage-service', () => ({
 }));
 vi.mock('./toast', () => ({ showToast: vi.fn() }));
 
-import { Player, containerMime, extFromUrl } from './player';
+import { Player, containerMime, extFromUrl, ASS_SUBTITLE_BASE } from './player';
 import { StorageService } from '../services/storage-service';
 import { showToast } from './toast';
 import { CONFIG } from '../config';
@@ -616,6 +616,88 @@ describe('Player VOD audio/subtitle track selection (native, in-container)', () 
   });
 });
 
+describe('Player VOD ASS sidecar subtitles', () => {
+  // ASS/SSA sidecars can't render as native <track>s, so they join the one
+  // picker as synthetic options at ASS_SUBTITLE_BASE + i and route to a fake
+  // assjs overlay controller. Native textTracks (in-container / SRT/WebVTT) are
+  // plain arrays as in the in-container suite above.
+  const textTrack = (mode: TextTrackMode, over: { kind?: string; label?: string; language?: string } = {}) =>
+    ({ kind: over.kind ?? 'subtitles', label: over.label ?? '', language: over.language ?? '', mode });
+  const assSidecar = (over: { id?: string; name?: string; lang?: string; url?: string } = {}) =>
+    ({ id: over.id ?? '1', name: over.name ?? 'ASS 1', lang: over.lang ?? 'l1', url: over.url ?? 'http://host/a.ass' });
+
+  let assSubs: { attach: ReturnType<typeof vi.fn>; show: ReturnType<typeof vi.fn>; hide: ReturnType<typeof vi.fn>; destroy: ReturnType<typeof vi.fn> };
+  const setup = (opts: { text?: unknown[]; ass?: unknown[] } = {}) => {
+    assSubs = { attach: vi.fn(), show: vi.fn(), hide: vi.fn(), destroy: vi.fn() };
+    const p = player as unknown as Record<string, unknown>;
+    p.hls = null;
+    p.vod = {
+      url: 'http://host/movie.mkv', title: 'Movie One', poster: '',
+      accountId: 'x1', itemId: '10', kind: 'vod', resumeSecs: 0, onBack: vi.fn(),
+    };
+    p.videoEl = { textTracks: opts.text ?? [] };
+    p.vodAssSidecars = opts.ass ?? [];
+    p.assSubs = assSubs;
+    p.activeAssIndex = -1;
+    p.currentChannel = null;
+  };
+  const applySubs = () => (player as unknown as { applyNativeSubtitleSelection(): void }).applyNativeSubtitleSelection();
+
+  beforeEach(() => {
+    vi.mocked(StorageService.getSubtitlePref).mockReset();
+    vi.mocked(StorageService.setSubtitlePref).mockReset();
+  });
+
+  it('lists ASS sidecars in the picker after the native tracks', () => {
+    setup({ text: [textTrack('disabled', { label: 'Native 1' })], ass: [assSidecar({ name: 'ASS 1' })] });
+    const tracks = player.getSubtitleTracks();
+    expect(tracks.map((t) => t.label)).toEqual(['Native 1', 'ASS 1']);
+    expect(tracks.map((t) => t.index)).toEqual([0, ASS_SUBTITLE_BASE]);
+    expect(tracks.every((t) => t.available)).toBe(true);
+  });
+
+  it('selecting an ASS sidecar shows it, disables native tracks, and remembers the pick', () => {
+    const text = [textTrack('showing', { label: 'Native 1' })];
+    const ass = [assSidecar({ name: 'ASS 1', lang: 'l1' })];
+    setup({ text, ass });
+    player.selectSubtitleTrack(ASS_SUBTITLE_BASE);
+    expect(assSubs.show).toHaveBeenCalledWith(0);
+    expect(text[0].mode).toBe('disabled');
+    expect(assSubs.hide).not.toHaveBeenCalled();
+    expect(StorageService.setSubtitlePref).toHaveBeenCalledWith('vod:x1:vod:10', { off: false, name: 'ASS 1', lang: 'l1' });
+  });
+
+  it('marks the shown ASS sidecar active in the picker', () => {
+    setup({ text: [], ass: [assSidecar({ name: 'ASS 1' })] });
+    player.selectSubtitleTrack(ASS_SUBTITLE_BASE);
+    const opt = player.getSubtitleTracks().find((t) => t.index === ASS_SUBTITLE_BASE);
+    expect(opt?.active).toBe(true);
+  });
+
+  it('selecting a native track hides the ASS overlay', () => {
+    const text = [textTrack('disabled', { label: 'Native 1' })];
+    setup({ text, ass: [assSidecar()] });
+    player.selectSubtitleTrack(0);
+    expect(assSubs.hide).toHaveBeenCalled();
+    expect(assSubs.show).not.toHaveBeenCalled();
+    expect(text[0].mode).toBe('showing');
+  });
+
+  it('selecting Off hides the ASS overlay', () => {
+    setup({ text: [], ass: [assSidecar()] });
+    player.selectSubtitleTrack(-1);
+    expect(assSubs.hide).toHaveBeenCalled();
+  });
+
+  it('re-applies a saved ASS pick when tracks arrive', () => {
+    const ass = [assSidecar({ name: 'ASS 1', lang: 'l1' })];
+    setup({ text: [], ass });
+    vi.mocked(StorageService.getSubtitlePref).mockReturnValue({ off: false, name: 'ASS 1', lang: 'l1' });
+    applySubs();
+    expect(assSubs.show).toHaveBeenCalledWith(0);
+  });
+});
+
 describe('Player VOD mode', () => {
   const req = (over = {}) => ({
     url: 'http://host:8080/movie/u/p/10.mp4', title: 'Movie One', poster: '',
@@ -650,6 +732,30 @@ describe('Player VOD mode', () => {
     const subs = [{ id: '1', name: 'Track 1', lang: 'l1', url: 'http://host/a.srt' }];
     player.playVod(req({ subtitles: subs }));
     expect(vodSubs.attach).toHaveBeenCalledWith(video, subs);
+  });
+
+  it('splits sidecars on playVod: SRT/WebVTT to vodSubs, ASS to assSubs', () => {
+    const video = fakeVideo(3600);
+    player.init(video);
+    const vodSubs = { attach: vi.fn(), ensureLoaded: vi.fn(), clear: vi.fn() };
+    const assSubs = { attach: vi.fn(), show: vi.fn(), hide: vi.fn(), destroy: vi.fn() };
+    (player as unknown as { vodSubs: unknown }).vodSubs = vodSubs;
+    (player as unknown as { assSubs: unknown }).assSubs = assSubs;
+    const srt = { id: '1', name: 'SRT', lang: 'l1', url: 'http://host/a.srt' };
+    const ass = { id: '2', name: 'ASS', lang: 'l2', url: 'http://host/b.ass' };
+    player.playVod(req({ subtitles: [srt, ass] }));
+    expect(vodSubs.attach).toHaveBeenCalledWith(video, [srt]);
+    expect(assSubs.attach).toHaveBeenCalledWith(video, expect.anything(), [ass]);
+  });
+
+  it('tears down the ASS overlay on stop', () => {
+    const video = fakeVideo(3600);
+    player.init(video);
+    const assSubs = { attach: vi.fn(), show: vi.fn(), hide: vi.fn(), destroy: vi.fn() };
+    (player as unknown as { assSubs: unknown }).assSubs = assSubs;
+    player.playVod(req());
+    player.stop();
+    expect(assSubs.destroy).toHaveBeenCalled();
   });
 
   it('is seekable while the OSD is up (finite duration)', () => {

@@ -29,6 +29,20 @@
 #video-player::cue(.red) { color: #ff6666; }
 #video-player::cue(.blue) { color: #6666ff; }
 
+/* ASS/SSA sidecar subtitles (VOD) are drawn by assjs into this overlay, which
+   sits over the video plane (z-index 1) and below the OSD/menu (z-index 60).
+   It matches the video's fixed 1920x1080 box so assjs aligns cues with the
+   picture; pointer-events:none so it never intercepts remote/pointer input. */
+#ass-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 1920px;
+  height: 1080px;
+  z-index: 2;
+  pointer-events: none;
+}
+
 .player-osd {
   position: absolute;
   bottom: 20px;

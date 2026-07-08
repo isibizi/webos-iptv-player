@@ -1,0 +1,127 @@
+// @vitest-environment jsdom
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+
+// assjs is loaded lazily via a dynamic import inside `show`; stub the whole
+// module so the real DOM renderer never runs and each instance is observable.
+const { fetchTextMock, assInstances, FakeASS } = vi.hoisted(() => {
+  const assInstances: Array<{ content: string; video: unknown; container: HTMLElement; destroyed: boolean }> = [];
+  class FakeASS {
+    private i: number;
+    constructor(public content: string, public video: unknown, public opt: { container: HTMLElement }) {
+      this.i = assInstances.push({ content, video, container: opt.container, destroyed: false }) - 1;
+    }
+    destroy() { assInstances[this.i].destroyed = true; return this; }
+    show() { return this; }
+    hide() { return this; }
+  }
+  return { fetchTextMock: vi.fn(), assInstances, FakeASS };
+});
+vi.mock('assjs', () => ({ default: FakeASS }));
+vi.mock('../utils/fetch-helper', () => ({ fetchText: fetchTextMock }));
+
+import { AssSubtitles, isAssSidecar } from './ass-subtitles';
+import type { SidecarSubtitle } from '../types';
+
+const sidecar = (over: Partial<SidecarSubtitle> = {}): SidecarSubtitle =>
+  ({ id: '1', name: 'Track 1', lang: 'l1', url: 'http://host/a.ass', ...over });
+
+describe('isAssSidecar', () => {
+  it('is true for .ass and .ssa', () => {
+    expect(isAssSidecar('http://host/a.ass')).toBe(true);
+    expect(isAssSidecar('http://host/a.ssa')).toBe(true);
+  });
+
+  it('is false for .srt, .vtt and a URL with no extension', () => {
+    expect(isAssSidecar('http://host/a.srt')).toBe(false);
+    expect(isAssSidecar('http://host/a.vtt')).toBe(false);
+    expect(isAssSidecar('http://host/a')).toBe(false);
+  });
+
+  it('tolerates query strings, hashes and mixed case', () => {
+    expect(isAssSidecar('http://host/a.ASS?token=1')).toBe(true);
+    expect(isAssSidecar('http://host/a.Ssa#frag')).toBe(true);
+    expect(isAssSidecar('http://host/a.srt?x=.ass')).toBe(false);
+  });
+});
+
+describe('AssSubtitles', () => {
+  let subs: AssSubtitles;
+  let container: HTMLElement;
+  let video: HTMLVideoElement;
+
+  beforeEach(() => {
+    assInstances.length = 0;
+    fetchTextMock.mockReset();
+    subs = new AssSubtitles();
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    video = document.createElement('video');
+  });
+  afterEach(() => { container.remove(); });
+
+  it('fetches the ASS body and renders it into an #ass-overlay inside the container', async () => {
+    fetchTextMock.mockResolvedValue('[Script Info]\n');
+    subs.attach(video, container, [sidecar()]);
+    await subs.show(0);
+    const overlay = container.querySelector('#ass-overlay');
+    expect(overlay).not.toBeNull();
+    expect(assInstances).toHaveLength(1);
+    expect(assInstances[0].content).toBe('[Script Info]\n');
+    expect(assInstances[0].container).toBe(overlay);
+    expect(assInstances[0].video).toBe(video);
+  });
+
+  it('destroys a prior instance before showing another (one track at a time)', async () => {
+    fetchTextMock.mockResolvedValue('body');
+    subs.attach(video, container, [sidecar(), sidecar({ name: 'Track 2', url: 'http://host/b.ass' })]);
+    await subs.show(0);
+    await subs.show(1);
+    expect(assInstances).toHaveLength(2);
+    expect(assInstances[0].destroyed).toBe(true);
+    expect(assInstances[1].destroyed).toBe(false);
+  });
+
+  it('drops a show whose generation changed mid-fetch', async () => {
+    subs.attach(video, container, [sidecar()]);
+    fetchTextMock.mockImplementation(async () => {
+      (subs as unknown as { gen: number }).gen = 99; // a newer selection/stop landed
+      return 'body';
+    });
+    await subs.show(0);
+    expect(assInstances).toHaveLength(0);
+    expect(container.querySelector('#ass-overlay')).toBeNull();
+  });
+
+  it('swallows a fetch failure and shows nothing', async () => {
+    subs.attach(video, container, [sidecar()]);
+    fetchTextMock.mockRejectedValue(new Error('net'));
+    await subs.show(0);
+    expect(assInstances).toHaveLength(0);
+    expect(container.querySelector('#ass-overlay')).toBeNull();
+  });
+
+  it('is a no-op when the index is out of range', async () => {
+    subs.attach(video, container, [sidecar()]);
+    await subs.show(5);
+    expect(fetchTextMock).not.toHaveBeenCalled();
+    expect(assInstances).toHaveLength(0);
+  });
+
+  it('hide destroys the active instance but leaves the overlay in place for reuse', async () => {
+    fetchTextMock.mockResolvedValue('body');
+    subs.attach(video, container, [sidecar()]);
+    await subs.show(0);
+    subs.hide();
+    expect(assInstances[0].destroyed).toBe(true);
+    expect(container.querySelector('#ass-overlay')).not.toBeNull();
+  });
+
+  it('destroy tears down the instance and removes the overlay', async () => {
+    fetchTextMock.mockResolvedValue('body');
+    subs.attach(video, container, [sidecar()]);
+    await subs.show(0);
+    subs.destroy();
+    expect(assInstances[0].destroyed).toBe(true);
+    expect(container.querySelector('#ass-overlay')).toBeNull();
+  });
+});

@@ -1,11 +1,30 @@
 import { test, expect, routeLiveManifest, SAMPLE_M3U, enterTab } from './helpers';
 
+// A minimal ASS body with one dialogue active from t=0, so assjs renders it as
+// soon as it initializes over the (paused, t=0) video.
+const SAMPLE_ASS = [
+  '[Script Info]',
+  'ScriptType: v4.00+',
+  'PlayResX: 1920',
+  'PlayResY: 1080',
+  '',
+  '[V4+ Styles]',
+  'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
+  'Style: Default,Arial,48,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,10,1',
+  '',
+  '[Events]',
+  'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
+  'Dialogue: 0,0:00:00.00,0:05:00.00,Default,,0,0,0,,ASS Cue 1',
+  '',
+].join('\n');
+
 // Seed one Xtream account (enables the tab bar) and stub the player_api.php
 // catalog calls + the get.php/xmltv.php the live path uses. With `subtitles`,
-// get_vod_info advertises one sidecar and the .srt URL is routed.
+// get_vod_info advertises an SRT sidecar; with `ass`, an ASS sidecar. The routed
+// .srt/.ass URLs serve small bodies.
 async function seedMovies(
   page: import('@playwright/test').Page,
-  opts: { subtitles?: boolean } = {},
+  opts: { subtitles?: boolean; ass?: boolean } = {},
 ): Promise<void> {
   await page.route('**/get.php*', (route) =>
     route.fulfill({ status: 200, contentType: 'application/x-mpegurl', body: SAMPLE_M3U }));
@@ -23,18 +42,24 @@ async function seedMovies(
     }
     if (url.includes('get_vod_info')) {
       const info: Record<string, unknown> = { plot: 'A plot.', duration_secs: 3600 };
-      if (opts.subtitles) {
-        info.subtitles = [{ subtitle_id: '1', title: 'Track 1', language: 'l1',
-          url: 'http://host.example.com:8080/subs/10.srt' }];
-      }
+      const subs: unknown[] = [];
+      if (opts.subtitles) subs.push({ subtitle_id: '1', title: 'Track 1', language: 'l1',
+        url: 'http://host.example.com:8080/subs/10.srt' });
+      if (opts.ass) subs.push({ subtitle_id: '2', title: 'ASS 1', language: 'l2',
+        url: 'http://host.example.com:8080/subs/10.ass' });
+      if (subs.length) info.subtitles = subs;
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ info }) });
     }
     return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
   });
-  if (opts.subtitles) {
-    await page.route('**/subs/**', (route) =>
-      route.fulfill({ status: 200, contentType: 'application/x-subrip',
-        body: '1\n00:00:01,000 --> 00:00:04,000\nHello\n\n2\n00:00:05,000 --> 00:00:07,000\nWorld\n' }));
+  if (opts.subtitles || opts.ass) {
+    await page.route('**/subs/**', (route) => {
+      if (route.request().url().split('?')[0].endsWith('.ass')) {
+        return route.fulfill({ status: 200, contentType: 'text/plain', body: SAMPLE_ASS });
+      }
+      return route.fulfill({ status: 200, contentType: 'application/x-subrip',
+        body: '1\n00:00:01,000 --> 00:00:04,000\nHello\n\n2\n00:00:05,000 --> 00:00:07,000\nWorld\n' });
+    });
   }
   // The movie file itself: a small response so play() doesn't hang the test.
   await page.route('**/movie/**', (route) =>
@@ -208,4 +233,45 @@ test('a VOD sidecar subtitle attaches as a native text track and loads its cues 
     const t = (document.getElementById('video-player') as HTMLVideoElement).textTracks[0];
     return t.mode === 'showing' && t.cues ? t.cues.length : 0;
   })).toBe(2);
+});
+
+test('a VOD ASS sidecar renders through the assjs overlay when selected', async ({ page }) => {
+  await seedMovies(page, { ass: true });
+  await routeLiveManifest(page);
+  // Keep VOD alive so the neutered <video> doesn't eject before we probe the overlay.
+  await page.addInitScript(() => {
+    const P = HTMLMediaElement.prototype;
+    P.load = function () { /* no-op */ };
+    P.play = function () { return Promise.resolve(); };
+    Object.defineProperty(P, 'src', { configurable: true, set() { /* no-op */ }, get() { return ''; } });
+  });
+  await page.goto('/');
+  await expect(page.locator('#view-channels')).toBeVisible();
+
+  await enterTab(page, 'movies');
+  await page.locator('.catalog-tile[data-item-id="10"]')
+    .evaluate((el) => el.dispatchEvent(new CustomEvent('nav:hover', { bubbles: true })));
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#view-movies .detail-plot')).toContainText('A plot.');
+  await page.locator('[data-action="play"]')
+    .evaluate((el) => el.dispatchEvent(new CustomEvent('nav:hover', { bubbles: true })));
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#view-player')).toBeVisible();
+  await expect(page.locator('#player-osd .osd-channel-name')).toBeVisible();
+
+  // Open the right-edge menu into the Subtitles sub-menu; the ASS sidecar is listed
+  // (it never becomes a native <track>, so this proves the synthetic-option path).
+  await page.evaluate(() =>
+    document.dispatchEvent(new PointerEvent('pointermove', { clientX: 1900, clientY: 540, bubbles: true })));
+  const menu = page.locator('#player-menu');
+  await expect(menu).toBeVisible();
+  await page.keyboard.press('ArrowDown'); // Title Info -> Settings
+  await page.keyboard.press('ArrowDown'); // Settings -> Subtitles
+  await page.keyboard.press('Enter');     // open the Subtitles sub-menu
+  await expect(menu).toContainText('ASS 1');
+
+  // Select the ASS sidecar; assjs lazily loads and draws its cue into #ass-overlay.
+  await page.keyboard.press('ArrowDown'); // Off -> ASS 1
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#ass-overlay')).toContainText('ASS Cue 1');
 });
