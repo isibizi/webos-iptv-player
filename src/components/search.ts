@@ -84,14 +84,16 @@ export class Search {
     }
   }
 
-  // Load the whole catalogs once per account (cached in IndexedDB). Non-blocking:
-  // open() has already rendered the box; refresh the results if a query is typed.
+  // Load the whole catalogs once per account (cached in IndexedDB), guarding
+  // against account-switch races so a stale in-flight load can't clobber the
+  // current account's catalog. Non-blocking: open() already rendered the box.
   private async loadCatalog(account: PlaylistEntry): Promise<void> {
-    // Single active Xtream account: the loaded lists aren't cleared on open(), so a
-    // future multi-account switch would need an account-token guard here.
     if (this.loadedFor === account.id) return;
     try {
       const [vod, series] = await Promise.all([loadAllVodStreams(account), loadAllSeries(account)]);
+      // A newer open() (account switch) superseded this load — discard the stale
+      // result instead of clobbering the current account's catalog.
+      if (this.account?.id !== account.id) return;
       this.allVod = vod;
       this.allSeries = series;
       this.loadedFor = account.id;

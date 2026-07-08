@@ -129,6 +129,43 @@ describe('Search', () => {
     view.handleAction('back');
     expect(handlers.onBack).toHaveBeenCalled();
   });
+
+  it('a superseded a1 load cannot clobber a2 catalog (account-switch race)', async () => {
+    const a1: PlaylistEntry = { id: 'a1', name: 'A1', url: 'http://host/a', source: 'xtream', xtream: { username: 'u1', password: 'p1' } };
+    const a2: PlaylistEntry = { id: 'a2', name: 'A2', url: 'http://host/a', source: 'xtream', xtream: { username: 'u2', password: 'p2' } };
+
+    let resolveA1Vod!: (v: unknown) => void;
+    let resolveA2Vod!: (v: unknown) => void;
+    let resolveA1Series!: (v: unknown) => void;
+    let resolveA2Series!: (v: unknown) => void;
+
+    catalogMock.loadAllVodStreams
+      .mockReturnValueOnce(new Promise((r) => { resolveA1Vod = r; }))
+      .mockReturnValueOnce(new Promise((r) => { resolveA2Vod = r; }));
+    catalogMock.loadAllSeries
+      .mockReturnValueOnce(new Promise((r) => { resolveA1Series = r; }))
+      .mockReturnValueOnce(new Promise((r) => { resolveA2Series = r; }));
+
+    const view = new Search(container, mkHandlers());
+
+    // Start both opens concurrently; neither load has resolved yet.
+    const p1 = view.open(a1);
+    const p2 = view.open(a2);
+
+    // Resolve a2's load first — it should commit as the current account.
+    resolveA2Vod([vod('v2', 'Bravo Movie')]);
+    resolveA2Series([]);
+    await p2;
+
+    // Resolve a1's stale load last — the guard should discard it.
+    resolveA1Vod([vod('v1', 'Alpha Movie')]);
+    resolveA1Series([]);
+    await p1;
+
+    view.setQuery('movie');
+    expect(container.textContent).toContain('Bravo Movie');
+    expect(container.textContent).not.toContain('Alpha Movie');
+  });
 });
 
 describe('Search (M3U-only, no account)', () => {

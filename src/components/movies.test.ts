@@ -222,3 +222,44 @@ describe('Movies deep-link (openItem)', () => {
     expect(handlers.onBack).not.toHaveBeenCalled(); // did not fall through to Live
   });
 });
+
+describe('Movies account-switch race', () => {
+  it('a superseded a1 open() cannot clobber a2 rails (account-switch race)', async () => {
+    const a1: PlaylistEntry = { id: 'a1', name: 'A1', url: 'http://host/a', source: 'xtream', xtream: { username: 'u1', password: 'p1' } };
+    const a2: PlaylistEntry = { id: 'a2', name: 'A2', url: 'http://host/a', source: 'xtream', xtream: { username: 'u2', password: 'p2' } };
+
+    let resolveA1Cats!: (v: unknown) => void;
+    let resolveA2Cats!: (v: unknown) => void;
+    let resolveA2Streams!: (v: unknown) => void;
+
+    catalogMock.loadVodCategories
+      .mockReturnValueOnce(new Promise((r) => { resolveA1Cats = r; }))
+      .mockReturnValueOnce(new Promise((r) => { resolveA2Cats = r; }));
+    // a1's categories guard fires before loadVodStreams is called for a1,
+    // so only one stream load occurs (for a2).
+    catalogMock.loadVodStreams
+      .mockReturnValueOnce(new Promise((r) => { resolveA2Streams = r; }));
+
+    const handlers = { onRevealTabBar: vi.fn(), onBack: vi.fn(), onPlayVod: vi.fn() };
+    const view = new Movies(container, handlers);
+
+    // Start both opens concurrently; neither has resolved yet.
+    const p1 = view.open(a1);
+    const p2 = view.open(a2);
+
+    // Resolve a2's categories; wait for open(a2) to resume and call loadVodStreams.
+    resolveA2Cats([{ id: 'c2', name: 'Cat Bravo' }]);
+    await Promise.resolve(); await Promise.resolve();
+    resolveA2Streams([vod('v2', 'Bravo Movie', 'c2')]);
+    await p2;
+
+    // Resolve a1's stale categories last — first guard discards them.
+    resolveA1Cats([{ id: 'c1', name: 'Cat Alpha' }]);
+    await p1;
+
+    expect(container.textContent).toContain('Bravo Movie');
+    expect(container.textContent).not.toContain('Alpha Movie');
+    expect(container.textContent).toContain('Cat Bravo');
+    expect(container.textContent).not.toContain('Cat Alpha');
+  });
+});

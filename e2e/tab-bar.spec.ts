@@ -107,6 +107,13 @@ test('M3U-only shows a docked bar with Live/Settings/Search only (no Movies/Seri
   await expect(page.locator('.tab-bar-item[data-section="series"]')).toHaveCount(0);
   await expect(page.locator('.tab-bar-item[data-section="search"] svg')).toBeVisible();
   await expect(page.locator('body.tabbar-docked')).toHaveCount(1);
+
+  // With no Xtream account the account slot is empty and collapses, so the
+  // search magnifier stays flush against the bar's right edge (no dangling gap).
+  await expect(page.locator('.account-avatar')).toHaveCount(0);
+  const inner = (await page.locator('.tab-bar-inner').boundingBox())!;
+  const icon = (await page.locator('.tab-bar-search .search-icon').boundingBox())!;
+  expect((inner.x + inner.width) - (icon.x + icon.width)).toBeLessThan(4);
 });
 
 test('leaving Settings (Cancel) moves the active tab back to Live', async ({ page }) => {

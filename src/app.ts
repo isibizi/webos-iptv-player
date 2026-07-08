@@ -44,6 +44,7 @@ class App {
   private search!: Search;
   private movies!: Movies;
   private series!: Series;
+  private lastSearchQuery = '';
 
   async init(): Promise<void> {
     const done = log.time('init');
@@ -123,6 +124,7 @@ class App {
       onSearchQuery: (query) => this.handleSearchQuery(query),
       onSearchLeave: () => this.search.focusFirstResult(),
       onSearchClose: () => this.handleSearchClose(),
+      onSelectAccount: (id) => this.selectXtreamAccount(id),
     });
     this.tabBar.init();
 
@@ -396,6 +398,8 @@ class App {
 
       const hasXtream = StorageService.getPlaylists().some((p) => p.source === 'xtream');
       this.tabBar.setSections(hasXtream);
+      const xtreamAccounts = StorageService.getPlaylists().filter((p) => p.source === 'xtream' && p.xtream);
+      this.tabBar.setAccounts(xtreamAccounts, this.activeXtreamAccount()?.id ?? '');
 
       this.showView('channels');
       this.channelList.render();
@@ -496,6 +500,7 @@ class App {
   // The tab bar's search box query changed: show the results view over the
   // current one while non-empty; restore the underlying view when cleared.
   private handleSearchQuery(query: string): void {
+    this.lastSearchQuery = query;
     this.search.setQuery(query);
     const hasQuery = query.trim().length > 0;
     const onSearch = this.viewStack[this.viewStack.length - 1] === 'search';
@@ -526,7 +531,31 @@ class App {
   }
 
   private activeXtreamAccount(): PlaylistEntry | null {
-    return StorageService.getPlaylists().find((p) => p.source === 'xtream' && p.xtream) ?? null;
+    const accounts = StorageService.getPlaylists().filter((p) => p.source === 'xtream' && p.xtream);
+    const selId = StorageService.getSelectedXtreamAccountId();
+    return accounts.find((a) => a.id === selId) ?? accounts[0] ?? null;
+  }
+
+  // A different Xtream account was picked in the avatar dropdown: persist it and
+  // reload whichever account-scoped section is showing. Live/Settings just store.
+  private selectXtreamAccount(id: string): void {
+    StorageService.setSelectedXtreamAccountId(id);
+    const account = this.activeXtreamAccount();
+    if (!account) return;
+    this.tabBar.setAccounts(
+      StorageService.getPlaylists().filter((p) => p.source === 'xtream' && p.xtream),
+      account.id,
+    );
+    const current = this.viewStack[this.viewStack.length - 1];
+    if (current === 'movies') {
+      this.movies.open(account).catch((err) => log.error('Movies reopen failed:', err));
+    } else if (current === 'series') {
+      this.series.open(account).catch((err) => log.error('Series reopen failed:', err));
+    } else if (current === 'search') {
+      this.search.open(account)
+        .then(() => this.search.setQuery(this.lastSearchQuery))
+        .catch((err) => log.error('Search reopen failed:', err));
+    }
   }
 
   private playChannel(index: number, catchup?: CatchupInfo): void {

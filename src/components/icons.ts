@@ -24,3 +24,6 @@ export function bellIcon(active: boolean): string {
   return `<svg class="epg-bell-glyph ${active ? 'set' : 'unset'}" viewBox="0 0 24 24" aria-hidden="true">`
     + `<path fill="currentColor" d="${BELL_PATH}"/></svg>`;
 }
+
+// Check mark for the current row in the account switcher (no exotic Unicode).
+export const CHECK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg>';

@@ -1,8 +1,9 @@
-import type { Action } from '../types';
+import type { Action, PlaylistEntry } from '../types';
 import { html } from '../utils/dom';
 import { morph } from '../utils/morph';
 import { CONFIG } from '../config';
 import { SEARCH_ICON } from './icons';
+import { AccountSwitcher } from './account-switcher';
 
 // Cap for the expanded inline search box.
 export const SEARCH_INPUT_MAX_WIDTH = 600;
@@ -42,6 +43,8 @@ interface TabBarHandlers {
   // The search box was closed (Back / Escape / toggle): restore the view the
   // search was opened from.
   onSearchClose: () => void;
+  // A different Xtream account was chosen in the avatar dropdown.
+  onSelectAccount: (accountId: string) => void;
 }
 
 // Persistent, docked top section bar (hidden on the full-screen player / EPG).
@@ -59,6 +62,9 @@ export class TabBar {
   private focusIndex = 0;
   private searchExpanded = false;
   private searchBound = false;
+  private switcher: AccountSwitcher | null = null;
+  private accounts: PlaylistEntry[] = [];
+  private selectedAccountId = '';
 
   constructor(handlers: TabBarHandlers) {
     this.handlers = handlers;
@@ -70,6 +76,11 @@ export class TabBar {
   // keeps Search active, so the host shouldn't re-sync the active tab then).
   get searchOpen(): boolean { return this.searchExpanded; }
 
+  private get accountShown(): boolean { return this.accounts.length > 0; }
+  // Focus targets = the sections, plus the account avatar when present.
+  private ringLength(): number { return this.sections.length + (this.accountShown ? 1 : 0); }
+  private onAccount(): boolean { return this.accountShown && this.focusIndex === this.sections.length; }
+
   setSections(hasXtream: boolean): void {
     this.hasXtream = hasXtream;
     this.sections = hasXtream ? FULL_SECTIONS : LITE_SECTIONS;
@@ -78,10 +89,22 @@ export class TabBar {
     if (this._shown) this.render();
   }
 
+  setAccounts(accounts: PlaylistEntry[], selectedId: string): void {
+    this.accounts = accounts;
+    this.selectedAccountId = selectedId;
+    // If the avatar just disappeared while focused on it, park focus on the active tab.
+    if (!this.accountShown && this.focusIndex >= this.sections.length) {
+      this.focusIndex = Math.max(0, this.sections.findIndex((s) => s.id === this.active));
+    }
+    this.switcher?.setAccounts(accounts, selectedId);
+    if (this._shown) this.render();
+  }
+
   setShown(v: boolean): void {
     this._shown = v;
     if (!v) {
       this._focused = false;
+      this.switcher?.closeMenu();
       if (this.searchExpanded) { this.searchExpanded = false; this.resetSearchInput(); }
     }
     document.body.classList.toggle('tabbar-docked', v);
@@ -144,24 +167,29 @@ export class TabBar {
 
   handleAction(action: Action): void {
     if (!this._focused) return;
+    if (this.switcher?.menuOpen) {
+      this.switcher.handleAction(action);
+      return;
+    }
     if (this.searchExpanded) {
-      // Only Back reaches here (letters/arrows/Enter/Escape are owned by the
-      // input); collapse the box back to the magnifier.
       if (action === 'back') this.collapseSearch();
       return;
     }
     switch (action) {
       case 'left':
-        this.focusIndex = (this.focusIndex - 1 + this.sections.length) % this.sections.length;
-        this.commitSwitch();
+        this.focusIndex = (this.focusIndex - 1 + this.ringLength()) % this.ringLength();
+        this.afterMove();
         break;
       case 'right':
-        this.focusIndex = (this.focusIndex + 1) % this.sections.length;
-        this.commitSwitch();
+        this.focusIndex = (this.focusIndex + 1) % this.ringLength();
+        this.afterMove();
         break;
       case 'select':
       case 'down':
-        if (this.sections[this.focusIndex].id === 'search') {
+        if (this.onAccount()) {
+          this.switcher?.openMenu();
+          this.render();
+        } else if (this.sections[this.focusIndex].id === 'search') {
           this.expandSearch();
         } else {
           this.dropFocus();
@@ -177,6 +205,12 @@ export class TabBar {
       default:
         break;
     }
+  }
+
+  // Moving onto a section switches it live; moving onto the avatar only re-renders.
+  private afterMove(): void {
+    if (this.onAccount()) this.render();
+    else this.commitSwitch();
   }
 
   private commitSwitch(): void {
@@ -253,9 +287,11 @@ export class TabBar {
         `;
         })}
         <div class="tab-bar-search ${this.searchExpanded ? 'expanded' : ''}" data-key="search-slot" data-morph-preserve></div>
+        <div class="tab-bar-account" data-key="account-slot" data-morph-preserve></div>
       </div>
     `);
     this.mountSearch(iconFocused);
+    this.mountAccount();
   }
 
   // The search slot's children are owned here (preserved from morph): build the
@@ -302,5 +338,18 @@ export class TabBar {
         this.collapseSearch();
       }
     });
+  }
+
+  // The account slot's DOM is owned by the AccountSwitcher (preserved across
+  // morph). Create it once, then keep its accounts + focus state in sync.
+  private mountAccount(): void {
+    const slot = this.el?.querySelector<HTMLElement>('.tab-bar-account');
+    if (!slot) return;
+    if (!this.switcher) {
+      this.switcher = new AccountSwitcher(slot, { onSelect: (id) => this.handlers.onSelectAccount(id) });
+      this.switcher.init();
+    }
+    this.switcher.setAccounts(this.accounts, this.selectedAccountId);
+    this.switcher.setFocused(this._focused && this.onAccount());
   }
 }

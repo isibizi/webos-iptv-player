@@ -211,4 +211,12 @@ export const StorageService = {
     set('resume', all);
   },
 
+  // Which Xtream account drives Movies / Series / Search. Null = pick the first.
+  getSelectedXtreamAccountId(): string | null {
+    return get<string | null>('selectedXtream', null);
+  },
+  setSelectedXtreamAccountId(id: string): void {
+    set('selectedXtream', id);
+  },
+
 };

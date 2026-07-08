@@ -148,6 +148,19 @@ const resume = (over: Partial<ResumeEntry>): ResumeEntry => ({
   position: 100, duration: 6000, updatedAt: 1000, ...over,
 });
 
+describe('selected Xtream account id', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('defaults to null when unset', () => {
+    expect(StorageService.getSelectedXtreamAccountId()).toBe(null);
+  });
+
+  it('round-trips a stored id', () => {
+    StorageService.setSelectedXtreamAccountId('a2');
+    expect(StorageService.getSelectedXtreamAccountId()).toBe('a2');
+  });
+});
+
 describe('StorageService resume store', () => {
   beforeEach(() => {
     localStorage.clear();

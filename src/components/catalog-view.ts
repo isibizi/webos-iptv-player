@@ -67,9 +67,13 @@ export abstract class CatalogView<C extends { id: string; name: string }, I> {
     this.itemsByCategory = {};
     this.resume = StorageService.getResumeList(account.id).filter((e) => e.kind === this.resumeKind);
     this.renderLoading();
-    this.categories = await this.loadCategories(account);
+    const categories = await this.loadCategories(account);
+    // A newer open() (account switch) superseded this load — discard it.
+    if (this.account?.id !== account.id) return;
+    this.categories = categories;
     const railCats = this.categories.slice(0, CONFIG.XTREAM.RAIL_CATEGORIES);
     const loaded = await Promise.all(railCats.map((c) => this.loadItems(account, c.id)));
+    if (this.account?.id !== account.id) return;
     this.railGroups = railCats.map((category, i) => {
       this.itemsByCategory[category.id] = loaded[i];
       return { category, items: loaded[i].slice(0, CONFIG.XTREAM.RAIL_ITEMS) };

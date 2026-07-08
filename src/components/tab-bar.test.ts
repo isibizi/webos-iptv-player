@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import type { PlaylistEntry } from '../types';
 import { TabBar, SEARCH_INPUT_MAX_WIDTH } from './tab-bar';
 
 let onSwitch: ReturnType<typeof vi.fn>;
@@ -7,6 +8,7 @@ let onEnter: ReturnType<typeof vi.fn>;
 let onSearchQuery: ReturnType<typeof vi.fn>;
 let onSearchLeave: ReturnType<typeof vi.fn>;
 let onSearchClose: ReturnType<typeof vi.fn>;
+let onSelectAccount: ReturnType<typeof vi.fn>;
 let bar: TabBar;
 
 beforeEach(() => {
@@ -17,7 +19,8 @@ beforeEach(() => {
   onSearchQuery = vi.fn();
   onSearchLeave = vi.fn();
   onSearchClose = vi.fn();
-  bar = new TabBar({ onSwitch, onEnter, onSearchQuery, onSearchLeave, onSearchClose });
+  onSelectAccount = vi.fn();
+  bar = new TabBar({ onSwitch, onEnter, onSearchQuery, onSearchLeave, onSearchClose, onSelectAccount });
   bar.setSections(true); // Xtream by default
   bar.setShown(true);
 });
@@ -210,5 +213,66 @@ describe('TabBar inline search', () => {
     settings.getBoundingClientRect = () => rect(120, 240); // far left → a ~1500px gap the old code would fill
     (bar as unknown as { setSearchWidth(i: HTMLInputElement): void }).setSearchWidth(box);
     expect(parseInt(box.style.width, 10)).toBe(SEARCH_INPUT_MAX_WIDTH);
+  });
+});
+
+describe('TabBar account switcher', () => {
+  const acct = (id: string, name: string): PlaylistEntry =>
+    ({ id, name, url: 'http://host/a', source: 'xtream', xtream: { username: 'u', password: 'p' } });
+  const A = [acct('a1', 'Alpha'), acct('a2', 'Bravo')];
+  const avatar = () => document.querySelector<HTMLElement>('.account-avatar');
+
+  it('shows the avatar to the right of search when ≥1 Xtream account exists', () => {
+    bar.setAccounts(A, 'a1');
+    expect(avatar()?.textContent).toBe('A');
+  });
+
+  it('renders no avatar when there are no Xtream accounts', () => {
+    bar.setAccounts([], '');
+    expect(avatar()).toBe(null);
+  });
+
+  it('Right from Search focuses the avatar without switching sections', () => {
+    bar.setAccounts(A, 'a1');
+    bar.setActive('search');
+    bar.focus();
+    onSwitch.mockClear();
+    bar.handleAction('right'); // Search -> account
+    expect(avatar()?.classList.contains('focused')).toBe(true);
+    expect(onSwitch).not.toHaveBeenCalled();
+  });
+
+  it('Right past the avatar wraps back to Live', () => {
+    bar.setAccounts(A, 'a1');
+    bar.setActive('search');
+    bar.focus();
+    bar.handleAction('right'); // -> account
+    bar.handleAction('right'); // wrap -> live
+    expect(onSwitch).toHaveBeenLastCalledWith('live');
+  });
+
+  it('Select on the avatar opens the menu; Select on a row fires onSelectAccount', () => {
+    bar.setAccounts(A, 'a1');
+    bar.setActive('search');
+    bar.focus();
+    bar.handleAction('right'); // -> account
+    bar.handleAction('select'); // open menu
+    expect(document.querySelector('.account-menu')).not.toBe(null);
+    bar.handleAction('down');   // highlight Bravo
+    bar.handleAction('select'); // choose
+    expect(onSelectAccount).toHaveBeenCalledWith('a2');
+    expect(document.querySelector('.account-menu')).toBe(null);
+  });
+
+  it('hiding the bar closes an open account menu', () => {
+    bar.setAccounts(A, 'a1');
+    bar.setActive('search');
+    bar.focus();
+    bar.handleAction('right');
+    bar.handleAction('select');
+    expect(document.querySelector('.account-menu')).not.toBe(null);
+    bar.setShown(false);
+    bar.setShown(true);
+    expect(document.querySelector('.account-menu')).toBe(null);
   });
 });
