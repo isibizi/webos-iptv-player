@@ -1,6 +1,6 @@
 import type { Action, Channel, CatchupInfo, AudioTrackOption, AudioOption, AudioPref, ManifestAudio,
   SubtitleTrackOption, SubtitleOption, SubtitlePref, ManifestSubtitle, ManifestClosedCaption, VodPlayback, SidecarSubtitle } from '../types';
-import { $, show, hide, html, Safe } from '../utils/dom';
+import { $, show, hide, html, raw, Safe } from '../utils/dom';
 import { channelKey } from '../utils/channel';
 import { morph } from '../utils/morph';
 import { dvrWindow, dvrState, type DvrWindow, type DvrState } from '../utils/dvr';
@@ -21,6 +21,7 @@ import { resolutionBadge, hdrLabel, frameRateLabel, parseVariants, pickVariant, 
 import { extFromUrl, containerMime } from '../utils/url';
 import { probeMedia } from '../services/media-probe';
 import { createLogger } from '../utils/logger';
+import { PLAY_ICON, PAUSE_ICON } from './icons';
 import { showToast } from './toast';
 
 const log = createLogger('Player');
@@ -827,9 +828,7 @@ export class Player {
     const paused = !!this.videoEl?.paused;
     return html`
       <button class="osd-dvr-btn" data-playpause aria-label="${paused ? 'Play' : 'Pause'}">
-        ${paused
-          ? html`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`
-          : html`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>`}
+        ${paused ? raw(PLAY_ICON) : raw(PAUSE_ICON)}
       </button>
     `;
   }

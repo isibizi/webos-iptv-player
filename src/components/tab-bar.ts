@@ -2,9 +2,7 @@ import type { Action } from '../types';
 import { html } from '../utils/dom';
 import { morph } from '../utils/morph';
 import { CONFIG } from '../config';
-
-// The magnifier glyph — inline SVG (stroke: currentColor)
-const SEARCH_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg>';
+import { SEARCH_ICON } from './icons';
 
 // Cap for the expanded inline search box.
 export const SEARCH_INPUT_MAX_WIDTH = 600;
@@ -275,7 +273,7 @@ export class TabBar {
       btn.dataset.key = 'search';
       btn.dataset.section = 'search';
       btn.setAttribute('aria-label', 'Search');
-      btn.innerHTML = SEARCH_SVG; // trusted constant
+      btn.innerHTML = SEARCH_ICON; // trusted constant
       wrap.appendChild(input);
       wrap.appendChild(btn);
       if (!this.searchBound) { this.bindSearchInput(input); this.searchBound = true; }

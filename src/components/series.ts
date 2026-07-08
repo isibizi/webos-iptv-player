@@ -5,8 +5,7 @@ import { StorageService } from '../services/storage-service';
 import { loadSeriesCategories, loadSeries, loadSeriesInfo } from '../services/xtream-catalog';
 import { xtreamEpisodeUrl, type XtreamCredentials } from '../utils/xtream-url';
 import { CatalogView } from './catalog-view';
-
-const PLAY_SVG = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+import { PLAY_ICON } from './icons';
 
 // The Series section: browse (Continue rail of resumed episodes + per-category
 // rails + an "all categories" drill-in) → per-category poster grid → a detail
@@ -136,7 +135,7 @@ export class Series extends CatalogView<SeriesCategory, SeriesItem> {
     const mins = ep.durationSecs > 0 ? `${Math.floor(ep.durationSecs / 60)} min` : '';
     return html`
       <div class="episode-row" data-focusable data-key="ep:${ep.id}" data-episode-id="${ep.id}">
-        <span class="episode-badge">${raw(PLAY_SVG)}</span>
+        <span class="episode-badge">${raw(PLAY_ICON)}</span>
         <div class="episode-body">
           <div class="episode-title">
             <span class="episode-num">E${ep.episode}</span>

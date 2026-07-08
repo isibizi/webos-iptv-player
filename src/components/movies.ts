@@ -5,8 +5,7 @@ import { StorageService } from '../services/storage-service';
 import { loadVodCategories, loadVodStreams, loadVodInfo } from '../services/xtream-catalog';
 import { xtreamVodUrl } from '../utils/xtream-url';
 import { CatalogView } from './catalog-view';
-
-const PLAY_SVG = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+import { PLAY_ICON } from './icons';
 
 // The Movies section: browse (Continue rail + per-category rails + an "all
 // categories" drill-in) → per-category poster grid → a detail screen with
@@ -113,10 +112,10 @@ export class Movies extends CatalogView<VodCategory, VodItem> {
           <div class="detail-actions">
             ${saved ? html`
               <button class="detail-btn detail-btn-primary" data-focusable data-key="resume" data-action="resume">
-                <span class="detail-btn-icon">${raw(PLAY_SVG)}</span>Resume
+                <span class="detail-btn-icon">${raw(PLAY_ICON)}</span>Resume
               </button>` : ''}
             <button class="detail-btn ${saved ? '' : 'detail-btn-primary'}" data-focusable data-key="play" data-action="play">
-              <span class="detail-btn-icon">${raw(PLAY_SVG)}</span>${saved ? 'Play from start' : 'Play'}
+              <span class="detail-btn-icon">${raw(PLAY_ICON)}</span>${saved ? 'Play from start' : 'Play'}
             </button>
           </div>
         </div>

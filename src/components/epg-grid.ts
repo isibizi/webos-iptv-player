@@ -7,14 +7,7 @@ import { EpgService } from '../services/epg-service';
 import { ReminderService } from '../services/reminder-service';
 import { showToast } from './toast';
 import { formatTime, formatDayLabel, displayDayKey, startOfDisplayDay, addDisplayDays, formatDuration } from '../utils/time';
-
-const BELL_PATH = 'M12 22a2 2 0 0 0 2-2h-4a2 2 0 0 0 2 2zm6-6v-5a6 6 0 0 0-5-5.91V4a1 1 0 0 0-2 0v1.09A6 6 0 0 0 6 11v5l-2 2v1h16v-1l-2-2z';
-
-/** Bell affordance: dim on any future program ("OK sets a reminder"), accent once set. */
-function bellSvg(active: boolean): string {
-  return `<svg class="epg-bell-glyph ${active ? 'set' : 'unset'}" viewBox="0 0 24 24" aria-hidden="true">`
-    + `<path fill="currentColor" d="${BELL_PATH}"/></svg>`;
-}
+import { bellIcon, REPLAY_ICON } from './icons';
 
 type FocusCol = 'channels' | 'dates' | 'programmes';
 
@@ -118,7 +111,7 @@ export class EpgGrid {
             <div class="epg-legend">
               <span class="epg-legend-item state-past"><i class="epg-legend-dot"></i>Aired</span>
               <span class="epg-legend-item state-future"><i class="epg-legend-dot"></i>Upcoming</span>
-              <span class="epg-legend-item">${bellSvg(true)}Reminder</span>
+              <span class="epg-legend-item">${bellIcon(true)}Reminder</span>
             </div>
           `)}
         </div>
@@ -174,14 +167,14 @@ export class EpgGrid {
                         <div class="epg-prog-time-col">
                           <span class="epg-prog-time">${formatTime(p.start)}</span>
                           <span class="epg-prog-dur">${state === 'past'
-                            ? raw('<svg class="epg-replay-glyph" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>')
+                            ? raw(REPLAY_ICON)
                             : ''}${formatDuration(stopMs - startMs)}</span>
                         </div>
                         <div class="epg-prog-body">
                           <div class="epg-prog-title">
                             ${current ? raw('<span class="epg-now-badge"><span class="epg-now-dot"></span>LIVE</span>') : ''}
                             ${p.title}
-                            ${state === 'future' && channel ? raw(bellSvg(ReminderService.has(channelKey(channel), startMs))) : ''}
+                            ${state === 'future' && channel ? raw(bellIcon(ReminderService.has(channelKey(channel), startMs))) : ''}
                           </div>
                           ${p.description ? html`<div class="epg-prog-desc">${p.description.slice(0, 200)}</div>` : ''}
                         </div>

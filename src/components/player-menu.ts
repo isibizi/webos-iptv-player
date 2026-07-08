@@ -2,6 +2,7 @@ import type { Action, AudioTrackOption, SubtitleTrackOption } from '../types';
 import { PlaylistService } from '../services/playlist-service';
 import { $, html, raw } from '../utils/dom';
 import { morph } from '../utils/morph';
+import { SUBTITLE_ICON } from './icons';
 
 const AUTO_HIDE_MS = 5000;
 
@@ -16,12 +17,6 @@ const VOD_MENU_ITEMS = [
   { action: 'yellow' as const, color: 'yellow', label: 'Title Info' },
   { action: 'blue' as const, color: 'blue', label: 'Settings' },
 ];
-
-const SUBTITLE_ICON = raw(
-  '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">' +
-  '<path d="M4 5h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zm2 7v2h6v-2H6zm8 0v2h4v-2h-4zM6 8v2h4V8H6zm6 0v2h6V8h-6z"/>' +
-  '</svg>',
-);
 
 // Sentinel data-menu-action values for the non-color rows.
 const OPEN_AUDIO = '__audio_open__';
@@ -253,7 +248,7 @@ export class PlayerMenu {
         ${subtitles.length >= 1 ? html`
           <div class="menu-item ${subsRowIdx === this.focusIdx ? 'focused' : ''}"
                data-focusable data-menu-action="${OPEN_SUBS}">
-            <span class="menu-icon subtitle">${SUBTITLE_ICON}</span> Subtitles
+            <span class="menu-icon subtitle">${raw(SUBTITLE_ICON)}</span> Subtitles
             <span class="menu-item-value">${activeSub?.label || 'Off'}</span>
           </div>
         ` : ''}
