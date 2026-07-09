@@ -135,16 +135,17 @@ export const KeyHandler = {
       // deletes its row) — its `.settings-view` ancestor is gone, so the guard
       // below would miss it and fire a spurious select that deletes a second row.
       //
-      // `.settings-btn` (the channels gear) self-handles its click to open
-      // Settings; it lives in the channels view, so without listing it here the
-      // deferred select would leak into the freshly-opened Settings and "press"
-      // its first focusable.
-      //
       // `.search-view` self-handles pointer activation on mouseup (Magic Remote OK
       // fires no click), so excluding it here keeps the desktop mouse from
       // double-firing select on top of that.
+      //
+      // `.channel-view` (the channel list) likewise self-handles pointer
+      // activation on mouseup — the deferred select would otherwise be routed to
+      // the focused tab bar (and swallowed while the search box is open), and
+      // would double-fire on the freshly-shown player after the mouseup already
+      // played the channel.
       const t = e.target as HTMLElement;
-      if (!t.isConnected || t.closest('.player-sidebar, .player-menu, .settings-view, .settings-btn, .search-view')) return;
+      if (!t.isConnected || t.closest('.player-sidebar, .player-menu, .settings-view, .search-view, .channel-view')) return;
       const target = t.closest<HTMLElement>('[data-focusable]');
       if (target && activeHandler) {
         target.dispatchEvent(new CustomEvent('nav:hover', { bubbles: true }));

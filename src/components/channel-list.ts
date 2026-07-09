@@ -26,6 +26,22 @@ export class ChannelList {
 
     // Cursor left the view: drop the hover highlight.
     this.container.addEventListener('mouseleave', () => this.nav.clearHighlight());
+
+    // Magic Remote OK fires mouseup with no synthesized click, and the global
+    // click path routes select through App.handleKey — which hands it to the
+    // focused tab bar (so it's swallowed while the search box is expanded).
+    // Drive activation from the pointer here by coordinate hit-test so a click
+    // plays the channel (or switches group/playlist) regardless of what holds
+    // D-pad focus. The channels view is excluded from the global click listener
+    // so the desktop mouse can't double-fire.
+    this.container.addEventListener('mouseup', (e: MouseEvent) => this.onPointerRelease(e.clientX, e.clientY));
+  }
+
+  private onPointerRelease(x: number, y: number): void {
+    const el = document.elementFromPoint(x, y)?.closest<HTMLElement>('[data-focusable]');
+    if (!el || !this.container.contains(el)) return;
+    this.nav.focus(el);
+    this.handleAction('select');
   }
 
   render(): void {

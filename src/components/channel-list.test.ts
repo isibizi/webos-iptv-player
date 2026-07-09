@@ -137,6 +137,25 @@ describe('ChannelList interaction', () => {
     expect(onSelect).toHaveBeenCalledWith(1);
   });
 
+  it('plays a channel on a Magic Remote pointer mouseup (which fires no click)', () => {
+    const target = channelItems()[1];
+    const orig = document.elementFromPoint;
+    document.elementFromPoint = () => target;
+    container.dispatchEvent(new MouseEvent('mouseup', { clientX: 100, clientY: 50, bubbles: true }));
+    document.elementFromPoint = orig;
+    expect(onSelect).toHaveBeenCalledWith(1);
+  });
+
+  it('switches group on a pointer mouseup over a group item', () => {
+    const group = container.querySelector<HTMLElement>('[data-group="Sports"]')!;
+    const orig = document.elementFromPoint;
+    document.elementFromPoint = () => group;
+    container.dispatchEvent(new MouseEvent('mouseup', { clientX: 10, clientY: 10, bubbles: true }));
+    document.elementFromPoint = orig;
+    expect(channelItems()).toHaveLength(1);
+    expect(container.textContent).toContain('Bravo');
+  });
+
   it('selecting a group filters the channel list', () => {
     hover(container.querySelector<HTMLElement>('[data-group="Sports"]')!);
     list.handleAction('select');
