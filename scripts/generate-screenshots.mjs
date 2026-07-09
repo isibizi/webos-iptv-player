@@ -11,6 +11,11 @@
 //   player.png         playback overlays: channel switcher + action menu
 //   channel-info.png   channel info bar (the OSD) — live DVR (timeshift) view
 //   subtitles.png      self-rendered WebVTT cues — ::cue colors + positioning
+//   movies.png         Movies section — cinematic hero + content rails, with the
+//                      account-switcher dropdown open (picks the active Xtream account)
+//   movie-detail.png   Movie detail — plot/cast/rating + Resume / Play
+//   series-detail.png  Series detail — season selector + episode list
+//   search.png         unified Search — Channels · Movies · Series results
 //
 // Nothing here ships in the app or the .ipk; it is a dev-only tool.
 
@@ -104,6 +109,8 @@ function m3u(slice, withTvg) {
 
 const M3U_1 = m3u(CHANNELS.slice(0, SPLIT), true);
 const M3U_2 = m3u(CHANNELS.slice(SPLIT), false);
+// One flattened playlist for the Xtream get.php route (Live · Movies · Series shots).
+const M3U_ALL = m3u(CHANNELS, true);
 
 // Fake HLS master with alternate audio + subtitle renditions, served for the played
 // channel so hls.js (the desktop preview path) exposes real tracks to the player
@@ -149,6 +156,108 @@ const SUBTITLE_CUES = [
   { text: '<c.blue>竖排字幕</c>', vertical: 'rl', line: 12, snapToLines: false, position: 88 },
   { text: '<c.red>Default</c> — no settings (bottom center)' },
 ];
+
+// ---------------------------------------------------------------------------
+// Xtream catalog (Movies / Series) — synthetic fixtures for the player_api.php
+// route, so the Movies/Series/Search shots render real content. All titles are
+// fictional (deterministic word-bank combos, no real brands); posters are
+// generated SVG gradients keyed by a per-item hue.
+// ---------------------------------------------------------------------------
+
+const ADJ = ['Silent', 'Broken', 'Golden', 'Crimson', 'Hidden', 'Frozen', 'Electric', 'Wild',
+  'Distant', 'Iron', 'Velvet', 'Neon', 'Midnight', 'Lost', 'Rising', 'Savage', 'Hollow',
+  'Radiant', 'Shattered', 'Northern'];
+const NOUN = ['Horizon', 'Empire', 'Harbor', 'Echo', 'Voyage', 'Circuit', 'Starfield', 'Verdict',
+  'Signal', 'Legacy', 'Tide', 'Mirage', 'Stardust', 'Ember', 'Summit', 'Drift', 'Lantern',
+  'Orbit', 'Ashes', 'Meridian'];
+const catTitle = (i) => `${ADJ[i % ADJ.length]} ${NOUN[(i * 7 + 3 + Math.floor(i / NOUN.length)) % NOUN.length]}`;
+const hueFor = (i) => (i * 47 + 200) % 360;
+const XT_BASE = 'http://xtream.local:8080';
+const poster = (hue) => `${XT_BASE}/img/p.svg?h=${hue}`;
+
+function posterSvg(hue) {
+  const h2 = (hue + 45) % 360;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="450" viewBox="0 0 300 450">` +
+    `<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">` +
+    `<stop offset="0" stop-color="hsl(${hue},58%,48%)"/>` +
+    `<stop offset="1" stop-color="hsl(${h2},50%,17%)"/></linearGradient></defs>` +
+    `<rect width="300" height="450" fill="url(#g)"/>` +
+    `<circle cx="150" cy="158" r="66" fill="hsla(${hue},80%,90%,0.15)"/>` +
+    `<rect x="0" y="374" width="300" height="76" fill="rgba(0,0,0,0.30)"/></svg>`;
+}
+
+const VOD_CATS = [['1', 'Action & Adventure'], ['2', 'Comedy'], ['3', 'Drama'], ['4', 'Sci-Fi & Fantasy'],
+  ['5', 'Thriller'], ['6', 'Family'], ['7', 'Documentary']];
+const MOVIES = [];
+{ let id = 100; for (const [cat] of VOD_CATS) for (let n = 0; n < 10; n++, id++)
+  MOVIES.push({ stream_id: String(id), name: catTitle(id), category_id: cat, hue: hueFor(id) }); }
+
+const SERIES_CATS = [['1', 'Drama'], ['2', 'Comedy'], ['3', 'Crime'], ['4', 'Sci-Fi'],
+  ['5', 'Fantasy'], ['6', 'Reality'], ['7', 'Animation']];
+const SERIESES = [];
+{ let id = 500; for (const [cat] of SERIES_CATS) for (let n = 0; n < 9; n++, id++)
+  SERIESES.push({ series_id: String(id), name: catTitle(id + 3), category_id: cat, hue: hueFor(id + 11) }); }
+
+const CAST = 'Ava Sterling, Marcus Vale, Lena Hoffmann, Diego Cruz';
+const DIRECTORS = ['R. Callahan', 'T. Okafor', 'M. Lindqvist', 'S. Nakamura'];
+const PLOTS = [
+  'A reluctant courier is pulled into a citywide conspiracy after a routine drop goes wrong.',
+  'Two estranged siblings reunite for one impossible summer that changes everything.',
+  'On the edge of a dying colony, an engineer bets everything on a signal from deep space.',
+  'A small-town detective unravels a decades-old secret buried beneath a quiet harbor.',
+];
+const catName = (cats, id) => (cats.find(([c]) => c === id) || [, ''])[1];
+
+function playerApiJson(url) {
+  const action = new URL(url).searchParams.get('action') || '';
+  const catId = new URL(url).searchParams.get('category_id');
+  switch (action) {
+    case 'get_vod_categories':
+      return VOD_CATS.map(([id, name]) => ({ category_id: id, category_name: name }));
+    case 'get_vod_streams':
+      return MOVIES.filter((m) => !catId || m.category_id === catId).map((m) => ({
+        stream_id: m.stream_id, name: m.name, category_id: m.category_id, stream_icon: poster(m.hue),
+        rating: `${6 + (Number(m.stream_id) % 4)}.5`, container_extension: 'mp4',
+      }));
+    case 'get_vod_info': {
+      const id = new URL(url).searchParams.get('vod_id');
+      const m = MOVIES.find((x) => x.stream_id === id) || MOVIES[0];
+      const n = Number(m.stream_id);
+      return { info: {
+        plot: PLOTS[n % PLOTS.length], cast: CAST, director: DIRECTORS[n % DIRECTORS.length],
+        genre: catName(VOD_CATS, m.category_id), releasedate: `${2014 + (n % 11)}-06-12`,
+        duration_secs: 5400 + (n % 4) * 900, movie_image: poster(m.hue), cover_big: poster(m.hue),
+      } };
+    }
+    case 'get_series_categories':
+      return SERIES_CATS.map(([id, name]) => ({ category_id: id, category_name: name }));
+    case 'get_series':
+      return SERIESES.filter((s) => !catId || s.category_id === catId).map((s) => ({
+        series_id: s.series_id, name: s.name, category_id: s.category_id, cover: poster(s.hue),
+        rating: `${7 + (Number(s.series_id) % 3)}.0`,
+      }));
+    case 'get_series_info': {
+      const id = new URL(url).searchParams.get('series_id');
+      const s = SERIESES.find((x) => x.series_id === id) || SERIESES[0];
+      const mkEps = (season, count) => Array.from({ length: count }, (_, k) => ({
+        id: `${id}${season}${k + 1}`, title: `Chapter ${k + 1}: ${NOUN[(Number(id) + season + k) % NOUN.length]}`,
+        season, episode_num: k + 1, container_extension: 'mp4',
+        info: { plot: PLOTS[(Number(id) + k) % PLOTS.length], duration_secs: 2400 + (k % 3) * 600, movie_image: poster(s.hue) },
+      }));
+      return { episodes: { 1: mkEps(1, 8), 2: mkEps(2, 6) } };
+    }
+    default:
+      return { user_info: { auth: 1, status: 'Active' } };
+  }
+}
+
+// A few resume points so the Movies/Series "Continue Watching" rails and the
+// detail "Resume" action render. Keyed by accountId (the demo account's stable id).
+const RESUME_SEED = {
+  'demo-xtream|vod|100': { accountId: 'demo-xtream', kind: 'vod', itemId: '100', name: MOVIES[0].name, poster: poster(MOVIES[0].hue), ext: 'mp4', position: 1830, duration: 5400, updatedAt: NOW - 3 * HOUR },
+  'demo-xtream|vod|101': { accountId: 'demo-xtream', kind: 'vod', itemId: '101', name: MOVIES[1].name, poster: poster(MOVIES[1].hue), ext: 'mp4', position: 900, duration: 6300, updatedAt: NOW - 26 * HOUR },
+  'demo-xtream|episode|50011': { accountId: 'demo-xtream', kind: 'episode', itemId: '50011', name: `${SERIESES[0].name} — S1E1`, poster: poster(SERIESES[0].hue), ext: 'mp4', position: 600, duration: 2700, updatedAt: NOW - 5 * HOUR },
+};
 
 // ---------------------------------------------------------------------------
 // EPG (XMLTV)
@@ -258,7 +367,7 @@ function startServer() {
 const fulfill = (body, type) => (route) =>
   route.fulfill({ status: 200, contentType: type, headers: { 'access-control-allow-origin': '*' }, body });
 
-async function setupPage(page, { upload = false, fakeStream = false } = {}) {
+async function setupPage(page, { upload = false, fakeStream = false, xtream = false } = {}) {
   // Freeze the clock before any app code runs (real timers keep working).
   await page.addInitScript((fixed) => {
     const RealDate = Date;
@@ -273,15 +382,27 @@ async function setupPage(page, { upload = false, fakeStream = false } = {}) {
     window.Date = FakeDate;
   }, NOW);
 
-  // Seed configured playlists, EPG URL and favorites.
-  await page.addInitScript((favs) => {
-    localStorage.setItem('iptv_playlists', JSON.stringify([
-      { name: 'Playlist 1', url: 'https://demo.local/playlist1.m3u' },
-      { name: 'Playlist 2', url: 'https://demo.local/playlist2.m3u' },
-    ]));
+  // Seed configured playlists, EPG URL and favorites. The Xtream shots swap the
+  // two plain-M3U playlists for two Xtream accounts — that enables the
+  // Live · Movies · Series tab bar and the account switcher (its avatar dropdown
+  // picks which account drives Movies / Series / Search). Their get.php resolves
+  // to the full channel set; the first account (My Xtream) is the active one.
+  await page.addInitScript(({ favs, playlists }) => {
+    localStorage.setItem('iptv_playlists', JSON.stringify(playlists));
     localStorage.setItem('iptv_epg_url', JSON.stringify('https://demo.local/epg.xml'));
     localStorage.setItem('iptv_favorites', JSON.stringify(favs));
-  }, FAVORITE_IDS);
+  }, {
+    favs: FAVORITE_IDS,
+    playlists: xtream
+      ? [
+          { id: 'demo-xtream', name: 'My Xtream', url: 'http://xtream.local:8080', source: 'xtream', xtream: { username: 'demo', password: 'demo' } },
+          { id: 'demo-xtream-2', name: 'Backup Xtream', url: 'http://backup.xtream.local:8080', source: 'xtream', xtream: { username: 'demo2', password: 'demo2' } },
+        ]
+      : [
+          { name: 'Playlist 1', url: 'https://demo.local/playlist1.m3u' },
+          { name: 'Playlist 2', url: 'https://demo.local/playlist2.m3u' },
+        ],
+  });
 
   // Pre-set one reminder so the EPG shows the "set" bell. The program starts after
   // the frozen clock, so it's a future reminder (no due prompt fires). Compute the
@@ -295,6 +416,12 @@ async function setupPage(page, { upload = false, fakeStream = false } = {}) {
       { channelKey, channelName: r.channelName, title: r.title, startMs: r.startMs, stopMs: r.stopMs },
     ]));
   }, REMINDER);
+
+  // Seed a few resume points so the Movies/Series "Continue Watching" rails and
+  // the detail "Resume" action render (Xtream shots only).
+  if (xtream) {
+    await page.addInitScript((seed) => localStorage.setItem('iptv_resume', JSON.stringify(seed)), RESUME_SEED);
+  }
 
   // Fake the Luna service bus so the upload service "runs" (settings QR).
   if (upload) {
@@ -317,6 +444,20 @@ async function setupPage(page, { upload = false, fakeStream = false } = {}) {
   await page.route('**/playlist1.m3u', fulfill(M3U_1, 'application/x-mpegurl'));
   await page.route('**/playlist2.m3u', fulfill(M3U_2, 'application/x-mpegurl'));
   await page.route('**/epg.xml', fulfill(EPG_XML, 'application/xml'));
+  // Xtream account: get.php is the flattened M3U, xmltv.php the EPG. player_api.php
+  // serves the synthetic VOD/series catalog JSON, and /img/*.svg the generated posters.
+  if (xtream) {
+    await page.route('**/get.php**', fulfill(M3U_ALL, 'application/x-mpegurl'));
+    await page.route('**/xmltv.php**', fulfill(EPG_XML, 'application/xml'));
+    await page.route('**/player_api.php**', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json',
+        headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(playerApiJson(route.request().url())) }));
+    await page.route('**/img/**', (route) => {
+      const hue = Number(new URL(route.request().url()).searchParams.get('h') || '210');
+      route.fulfill({ status: 200, contentType: 'image/svg+xml',
+        headers: { 'access-control-allow-origin': '*' }, body: posterSvg(hue) });
+    });
+  }
   // By default abort the played channel's stream — the list/OSD shots don't need
   // video and are captured before hls.js's error escalates. The menu collage opts in
   // (fakeStream) to a fake master with audio/subtitle renditions so hls.js surfaces
@@ -355,6 +496,21 @@ async function remote(page, keyCode) {
 
 const clearToasts = (page) =>
   page.evaluate(() => document.querySelectorAll('.toast').forEach((t) => t.remove()));
+
+// Enter a docked tab-bar section (or expand Search) via a coordinate mouseup —
+// the bar activates on a mouseup hit-test (Magic Remote OK fires no click).
+async function enterTab(page, section) {
+  const tab = page.locator(`.tab-bar-item[data-section="${section}"]`);
+  await tab.waitFor({ state: 'visible' });
+  const box = await tab.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.up();
+  // The mouseup focuses the tab <button>; drop it so no UA focus ring shows in
+  // the shot (the app draws its own active/focus states; keys go through the
+  // global handler, not button focus).
+  await page.evaluate(() => document.activeElement instanceof HTMLElement && document.activeElement.blur());
+}
 
 // Capture to screenshots/<name>. Disabling animations freezes the infinite
 // CSS loops (the playing-indicator pulse, sidebar marquee) that otherwise keep
@@ -403,8 +559,7 @@ try {
   {
     const { context, page } = await newPage();
     await gotoChannels(page, base);
-    await page.keyboard.press('ArrowDown'); // focus the first channel
-    await page.keyboard.press('Enter');     // play it...
+    await page.keyboard.press('Enter');     // play the focused (first) channel...
     await page.locator('#player-osd .osd-programme-title').waitFor({ state: 'visible' });
     await remote(page, 27);                 // ...then Back, so the list marks it playing (▶) — no OSD
     await page.locator('.channel-main [data-channel-index="0"].playing').waitFor({ state: 'visible' });
@@ -448,7 +603,6 @@ try {
   {
     const { context, page } = await newPage({ fakeStream: true });
     await gotoChannels(page, base);
-    await page.keyboard.press('ArrowDown');
     // hls.js requests the (aborted) media playlists only after parsing the master, so
     // this confirms the audio/subtitle track lists are populated before the menu opens
     // — it renders once, on open, and isn't re-rendered when tracks arrive later.
@@ -513,7 +667,6 @@ try {
     });
     await page.route(/\/stream\/ch\d+\.m3u8(?:[?#]|$)/, fulfill(MASTER_HLS_RICH, 'application/vnd.apple.mpegurl'));
     await gotoChannels(page, base);
-    await page.keyboard.press('ArrowDown');
     await page.keyboard.press('Enter');
     await page.locator('#player-osd .osd-programme-title').waitFor({ state: 'visible' });
     await page.waitForTimeout(1500);
@@ -542,7 +695,6 @@ try {
   {
     const { context, page } = await newPage({ fakeStream: true });
     await gotoChannels(page, base);
-    await page.keyboard.press('ArrowDown');
     await page.keyboard.press('Enter');
     await page.locator('#player-osd .osd-programme-title').waitFor({ state: 'visible' });
     // Clear the OSD for a clean frame, and keep the fake-stream error path from
@@ -583,6 +735,88 @@ try {
     await page.waitForTimeout(400);
     await shoot(page, 'subtitles.png');
     console.log('  subtitles.png');
+    await context.close();
+  }
+
+  // 7) Movies — the cinematic hero + content rails (Continue Watching +
+  //    per-category rails), with the account-switcher dropdown open (the avatar in
+  //    the tab bar picks which Xtream account drives Movies / Series / Search).
+  {
+    const { context, page } = await newPage({ xtream: true });
+    await gotoChannels(page, base);
+    await enterTab(page, 'movies');
+    await page.locator('#view-movies .catalog-browse').waitFor({ state: 'visible' });
+    await page.locator('#view-movies .catalog-tile').first().waitFor({ state: 'visible', timeout: 15_000 });
+    await page.waitForTimeout(800); // let the poster SVGs paint
+    // Open the account-switcher dropdown via a coordinate mouseup (Magic Remote OK
+    // fires no click); its circular avatar sits at the right end of the tab bar.
+    const avatar = page.locator('.account-avatar');
+    const box = await avatar.boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.up();
+    await page.locator('.account-menu').waitFor({ state: 'visible' });
+    // Drop UA focus so no button focus ring shows in the shot.
+    await page.evaluate(() => document.activeElement instanceof HTMLElement && document.activeElement.blur());
+    await clearToasts(page);
+    await shoot(page, 'movies.png');
+    console.log('  movies.png');
+    await context.close();
+  }
+
+  // 8) Movie detail — plot/cast/genre/duration + Resume / Play, opened from the
+  //    first (Continue Watching) poster, which carries a seeded resume point.
+  {
+    const { context, page } = await newPage({ xtream: true });
+    await gotoChannels(page, base);
+    await enterTab(page, 'movies');
+    const movieTile = page.locator('#view-movies .catalog-tile[data-item-id="100"]').first();
+    await movieTile.waitFor({ state: 'visible', timeout: 15_000 });
+    await page.waitForTimeout(600); // let the section's async catalog load settle before opening detail
+    await movieTile.evaluate((el) => el.dispatchEvent(new CustomEvent('nav:hover', { bubbles: true })));
+    await page.keyboard.press('Enter'); // open the focused movie's detail
+    await page.locator('#view-movies .movies-detail .detail-plot').waitFor({ state: 'visible', timeout: 15_000 });
+    await page.waitForTimeout(600);
+    await clearToasts(page);
+    await shoot(page, 'movie-detail.png');
+    console.log('  movie-detail.png');
+    await context.close();
+  }
+
+  // 9) Series detail — the season selector over the episode list, opened from the
+  //     first series poster.
+  {
+    const { context, page } = await newPage({ xtream: true });
+    await gotoChannels(page, base);
+    await enterTab(page, 'series');
+    // The first focusable is a Continue-Watching tile (resumes an episode directly),
+    // so target a real series poster to open its season/episode detail.
+    const seriesTile = page.locator('#view-series .catalog-tile[data-item-id]').first();
+    await seriesTile.waitFor({ state: 'visible', timeout: 15_000 });
+    await page.waitForTimeout(600); // let the section's async catalog load settle
+    await seriesTile.evaluate((el) => el.dispatchEvent(new CustomEvent('nav:hover', { bubbles: true })));
+    await page.keyboard.press('Enter'); // open the focused series' detail
+    await page.locator('#view-series .series-detail .episode-row').first().waitFor({ state: 'visible', timeout: 15_000 });
+    await page.waitForTimeout(600);
+    await clearToasts(page);
+    await shoot(page, 'series-detail.png');
+    console.log('  series-detail.png');
+    await context.close();
+  }
+
+  // 10) Search — one query across Channels · Movies · Series. The Search tab
+  //     expands an inline input in the tab bar that drives the results view.
+  {
+    const { context, page } = await newPage({ xtream: true });
+    await gotoChannels(page, base);
+    await enterTab(page, 'search');
+    await page.locator('.tab-bar-search-input').waitFor({ state: 'visible' });
+    await page.locator('.tab-bar-search-input').fill('or'); // matches channels, movies, series
+    await page.locator('#view-search .catalog-rail-title').first().waitFor({ state: 'visible', timeout: 10_000 });
+    await page.waitForTimeout(800);
+    await clearToasts(page);
+    await shoot(page, 'search.png');
+    console.log('  search.png');
     await context.close();
   }
 

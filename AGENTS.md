@@ -56,7 +56,16 @@ syncs it into `appinfo.json` and the `__APP_VERSION__` build constant;
   `Action` union (`up`/`down`/`select`/`red`/… in `src/types.ts`); `App.handleKey`
   dispatches to the active view's `handleAction`.
 - **Views** are plain `<div>`s in `index.html` (`channels`, `player`, `epg`,
-  `settings`, `loading`) toggled with `show`/`hide` from `src/utils/dom.ts`.
+  `settings`, `loading`, plus the Xtream `movies`/`series` catalogs and `search`)
+  toggled with `show`/`hide` from `src/utils/dom.ts`.
+- **Sections & Xtream catalog** — a persistent `TabBar` (`src/components/tab-bar.ts`)
+  docks the **Live / Movies / Series / Settings / Search** sections above the views and
+  hosts the multi-account avatar switcher (`account-switcher.ts`); `App` owns section
+  switching and a `viewStack`. Movies/Series (`movies.ts`, `series.ts`) share the
+  browse/grid/detail machinery in `CatalogView` (`catalog-view.ts`) over the per-account
+  `xtream-catalog` cache, with a **Continue Watching** resume rail. `search.ts` ranks
+  channels, movies, and series in one view. Movies/Series/Search need an Xtream account;
+  M3U-only setups see Live/Settings/Search only.
 - **Components** (`src/components/`) own a DOM subtree and re-render through
   `morph()` (`src/utils/morph.ts`), a keyed in-place DOM reconciler fed by the
   `html` tagged template. Reused nodes keep their listeners, focus, and scroll — so
@@ -69,7 +78,10 @@ syncs it into `appinfo.json` and the `__APP_VERSION__` build constant;
   `iptv_` prefix + JSON and evicts the playlist cache on quota errors. EPG is cached
   in IndexedDB for instant reopen. `ReminderService` stores reminders, schedules an
   Activity Manager callback per reminder (dev-mode alert vs. retail toast), and
-  resolves a launch param back to a channel.
+  resolves a launch param back to a channel. Xtream access goes through the
+  `xtream-client` factory (`createXtreamClient`) and the IndexedDB-backed `xtream-catalog`
+  cache; `media-probe`, `hls-subtitles`, `vod-subtitles`, and `ass-subtitles` back the
+  player's live stream-info readout and subtitle rendering (see the subtitle docs).
 - **Navigation** (`src/navigation/`) — `SpatialNav` does geometric D-pad focus
   among `[data-focusable]` elements (grouped by `[data-nav-container]`);
   `KeyHandler` also wires pointer/Magic-Remote and desktop mouse/wheel input.
@@ -136,12 +148,15 @@ syncs it into `appinfo.json` and the `__APP_VERSION__` build constant;
   `hls.subtitleTrack` in the desktop preview. Unlike audio they're **off by default** (unless a
   rendition is `FORCED=YES`); the choice — including an explicit *off* — is remembered per
   channel, and real names come from parsing the master `EXT-X-MEDIA:TYPE=SUBTITLES`. On-device
-  the native compositor draws the cues using the TV's caption settings (it ignores `::cue`); the
-  preview's `::cue` mirrors Safari. Full writeup in `docs/hls-subtitles.md` (helpers in
-  `src/utils/subtitle-tracks.ts`, `src/utils/webvtt.ts`, `src/services/hls-subtitles.ts`). VOD
-  (Xtream movies/episodes) subtitles — in-container native tracks and sidecar SRT/WebVTT files —
-  are a separate path in `docs/vod-subtitles.md` (`src/services/vod-subtitles.ts`,
-  `src/utils/srt.ts`).
+  the app **self-renders** in-manifest WebVTT (the demux never exposes it as a selectable
+  `TextTrack`) into a `TextTrack` drawn by Blink, so `::cue` styling — speaker colors and cue
+  positioning — applies on the TV too, not just the preview; pipeline caption types
+  (CEA-608/708, TTML/IMSC) instead ride the native compositor via Luna `setSubtitleEnable`. Full
+  writeup in `docs/hls-subtitles.md` (helpers in `src/utils/subtitle-tracks.ts`,
+  `src/utils/webvtt.ts`, `src/services/hls-subtitles.ts`). VOD (Xtream movies/episodes)
+  subtitles — in-container native tracks and sidecar SRT/WebVTT plus ASS/SSA — are a separate
+  path in `docs/vod-subtitles.md` (`src/services/vod-subtitles.ts`,
+  `src/services/ass-subtitles.ts`, `src/utils/srt.ts`).
 - **Magic Remote OK fires pointer events, not `click`.** Pressing OK with the Magic
   Remote pointer over an element dispatches `mousedown`/`mouseup` (and pointer events)
   but **no synthesized `click`**, and the event target can be the native video plane
