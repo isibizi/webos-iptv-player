@@ -73,6 +73,7 @@ forward-compatible. Features only newer engines support natively (flex `gap`,
 | webOS 23 | 2023 | 94 | ✅ |
 | webOS 24 | 2024 | 108 | ✅ |
 | webOS 25 | 2025 | 120 | ✅ |
+| webOS 26 | 2026 | 132 | ✅ |
 
 webOS 4.x and older (Chromium 53 and earlier) lack JavaScript and CSS features
 the app relies on, and are not supported.
