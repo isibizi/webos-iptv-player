@@ -124,4 +124,11 @@ describe('AssSubtitles', () => {
     expect(assInstances[0].destroyed).toBe(true);
     expect(container.querySelector('#ass-overlay')).toBeNull();
   });
+
+  it('renders preloaded ASS text without fetching', async () => {
+    subs.attach(video, container, [{ id: 'a1', name: 'Alpha', lang: 'l1', url: '', text: '[Script Info]\n' }]);
+    await subs.show(0);
+    expect(fetchTextMock).not.toHaveBeenCalled();
+    expect(container.querySelector('#ass-overlay')).toBeTruthy();
+  });
 });

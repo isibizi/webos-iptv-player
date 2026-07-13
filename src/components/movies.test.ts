@@ -108,7 +108,7 @@ describe('Movies browse + grid', () => {
     const getResumeList = StorageService.getResumeList as ReturnType<typeof vi.fn>;
     getResumeList.mockReturnValue([]);
     catalogMock.loadVodInfo.mockResolvedValue({
-      plot: '', cast: '', director: '', genre: '', releaseDate: '', durationSecs: 0, poster: '',
+      plot: '', cast: '', director: '', genre: '', releaseDate: '', durationSecs: 0, poster: '', imdbId: '', tmdbId: '', year: 0,
     });
     const { view } = await openWith();
     expect(container.textContent).not.toContain('Continue Watching');
@@ -131,7 +131,7 @@ describe('Movies detail', () => {
   it('renders plot/meta and a Play button, and plays from the start', async () => {
     catalogMock.loadVodInfo.mockResolvedValue({
       plot: 'A plot.', cast: 'Actor A', director: 'Dir A', genre: 'Drama',
-      releaseDate: '2020-05-01', durationSecs: 3600, poster: 'http://host:8080/p.jpg',
+      releaseDate: '2020-05-01', durationSecs: 3600, poster: 'http://host:8080/p.jpg', imdbId: '', tmdbId: '', year: 0,
     });
     const { view, handlers } = await openWith([{ id: '1', name: 'Cat A' }], [vod('10', 'Movie One')]);
     const tile = container.querySelector('.catalog-tile[data-item-id="10"]') as HTMLElement;
@@ -158,7 +158,7 @@ describe('Movies detail', () => {
       { accountId: 'x1', kind: 'vod', itemId: '10', name: 'Movie One', poster: '', position: 900, duration: 3600, updatedAt: 1 },
     );
     catalogMock.loadVodInfo.mockResolvedValue({
-      plot: '', cast: '', director: '', genre: '', releaseDate: '', durationSecs: 3600, poster: '',
+      plot: '', cast: '', director: '', genre: '', releaseDate: '', durationSecs: 3600, poster: '', imdbId: '', tmdbId: '', year: 0,
     });
     const { view, handlers } = await openWith([{ id: '1', name: 'Cat A' }], [vod('10', 'Movie One')]);
     const tile = container.querySelector('.catalog-tile[data-item-id="10"]') as HTMLElement;
@@ -174,7 +174,7 @@ describe('Movies detail', () => {
   });
 
   it('backs out of detail to the browse view', async () => {
-    catalogMock.loadVodInfo.mockResolvedValue({ plot: '', cast: '', director: '', genre: '', releaseDate: '', durationSecs: 0, poster: '' });
+    catalogMock.loadVodInfo.mockResolvedValue({ plot: '', cast: '', director: '', genre: '', releaseDate: '', durationSecs: 0, poster: '', imdbId: '', tmdbId: '', year: 0 });
     const { view, handlers } = await openWith();
     const tile = container.querySelector('.catalog-tile[data-item-id="10"]') as HTMLElement;
     tile.dispatchEvent(new CustomEvent('nav:hover', { bubbles: true }));
@@ -183,6 +183,24 @@ describe('Movies detail', () => {
     view.handleAction('back');
     expect(container.querySelector('.catalog-browse')).not.toBeNull();
     expect(handlers.onBack).not.toHaveBeenCalled();
+  });
+
+  it('forwards searchMeta.tmdbId to onPlayVod when currentInfo has it', async () => {
+    catalogMock.loadVodInfo.mockResolvedValue({
+      plot: 'p', cast: '', director: '', genre: '', releaseDate: '', durationSecs: 0, poster: '',
+      imdbId: '1375666', tmdbId: '27205', year: 2010,
+    });
+    const { view, handlers } = await openWith([{ id: '1', name: 'Cat A' }], [vod('10', 'Movie One')]);
+    const tile = container.querySelector('.catalog-tile[data-item-id="10"]') as HTMLElement;
+    tile.dispatchEvent(new CustomEvent('nav:hover', { bubbles: true }));
+    view.handleAction('select');
+    await Promise.resolve(); await Promise.resolve();
+    const play = container.querySelector('[data-action="play"]') as HTMLElement;
+    play.dispatchEvent(new CustomEvent('nav:hover', { bubbles: true }));
+    view.handleAction('select');
+    expect(handlers.onPlayVod).toHaveBeenCalledWith(expect.objectContaining({
+      searchMeta: { imdbId: '1375666', tmdbId: '27205', year: 2010 },
+    }));
   });
 
   it('preserves detail focus across the info re-render instead of snapping to the first button', async () => {
@@ -200,7 +218,7 @@ describe('Movies detail', () => {
     const play = container.querySelector('[data-action="play"]') as HTMLElement;
     play.dispatchEvent(new CustomEvent('nav:hover', { bubbles: true })); // move focus to Play
     expect(container.querySelector('.focused')?.getAttribute('data-key')).toBe('play');
-    resolveInfo({ plot: 'x', cast: '', director: '', genre: '', releaseDate: '', durationSecs: 0, poster: '' });
+    resolveInfo({ plot: 'x', cast: '', director: '', genre: '', releaseDate: '', durationSecs: 0, poster: '', imdbId: '', tmdbId: '', year: 0 });
     await Promise.resolve(); await Promise.resolve(); // info re-render
     expect(container.querySelector('.focused')?.getAttribute('data-key')).toBe('play');
   });
@@ -208,7 +226,7 @@ describe('Movies detail', () => {
 
 describe('Movies deep-link (openItem)', () => {
   it('opens a movie detail directly and Back returns to Search via the callback', async () => {
-    catalogMock.loadVodInfo.mockResolvedValue({ plot: 'Deep plot.', cast: '', director: '', genre: '', releaseDate: '', durationSecs: 0, poster: '' });
+    catalogMock.loadVodInfo.mockResolvedValue({ plot: 'Deep plot.', cast: '', director: '', genre: '', releaseDate: '', durationSecs: 0, poster: '', imdbId: '', tmdbId: '', year: 0 });
     const handlers = { onRevealTabBar: vi.fn(), onBack: vi.fn(), onPlayVod: vi.fn() };
     const onDetailBack = vi.fn();
     const view = new Movies(container, handlers);

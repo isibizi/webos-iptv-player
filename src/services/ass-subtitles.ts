@@ -58,7 +58,7 @@ export class AssSubtitles {
     try {
       const [{ default: ASS }, content] = await Promise.all([
         import('assjs'),
-        fetchText(sidecar.url),
+        sidecar.text != null ? Promise.resolve(sidecar.text) : fetchText(sidecar.url),
       ]);
       if (gen !== this.gen) return; // a newer selection/stop landed mid-fetch
       const overlay = this.ensureOverlay();

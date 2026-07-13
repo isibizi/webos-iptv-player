@@ -14,7 +14,7 @@ const log = createLogger('VodSubs');
  * their tracks — no leakage from one item into the next.
  */
 export class VodSubtitles {
-  private entries: { track: TextTrack; url: string; loaded: boolean }[] = [];
+  private entries: { track: TextTrack; url: string; text?: string; loaded: boolean }[] = [];
   private gen = 0; // bumped on each attach/clear; in-flight loads bail when it changes
 
   attach(video: HTMLVideoElement, sidecars: SidecarSubtitle[]): void {
@@ -29,7 +29,7 @@ export class VodSubtitles {
       const track = el.track;
       if (!track) continue;
       track.mode = 'disabled';
-      this.entries.push({ track, url: s.url, loaded: false });
+      this.entries.push({ track, url: s.url, text: s.text, loaded: false });
     }
     if (sidecars.length) log.info('attached', this.entries.length, 'sidecar track(s)');
   }
@@ -42,7 +42,8 @@ export class VodSubtitles {
     entry.loaded = true; // claim before await so a repeated show doesn't double-fetch
     const gen = this.gen;
     try {
-      const cues = parseSubtitleFile(await fetchText(entry.url));
+      const raw = entry.text != null ? entry.text : await fetchText(entry.url);
+      const cues = parseSubtitleFile(raw);
       if (gen !== this.gen) return; // a new item was attached while this was fetching
       for (const c of cues) entry.track.addCue(new VTTCue(c.start, c.end, c.text));
       log.info('loaded', cues.length, 'cues from', entry.url);
@@ -50,6 +51,21 @@ export class VodSubtitles {
       entry.loaded = false; // allow a retry on the next show
       log.warn('sidecar load failed:', e);
     }
+  }
+
+  /** Append one more sidecar track after attach (online results fetched
+   *  mid-playback). Does not disturb existing entries or bump `gen`. */
+  addOnline(video: HTMLVideoElement, sub: SidecarSubtitle): TextTrack | null {
+    const el = document.createElement('track');
+    el.kind = 'subtitles';
+    el.label = sub.name || sub.lang || 'Subtitle';
+    if (sub.lang) el.srclang = sub.lang;
+    video.appendChild(el);
+    const track = el.track;
+    if (!track) return null;
+    track.mode = 'disabled';
+    this.entries.push({ track, url: sub.url, text: sub.text, loaded: false });
+    return track;
   }
 
   clear(): void {

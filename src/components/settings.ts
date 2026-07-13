@@ -48,6 +48,44 @@ function toggleGroup(id: string, options: { value: string; label: string }[], ac
     </div>`;
 }
 
+/** Preferred-subtitle-language options for the online-subtitle search ranking.
+ *  '' = no preference. Endonyms render on the TV's fonts (Latin/Cyrillic/CJK/Hangul). */
+const SUBTITLE_LANGUAGES: { value: string; label: string }[] = [
+  { value: '', label: 'Any' },
+  { value: 'en', label: 'English' },
+  { value: 'zh-CN', label: '简体中文' },
+  { value: 'zh-TW', label: '繁體中文' },
+  { value: 'es', label: 'Español' },
+  { value: 'fr', label: 'Français' },
+  { value: 'de', label: 'Deutsch' },
+  { value: 'pt', label: 'Português' },
+  { value: 'ru', label: 'Русский' },
+  { value: 'ja', label: '日本語' },
+  { value: 'ko', label: '한국어' },
+];
+
+/** Custom single-select dropdown — remote/D-pad friendly and app-styled (the app
+ *  uses no native `<select>`). The trigger toggles the menu; each option carries a
+ *  `data-dropdown-value`; the chosen value lives on the root's `data-value`. Closed
+ *  options carry `.hidden` so SpatialNav skips them (its candidate filter honors
+ *  `.hidden` / inline `display:none`, not CSS-class display). */
+function dropdown(id: string, options: { value: string; label: string }[], active: string) {
+  const current = options.find(o => o.value === active) ?? options[0];
+  return html`
+    <div class="dropdown" id="${id}" data-value="${active}">
+      <button class="dropdown-trigger" data-focusable data-dropdown-trigger>
+        <span class="dropdown-current">${current.label}</span>
+        <span class="dropdown-caret"></span>
+      </button>
+      <div class="dropdown-menu">
+        ${options.map(o => html`
+          <button class="dropdown-option hidden ${o.value === active ? 'active' : ''}"
+                  data-focusable data-dropdown-value="${o.value}">${o.label}</button>
+        `)}
+      </div>
+    </div>`;
+}
+
 /** One editable Xtream account: its four credential fields grouped in a card
  *  keyed by the entry's stable id. Untrusted values interpolate through `html`. */
 function xtreamCard(pl: Partial<PlaylistEntry>) {
@@ -137,6 +175,7 @@ export class Settings {
     const autoPlay = StorageService.getAutoPlay();
     const feedTime = StorageService.getTzMode() === 'feed';
     const tzOffset = StorageService.getEpgTzOffset();
+    const os = StorageService.getOnlineSubtitleConfig();
 
     this.container.innerHTML = String(html`
       <div class="settings-view">
@@ -237,6 +276,47 @@ export class Settings {
         </div>
 
         <div class="settings-section">
+          <h3>Online Subtitles</h3>
+          <div class="settings-row">
+            <div class="settings-field">
+              <label>Preferred subtitle language</label>
+              ${dropdown('os-pref-lang', SUBTITLE_LANGUAGES, os.preferredLanguage)}
+            </div>
+          </div>
+          <div class="settings-row">
+            <div class="settings-field wide">
+              <label><span class="settings-domain">SubDL.com</span> API key</label>
+              <input type="text" class="settings-input" data-focusable id="subdl-key"
+                     value="${os.subdl.apiKey}" placeholder="api_key">
+            </div>
+          </div>
+          <div class="settings-row">
+            <div class="settings-field wide">
+              <label><span class="settings-domain">Assrt.net</span> API token (Chinese subtitles — optional; blank uses a shared token)</label>
+              <input type="text" class="settings-input" data-focusable id="assrt-key"
+                     value="${os.assrt.apiKey}" placeholder="token">
+            </div>
+          </div>
+          <div class="settings-row">
+            <div class="settings-field">
+              <label><span class="settings-domain">OpenSubtitles.com</span> API key</label>
+              <input type="text" class="settings-input" data-focusable id="os-key"
+                     value="${os.opensubtitles.apiKey}" placeholder="api_key">
+            </div>
+            <div class="settings-field">
+              <label>Username</label>
+              <input type="text" class="settings-input" data-focusable id="os-user"
+                     value="${os.opensubtitles.username}" placeholder="username">
+            </div>
+            <div class="settings-field">
+              <label>Password</label>
+              <input type="password" class="settings-input" data-focusable id="os-pass"
+                     value="${os.opensubtitles.password}" placeholder="password">
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-section">
           <h3>Data Management</h3>
           <div class="settings-row">
             <button class="btn btn-secondary" data-focusable id="refresh-data">Refresh All Data</button>
@@ -294,6 +374,10 @@ export class Settings {
       void this.checkXtreamAccount(el);
     } else if (el.classList.contains('remove-upload')) {
       void this.removeUpload(el.dataset.url!);
+    } else if (el.hasAttribute('data-dropdown-trigger')) {
+      this.toggleDropdown(el.closest<HTMLElement>('.dropdown'));
+    } else if (el.classList.contains('dropdown-option')) {
+      this.selectDropdownOption(el);
     } else if (el.classList.contains('toggle-option')) {
       // Single-select toggle group: clear the siblings, activate the chosen option.
       el.parentElement?.querySelectorAll('.toggle-option').forEach(b => b.classList.remove('active'));
@@ -311,6 +395,34 @@ export class Settings {
     } else if (el.tagName === 'INPUT') {
       (el as HTMLInputElement).focus();
     }
+  }
+
+  // Open/close a custom dropdown. Closed options carry `.hidden` so SpatialNav
+  // skips them; opening reveals them and moves focus to the active/first option.
+  private toggleDropdown(dd: HTMLElement | null): void {
+    if (!dd) return;
+    const open = !dd.classList.contains('open');
+    dd.classList.toggle('open', open);
+    dd.querySelectorAll('.dropdown-option').forEach(o => o.classList.toggle('hidden', !open));
+    if (open) {
+      const opt = dd.querySelector<HTMLElement>('.dropdown-option.active') ?? dd.querySelector<HTMLElement>('.dropdown-option');
+      if (opt) this.nav.focus(opt);
+    }
+  }
+
+  // Commit a dropdown option: record it on the root's data-value, update the
+  // trigger label, re-hide the options, and return focus to the trigger.
+  private selectDropdownOption(el: HTMLElement): void {
+    const dd = el.closest<HTMLElement>('.dropdown');
+    if (!dd) return;
+    dd.dataset.value = el.dataset.dropdownValue ?? '';
+    dd.querySelectorAll('.dropdown-option').forEach(o => { o.classList.remove('active'); o.classList.add('hidden'); });
+    el.classList.add('active');
+    const cur = dd.querySelector('.dropdown-current');
+    if (cur) cur.textContent = el.textContent;
+    dd.classList.remove('open');
+    const trigger = dd.querySelector<HTMLElement>('.dropdown-trigger');
+    if (trigger) this.nav.focus(trigger);
   }
 
   private addPlaylistEntry(): void {
@@ -516,6 +628,22 @@ export class Settings {
 
     const tzModeBtn = $('#tz-mode .toggle-option.active', this.container);
     if (tzModeBtn?.dataset.value) StorageService.setTzMode(tzModeBtn.dataset.value as TzMode);
+
+    const prevOs = StorageService.getOnlineSubtitleConfig();
+    const osVal = (id: string) => ($(`#${id}`, this.container) as HTMLInputElement | null)?.value.trim() ?? '';
+    const sameCreds = osVal('os-key') === prevOs.opensubtitles.apiKey
+      && osVal('os-user') === prevOs.opensubtitles.username
+      && osVal('os-pass') === prevOs.opensubtitles.password;
+    StorageService.setOnlineSubtitleConfig({
+      preferredLanguage: ($('#os-pref-lang', this.container) as HTMLElement | null)?.dataset.value ?? '',
+      subdl: { apiKey: osVal('subdl-key') },
+      assrt: { apiKey: osVal('assrt-key') },
+      opensubtitles: {
+        apiKey: osVal('os-key'), username: osVal('os-user'), password: osVal('os-pass'),
+        token: sameCreds ? prevOs.opensubtitles.token : '',
+        tokenTs: sameCreds ? prevOs.opensubtitles.tokenTs : 0,
+      },
+    });
 
     // Only a playlist/account or EPG-URL change needs a re-fetch; display-only
     // settings (time zone, auto-play) just re-render in place. Xtream credentials

@@ -76,6 +76,11 @@ export class Movies extends CatalogView<VodCategory, VodItem> {
       kind: 'vod',
       resumeSecs: resume && saved ? saved.position : 0,
       subtitles: this.currentInfo?.subtitles ?? [],
+      searchMeta: {
+        imdbId: this.currentInfo?.imdbId || undefined,
+        tmdbId: this.currentInfo?.tmdbId || undefined,
+        year: this.currentInfo?.year || undefined,
+      },
     });
   }
 

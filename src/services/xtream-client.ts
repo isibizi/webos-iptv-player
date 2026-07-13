@@ -124,6 +124,9 @@ export function createXtreamClient(creds: XtreamCredentials, accountId = '') {
         durationSecs: toNumber(i.duration_secs),
         poster: toStr(i.movie_image ?? i.cover_big),
         subtitles: parseSubtitles(i.subtitles),
+        imdbId: toStr(i.imdb_id ?? i.imdb).replace(/^tt/i, ''),
+        tmdbId: toStr(i.tmdb_id ?? i.tmdb),
+        year: Number(toStr(i.releasedate ?? i.release_date).slice(0, 4)) || 0,
       };
     },
 

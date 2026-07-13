@@ -96,3 +96,13 @@ describe('VodSubtitles.clear', () => {
     expect(genOf(subs)).toBe(6);
   });
 });
+
+describe('VodSubtitles.addOnline (in-memory text)', () => {
+  it('uses preloaded text instead of fetching when entry.text is present', async () => {
+    const t = makeTrack();
+    seed(subs, [{ track: t, url: '', text: 'WEBVTT\n\n1\n00:00:01.000 --> 00:00:02.000\nhi\n', loaded: false } as unknown as Entry]);
+    await subs.ensureLoaded(t as unknown as TextTrack);
+    expect(fetchTextMock).not.toHaveBeenCalled();
+    expect(t.cues).toEqual([{ startTime: 1, endTime: 2, text: 'hi' }]);
+  });
+});

@@ -199,4 +199,10 @@ describe('StorageService resume store', () => {
     StorageService.clearResume('x1', 'vod', '11');
     expect(StorageService.getResumeList('x1').map((e) => e.itemId)).toEqual(['10']);
   });
+
+  it('stores and reads a picked online subtitle', () => {
+    StorageService.setPickedOnlineSub('acc', 'vod', 'm1', { providerId: 'subdl', id: '9', name: 'Alpha', lang: 'l1', format: 'srt' });
+    expect(StorageService.getPickedOnlineSub('acc', 'vod', 'm1')).toMatchObject({ id: '9', format: 'srt' });
+    expect(StorageService.getPickedOnlineSub('acc', 'vod', 'zzz')).toBeNull();
+  });
 });

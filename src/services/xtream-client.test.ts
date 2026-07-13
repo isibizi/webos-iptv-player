@@ -144,6 +144,7 @@ describe('XtreamClient VOD', () => {
     expect(info).toEqual({
       plot: 'A plot', cast: 'Actor', director: 'Dir', genre: 'Drama',
       releaseDate: '2020-01-01', durationSecs: 5400, poster: 'http://host/p.png', subtitles: [],
+      imdbId: '', tmdbId: '', year: 2020,
     });
   });
 
@@ -177,6 +178,15 @@ describe('XtreamClient VOD', () => {
   it('defaults VOD subtitles to [] when the field is absent', async () => {
     fetchTextMock.mockResolvedValue(JSON.stringify({ info: { plot: 'p' }, movie_data: {} }));
     expect((await createXtreamClient(creds).getVodInfo('10'))!.subtitles).toEqual([]);
+  });
+
+  it('parses tmdb/imdb/year from get_vod_info', async () => {
+    fetchTextMock.mockResolvedValue(JSON.stringify({
+      info: { tmdb_id: '27205', imdb_id: 'tt1375666', releasedate: '2010-07-16', plot: 'p', subtitles: [] },
+      movie_data: {},
+    }));
+    const info = await createXtreamClient(creds).getVodInfo('10');
+    expect(info).toMatchObject({ tmdbId: '27205', imdbId: '1375666', year: 2010 });
   });
 });
 

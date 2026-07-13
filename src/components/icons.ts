@@ -25,5 +25,8 @@ export function bellIcon(active: boolean): string {
     + `<path fill="currentColor" d="${BELL_PATH}"/></svg>`;
 }
 
+// Download count badge on an online-subtitle search result row.
+export const DOWNLOAD_ICON = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>';
+
 // Check mark for the current row in the account switcher (no exotic Unicode).
 export const CHECK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg>';

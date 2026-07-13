@@ -310,6 +310,16 @@ describe('PlayerMenu', () => {
       expect(menu.visible).toBe(true);
     });
 
+    it('routes the Search online row through selectSubtitleTrack(-3)', () => {
+      subtitleTracks = [{ index: -3, label: 'Search online…', active: false, available: true }];
+      menu.show();
+      for (let i = 0; i < MENU_ACTIONS; i++) menu.handleAction('down');
+      menu.handleAction('select');     // open picker
+      menu.handleAction('down');       // move past "Off" to "Search online…"
+      menu.handleAction('select');
+      expect(selectSubtitleTrack).toHaveBeenCalledWith(-3);
+    });
+
     it('greys a subtitle track marked unavailable, but never the Off row', () => {
       subtitleTracks = [{ index: 0, label: 'Track 1', active: false, available: false }];
       menu.show();

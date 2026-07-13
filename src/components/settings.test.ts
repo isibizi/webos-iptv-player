@@ -17,6 +17,12 @@ const { state, storageMock, toastMock, uploadMock, xtreamMock } = vi.hoisted(() 
     autoPlay: false,
     tzMode: 'device' as TzMode,
     tzOffset: null as number | null,
+    onlineSubtitles: {
+      preferredLanguage: '',
+      subdl: { apiKey: '' },
+      opensubtitles: { apiKey: '', username: '', password: '', token: '', tokenTs: 0 },
+      assrt: { apiKey: '' },
+    },
   };
   return {
     state,
@@ -26,10 +32,12 @@ const { state, storageMock, toastMock, uploadMock, xtreamMock } = vi.hoisted(() 
       getAutoPlay: vi.fn(() => state.autoPlay),
       getTzMode: vi.fn(() => state.tzMode),
       getEpgTzOffset: vi.fn(() => state.tzOffset),
+      getOnlineSubtitleConfig: vi.fn(() => state.onlineSubtitles),
       setPlaylists: vi.fn(),
       setEpgUrl: vi.fn(),
       setAutoPlay: vi.fn(),
       setTzMode: vi.fn(),
+      setOnlineSubtitleConfig: vi.fn((cfg: any) => { state.onlineSubtitles = cfg; }),
       remove: vi.fn(),
     },
     toastMock: { showToast: vi.fn() },
@@ -75,6 +83,12 @@ beforeEach(() => {
   state.playlists = [];
   state.epg = '';
   state.autoPlay = false;
+  state.onlineSubtitles = {
+    preferredLanguage: '',
+    subdl: { apiKey: '' },
+    opensubtitles: { apiKey: '', username: '', password: '', token: '', tokenTs: 0 },
+    assrt: { apiKey: '' },
+  };
   vi.clearAllMocks();
   document.body.innerHTML = '';
   container = document.createElement('div');
@@ -310,6 +324,27 @@ describe('Settings.save', () => {
     expect(activeTz()).toBe('feed');
     click('#save-settings');
     expect(storageMock.setTzMode).toHaveBeenCalledWith('feed');
+  });
+
+  it('saves online subtitle credentials', () => {
+    settings.render();
+    (container.querySelector('#subdl-key') as HTMLInputElement).value = 'SK';
+    (container.querySelector('#os-key') as HTMLInputElement).value = 'OK';
+    (container.querySelector('#os-user') as HTMLInputElement).value = 'u';
+    (container.querySelector('#os-pass') as HTMLInputElement).value = 'p';
+    click('[data-dropdown-value="zh-CN"]');
+    click('#save-settings');
+    const cfg = storageMock.getOnlineSubtitleConfig();
+    expect(cfg.subdl.apiKey).toBe('SK');
+    expect(cfg.opensubtitles).toMatchObject({ apiKey: 'OK', username: 'u', password: 'p' });
+    expect(cfg.preferredLanguage).toBe('zh-CN');
+  });
+
+  it('saves the Assrt token', () => {
+    settings.render();
+    (container.querySelector('#assrt-key') as HTMLInputElement).value = 'AZ';
+    click('#save-settings');
+    expect(storageMock.getOnlineSubtitleConfig().assrt.apiKey).toBe('AZ');
   });
 });
 

@@ -94,6 +94,7 @@ export class Series extends CatalogView<SeriesCategory, SeriesItem> {
       kind: 'episode',
       resumeSecs: saved ? saved.position : 0,
       subtitles: ep.subtitles,
+      searchMeta: { season: ep.season, episode: ep.episode },
     });
   }
 

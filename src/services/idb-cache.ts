@@ -3,9 +3,10 @@ import { createLogger } from '../utils/logger';
 
 const log = createLogger('IDB');
 const DB_NAME = 'iptv';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const EPG_STORE = 'epg-cache';
 const CATALOG_STORE = 'catalog-cache';
+const SUBTITLE_STORE = 'subtitle-cache';
 
 export interface CachedEpgEntry {
   url: string;
@@ -31,6 +32,9 @@ function openDb(): Promise<IDBDatabase | null> {
       }
       if (!db.objectStoreNames.contains(CATALOG_STORE)) {
         db.createObjectStore(CATALOG_STORE, { keyPath: 'key' });
+      }
+      if (!db.objectStoreNames.contains(SUBTITLE_STORE)) {
+        db.createObjectStore(SUBTITLE_STORE, { keyPath: 'key' });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -131,6 +135,36 @@ export async function setCachedCatalog(key: string, data: unknown): Promise<void
       tx.onabort = () => { log.warn('Catalog write aborted:', tx.error); resolve(); };
     } catch (err) {
       log.warn('Catalog write failed:', err);
+      resolve();
+    }
+  });
+}
+
+export async function getCachedSubtitle(key: string): Promise<string | null> {
+  const db = await openDb();
+  if (!db) return null;
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(SUBTITLE_STORE, 'readonly');
+      const req = tx.objectStore(SUBTITLE_STORE).get(key);
+      req.onsuccess = () => resolve((req.result as { text?: string } | undefined)?.text ?? null);
+      req.onerror = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+export async function setCachedSubtitle(key: string, text: string): Promise<void> {
+  const db = await openDb();
+  if (!db) return;
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(SUBTITLE_STORE, 'readwrite');
+      tx.objectStore(SUBTITLE_STORE).put({ key, timestamp: Date.now(), text });
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    } catch {
       resolve();
     }
   });

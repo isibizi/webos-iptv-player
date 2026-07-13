@@ -215,6 +215,7 @@ export interface SidecarSubtitle {
   name: string;
   lang: string;
   url: string;
+  text?: string;
 }
 
 export interface VodInfo {
@@ -226,6 +227,9 @@ export interface VodInfo {
   durationSecs: number;
   poster: string;
   subtitles: SidecarSubtitle[];
+  imdbId: string;
+  tmdbId: string;
+  year: number;
 }
 
 export interface SeriesCategory {
@@ -277,6 +281,15 @@ export interface ResumeEntry {
   updatedAt: number;  // epoch ms, for recency ordering
 }
 
+// Structured metadata for online subtitle search (passed from Xtream catalog to player).
+export interface SearchMeta {
+  imdbId?: string;
+  tmdbId?: string;
+  year?: number;
+  season?: number;
+  episode?: number;
+}
+
 // A VOD playback request handed to the player's VOD mode. The player derives no
 // channel context from this; onBack returns the UI to the originating screen.
 export interface VodPlayback {
@@ -288,5 +301,6 @@ export interface VodPlayback {
   kind: ResumeKind;
   resumeSecs: number;
   subtitles: SidecarSubtitle[];
+  searchMeta?: SearchMeta;
   onBack: () => void;
 }

@@ -1,9 +1,19 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
-const { playlistMock } = vi.hoisted(() => ({
-  playlistMock: { channels: [] as unknown[], getByIndex: vi.fn() },
-}));
+const { playlistMock, subtitleSearchServiceMock } = vi.hoisted(() => {
+  let mockIsAvailable = false;
+  return {
+    playlistMock: { channels: [] as unknown[], getByIndex: vi.fn() },
+    subtitleSearchServiceMock: {
+      isAvailable: () => mockIsAvailable,
+      preferredLanguage: () => '',
+      search: vi.fn(),
+      download: vi.fn(async () => ({ text: 'WEBVTT\n\n1\n00:00:01.000 --> 00:00:02.000\nhi\n', format: 'srt' as const })),
+      __setMockAvailable: (v: boolean) => { mockIsAvailable = v; },
+    },
+  };
+});
 
 vi.mock('../services/playlist-service', () => ({ PlaylistService: playlistMock }));
 vi.mock('../services/epg-service', () => ({
@@ -14,16 +24,25 @@ vi.mock('../services/storage-service', () => ({
     setLastChannel: vi.fn(), getSubtitlePref: vi.fn(), setSubtitlePref: vi.fn(),
     getAudioPref: vi.fn(), setAudioPref: vi.fn(),
     setResume: vi.fn(), clearResume: vi.fn(),
+    getPickedOnlineSub: vi.fn(), setPickedOnlineSub: vi.fn(),
   },
 }));
 vi.mock('./toast', () => ({ showToast: vi.fn() }));
 vi.mock('../services/media-probe', () => ({ probeMedia: vi.fn() }));
+vi.mock('../services/subtitle-search/subtitle-search-service', () => ({
+  subtitleSearchService: subtitleSearchServiceMock,
+}));
+vi.mock('../services/idb-cache', () => ({
+  getCachedSubtitle: vi.fn(),
+  setCachedSubtitle: vi.fn(),
+}));
 
 import { Player, ASS_SUBTITLE_BASE } from './player';
 import { containerMime, extFromUrl } from '../utils/url';
 import { StorageService } from '../services/storage-service';
 import { showToast } from './toast';
 import { probeMedia } from '../services/media-probe';
+import { getCachedSubtitle, setCachedSubtitle } from '../services/idb-cache';
 import { CONFIG } from '../config';
 
 const CHANNEL = {
@@ -699,6 +718,108 @@ describe('Player VOD ASS sidecar subtitles', () => {
     vi.mocked(StorageService.getSubtitlePref).mockReturnValue({ off: false, name: 'ASS 1', lang: 'l1' });
     applySubs();
     expect(assSubs.show).toHaveBeenCalledWith(0);
+  });
+
+  it('exposes an ASS sidecar as a selectable picker option at base + 0', () => {
+    const p = player as unknown as Record<string, unknown>;
+    p.vod = {
+      accountId: 'a', kind: 'movie', itemId: 'm1', title: 'T', url: 'http://host/m',
+      poster: '', resumeSecs: 0, onBack: vi.fn(), extras: {}, searchMeta: {},
+      subtitles: [{ id: 'ass1', name: 'A', lang: 'l1', url: 'http://host/a.ass' }],
+    };
+    p.vodAssSidecars = [{ id: 'ass1', name: 'A', lang: 'l1', url: 'http://host/a.ass', text: '' }];
+    const tracks = player.getSubtitleTracks();
+    expect(tracks.some((t) => t.index === ASS_SUBTITLE_BASE)).toBe(true);
+  });
+
+  it('applies an online SRT result as a shown text track', async () => {
+    subtitleSearchServiceMock.__setMockAvailable(true);
+    try {
+      const p = player as unknown as Record<string, unknown>;
+      p.vod = {
+        accountId: 'a', kind: 'movie', itemId: 'm1', title: 'T', url: 'http://host/m',
+        poster: '', resumeSecs: 0, onBack: vi.fn(), extras: {}, searchMeta: {},
+        subtitles: [],
+      };
+      const videoEl = { textTracks: [] as unknown[] };
+      p.videoEl = videoEl;
+      const vodSubs = {
+        addOnline: vi.fn((_, sub) => {
+          const track = { mode: 'showing' as TextTrackMode, kind: 'subtitles', label: sub.name, language: sub.lang };
+          videoEl.textTracks.push(track);
+          return track;
+        }),
+        ensureLoaded: vi.fn(),
+      };
+      p.vodSubs = vodSubs;
+      await (player as unknown as { applyOnlineSubtitle: (r: unknown) => Promise<void> }).applyOnlineSubtitle({
+        providerId: 'subdl', id: '1', language: 'l1', releaseName: 'A', fileName: 'a.srt',
+        format: 'srt', hearingImpaired: false, downloads: 0,
+      });
+      const tracks = player.getSubtitleTracks();
+      expect(tracks.some((t) => t.active)).toBe(true);
+      // The full happy path ran (not the catch): the pick was persisted.
+      expect(vi.mocked(StorageService.setPickedOnlineSub)).toHaveBeenCalled();
+    } finally {
+      subtitleSearchServiceMock.__setMockAvailable(false);
+    }
+  });
+
+  it('does not apply or persist an online result when the VOD changed mid-download', async () => {
+    subtitleSearchServiceMock.__setMockAvailable(true);
+    try {
+      const p = player as unknown as Record<string, unknown>;
+      const v1 = { accountId: 'a', kind: 'movie' as const, itemId: 'm1', title: 'One', url: 'http://host/m1',
+        poster: '', resumeSecs: 0, onBack: vi.fn(), subtitles: [] };
+      p.vod = v1;
+      p.videoEl = { textTracks: [] as unknown[] };
+      const addOnline = vi.fn();
+      p.vodSubs = { addOnline, ensureLoaded: vi.fn() };
+      let resolveDl: (v: { text: string; format: 'srt' }) => void = () => {};
+      subtitleSearchServiceMock.download.mockImplementationOnce(() => new Promise((res) => { resolveDl = res as typeof resolveDl; }));
+      vi.mocked(StorageService.setPickedOnlineSub).mockClear();
+      const done = (player as unknown as { applyOnlineSubtitle: (r: unknown) => Promise<void> }).applyOnlineSubtitle({
+        providerId: 'subdl', id: '1', language: 'l1', releaseName: 'A', fileName: 'a.srt',
+        format: 'srt', hearingImpaired: false, downloads: 0,
+      });
+      p.vod = { ...v1, itemId: 'm2', title: 'Two' }; // user switched items before the download resolved
+      resolveDl({ text: 'WEBVTT\n\nx', format: 'srt' });
+      await done;
+      expect(addOnline).not.toHaveBeenCalled();
+      expect(vi.mocked(StorageService.setPickedOnlineSub)).not.toHaveBeenCalled();
+    } finally {
+      subtitleSearchServiceMock.__setMockAvailable(false);
+    }
+  });
+
+  it('restores a remembered online subtitle from the idb cache without downloading', async () => {
+    const p = player as unknown as Record<string, unknown>;
+    const vod = { accountId: 'x1', kind: 'vod' as const, itemId: '10', title: 'Movie', url: 'http://host/vod.mp4',
+      poster: '', resumeSecs: 0, onBack: vi.fn(), subtitles: [] };
+    p.vod = vod;
+    const videoEl = { textTracks: [] as unknown[] };
+    p.videoEl = videoEl;
+    const addOnline = vi.fn((_: unknown, sub: { name: string; lang: string }) => {
+      const track = { mode: 'disabled' as TextTrackMode, kind: 'subtitles', label: sub.name, language: sub.lang };
+      videoEl.textTracks.push(track);
+      return track;
+    });
+    p.vodSubs = { addOnline };
+    // Seed the pick + cache-hit for exactly this restore; `Once` + finally-reset
+    // keeps these mocks from leaking into later VOD tests. Clear `download`'s
+    // history because a prior test in this file exercised it (no global clearMocks).
+    subtitleSearchServiceMock.download.mockClear();
+    vi.mocked(StorageService.getPickedOnlineSub).mockReturnValueOnce({ providerId: 'subdl', id: '9', name: 'Alpha', lang: 'l1', format: 'srt' });
+    vi.mocked(getCachedSubtitle).mockResolvedValueOnce('WEBVTT\n\n1\n00:00:01.000 --> 00:00:02.000\nhi\n');
+    try {
+      await (player as unknown as { restoreOnlineSubtitle: (v: unknown) => Promise<void> }).restoreOnlineSubtitle(vod);
+      expect(vi.mocked(getCachedSubtitle)).toHaveBeenCalledWith('subdl:9');
+      expect(subtitleSearchServiceMock.download).not.toHaveBeenCalled();
+      expect(addOnline).toHaveBeenCalled();
+    } finally {
+      vi.mocked(StorageService.getPickedOnlineSub).mockReset();
+      vi.mocked(getCachedSubtitle).mockReset();
+    }
   });
 });
 

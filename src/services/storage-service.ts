@@ -1,5 +1,6 @@
 import { CONFIG } from '../config';
 import type { AudioPref, Channel, PlaylistEntry, Reminder, ResumeEntry, ResumeKind, SubtitlePref, TzMode } from '../types';
+import type { OnlineSubtitleConfig, PickedOnlineSub } from './subtitle-search/types';
 import { channelKey } from '../utils/channel';
 import { genPlaylistId } from '../utils/playlist-id';
 
@@ -217,6 +218,34 @@ export const StorageService = {
   },
   setSelectedXtreamAccountId(id: string): void {
     set('selectedXtream', id);
+  },
+
+  getOnlineSubtitleConfig(): OnlineSubtitleConfig {
+    const s = get<Partial<OnlineSubtitleConfig>>('online_subtitles', {});
+    return {
+      preferredLanguage: s.preferredLanguage ?? '',
+      subdl: { apiKey: s.subdl?.apiKey ?? '' },
+      assrt: { apiKey: s.assrt?.apiKey ?? '' },
+      opensubtitles: {
+        apiKey: s.opensubtitles?.apiKey ?? '',
+        username: s.opensubtitles?.username ?? '',
+        password: s.opensubtitles?.password ?? '',
+        token: s.opensubtitles?.token ?? '',
+        tokenTs: s.opensubtitles?.tokenTs ?? 0,
+      },
+    };
+  },
+  setOnlineSubtitleConfig(cfg: OnlineSubtitleConfig): void {
+    set('online_subtitles', cfg);
+  },
+
+  getPickedOnlineSub(accountId: string, kind: ResumeKind, itemId: string): PickedOnlineSub | null {
+    return get<Record<string, PickedOnlineSub>>('online_sub_picks', {})[`${accountId}|${kind}|${itemId}`] ?? null;
+  },
+  setPickedOnlineSub(accountId: string, kind: ResumeKind, itemId: string, pick: PickedOnlineSub): void {
+    const all = get<Record<string, PickedOnlineSub>>('online_sub_picks', {});
+    all[`${accountId}|${kind}|${itemId}`] = pick;
+    set('online_sub_picks', all);
   },
 
 };

@@ -13,6 +13,7 @@ import { StorageService } from '../services/storage-service';
 import { HlsSubtitles } from '../services/hls-subtitles';
 import { VodSubtitles } from '../services/vod-subtitles';
 import { AssSubtitles, isAssSidecar } from '../services/ass-subtitles';
+import { getCachedSubtitle, setCachedSubtitle } from '../services/idb-cache';
 import { CONFIG } from '../config';
 import { formatTime, formatPosition, formatDuration, getProgress } from '../utils/time';
 import { getLenientLoaders } from '../utils/hls-stable-loader';
@@ -23,6 +24,9 @@ import { probeMedia } from '../services/media-probe';
 import { createLogger } from '../utils/logger';
 import { PLAY_ICON, PAUSE_ICON } from './icons';
 import { showToast } from './toast';
+import { subtitleSearchService } from '../services/subtitle-search/subtitle-search-service';
+import { SubtitleSearchOverlay } from './subtitle-search-overlay';
+import type { OnlineSubtitleResult, SubtitleQuery } from '../services/subtitle-search/types';
 
 const log = createLogger('Player');
 
@@ -33,6 +37,9 @@ const isWebOS = /webOS|Web0S/i.test(navigator.userAgent);
 // row; -2 is the single closed-caption entry, drawn by the native compositor via
 // setSubtitleEnable (channel selection is impossible — selectTrack decode-freezes).
 const CC_SUBTITLE_INDEX = -2;
+
+// Sentinel for the "Search online…" subtitle row, which opens the search overlay.
+const SEARCH_ONLINE_INDEX = -3;
 
 // Base for the synthetic picker indices of ASS/SSA sidecars, which can't surface
 // as native <track>s (assjs draws them). Kept high so it never collides with a
@@ -82,6 +89,7 @@ export class Player {
   private assSubs = new AssSubtitles(); // sidecar ASS/SSA subtitles for VOD, drawn by assjs
   private vodAssSidecars: SidecarSubtitle[] = []; // the ASS/SSA sidecars of the current VOD item
   private activeAssIndex = -1; // index into vodAssSidecars currently shown (-1 = none)
+  private subsOverlay: SubtitleSearchOverlay | null = null; // online subtitle search overlay
   private stallWatchdog: StallWatchdog;
   constructor(container: HTMLElement, onBack: () => void) {
     this.container = container;
@@ -289,6 +297,7 @@ export class Player {
     this.vodAssSidecars = v.subtitles.filter((s) => isAssSidecar(s.url));
     this.vodSubs.attach(this.videoEl, v.subtitles.filter((s) => !isAssSidecar(s.url)));
     this.assSubs.attach(this.videoEl, this.videoEl.parentElement ?? document.body, this.vodAssSidecars);
+    void this.restoreOnlineSubtitle(v);
     // Read codec/fps/HDR from the container header — the video element can't
     // expose them on webOS. Fires once, off the playback path; re-renders the OSD
     // when it resolves. Guarded so a stale probe can't clobber a newer VOD.
@@ -318,6 +327,7 @@ export class Player {
   }
 
   private handleVodAction(action: Action): void {
+    if (this.subsOverlay?.visible) { this.subsOverlay.handleAction(action); return; }
     switch (action) {
       case 'back':
       case 'stop': {
@@ -349,6 +359,102 @@ export class Player {
       default:
         break; // up/down/channel_up/channel_down are no-ops (no channels in VOD)
     }
+  }
+
+  private ensureSubsOverlay(): SubtitleSearchOverlay | null {
+    if (this.subsOverlay) return this.subsOverlay;
+    const container = $('#subtitle-search');
+    if (!container) return null;
+    this.subsOverlay = new SubtitleSearchOverlay(
+      container,
+      (r) => void this.applyOnlineSubtitle(r),
+      () => { /* closed */ },
+    );
+    return this.subsOverlay;
+  }
+
+  private buildSubtitleQuery(): SubtitleQuery {
+    const v = this.vod!;
+    const m = v.searchMeta ?? {};
+    return {
+      type: v.kind === 'episode' ? 'episode' : 'movie',
+      title: v.title,
+      imdbId: m.imdbId, tmdbId: m.tmdbId, year: m.year, season: m.season, episode: m.episode,
+    };
+  }
+
+  private async openSubtitleSearch(): Promise<void> {
+    const overlay = this.ensureSubsOverlay();
+    if (!overlay || !this.vod) return;
+    overlay.showStatus('Searching…');
+    try {
+      const results = await subtitleSearchService.search(this.buildSubtitleQuery());
+      if (this.vod == null) return;
+      if (!results.length) { overlay.showStatus('No subtitles found', true); return; }
+      overlay.open(results, subtitleSearchService.preferredLanguage());
+    } catch (e) {
+      log.warn('subtitle search failed:', e);
+      overlay.showStatus('Subtitle search failed', true);
+    }
+  }
+
+  private async applyOnlineSubtitle(r: OnlineSubtitleResult): Promise<void> {
+    const overlay = this.subsOverlay;
+    const v = this.vod;
+    if (!v) return;
+    overlay?.showStatus('Downloading…');
+    try {
+      const dl = await subtitleSearchService.download(r);
+      if (this.vod !== v) return; // the user switched items mid-download — don't apply/persist to the wrong VOD
+      const cacheKey = `${r.providerId}:${r.id}`;
+      void setCachedSubtitle(cacheKey, dl.text);
+      StorageService.setPickedOnlineSub(v.accountId, v.kind, v.itemId,
+        { providerId: r.providerId, id: r.id, name: r.releaseName || r.language, lang: r.language, format: dl.format });
+      const sub = { id: cacheKey, name: r.releaseName || r.language, lang: r.language, url: '', text: dl.text };
+      if (dl.format === 'ass' || dl.format === 'ssa') {
+        this.vodAssSidecars.push(sub);
+        this.applySubtitleChoice(ASS_SUBTITLE_BASE + this.vodAssSidecars.length - 1);
+      } else if (this.videoEl) {
+        const track = this.vodSubs.addOnline(this.videoEl, sub);
+        if (track) {
+          const list = this.videoEl.textTracks;
+          let ti = -1;
+          for (let i = 0; i < list.length; i++) if (list[i] === track) ti = i;
+          if (ti >= 0) this.applySubtitleChoice(ti);
+        }
+      }
+      this.rememberSubtitle({ off: false, name: r.releaseName || r.language, lang: r.language });
+      overlay?.close();
+      showToast(`Subtitles: ${r.releaseName || r.language}`);
+    } catch (e) {
+      log.warn('online subtitle download failed:', e);
+      overlay?.showStatus('Download failed', true);
+    }
+  }
+
+  private async restoreOnlineSubtitle(v: VodPlayback): Promise<void> {
+    const pick = StorageService.getPickedOnlineSub(v.accountId, v.kind, v.itemId);
+    if (!pick || this.vod !== v) return;
+    const cacheKey = `${pick.providerId}:${pick.id}`;
+    let text = await getCachedSubtitle(cacheKey);
+    if (this.vod !== v) return;
+    if (text == null) {
+      try {
+        const dl = await subtitleSearchService.download(
+          { providerId: pick.providerId, id: pick.id, language: pick.lang, releaseName: pick.name,
+            fileName: pick.name, format: pick.format, hearingImpaired: false, downloads: 0 });
+        if (this.vod !== v) return;
+        text = dl.text;
+        void setCachedSubtitle(cacheKey, text);
+      } catch (e) {
+        log.warn('restore online subtitle failed:', e);
+        return;
+      }
+    }
+    const sub = { id: cacheKey, name: pick.name, lang: pick.lang, url: '', text };
+    if (pick.format === 'ass' || pick.format === 'ssa') this.vodAssSidecars.push(sub);
+    else if (this.videoEl) this.vodSubs.addOnline(this.videoEl, sub);
+    this.applyNativeSubtitleSelection();
   }
 
   // Stall watchdog recovery: swap in a fresh <video> (kills the wedged native
@@ -1225,6 +1331,9 @@ export class Player {
         available: true,
       });
     }
+    if (this.vod && subtitleSearchService.isAvailable()) {
+      tracks.push({ index: SEARCH_ONLINE_INDEX, label: 'Search online…', active: false, available: true });
+    }
     return tracks;
   }
 
@@ -1238,6 +1347,7 @@ export class Player {
    *  for this channel. No-op for a grayed (unavailable) track the platform didn't
    *  expose. CC and the other subtitle paths are mutually exclusive. */
   selectSubtitleTrack(index: number): void {
+    if (index === SEARCH_ONLINE_INDEX) { void this.openSubtitleSearch(); return; }
     if (index === CC_SUBTITLE_INDEX) {
       this.subs.stop();               // self-render and the native compositor can't both draw
       this.selfRenderIndex = -1;

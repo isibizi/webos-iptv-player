@@ -660,3 +660,82 @@
 .player-menu .menu-item.unavailable.focused {
   opacity: 0.6;
 }
+
+/* Subtitle search overlay — centered modal over the player */
+.subs-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 800px;
+  max-height: 600px;
+  background: rgba(30, 30, 50, 0.95);
+  border-radius: 12px;
+  padding: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(16px);
+  z-index: 70;
+}
+
+.subs-overlay-header {
+  font-size: 32px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 16px;
+}
+
+.subs-list {
+  max-height: 480px;
+  overflow-y: auto;
+}
+
+.subs-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  font-size: 22px;
+  color: var(--text-secondary);
+  border-radius: 6px;
+  margin-bottom: 4px;
+  cursor: pointer;
+}
+
+.subs-row-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.subs-count {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 5px;
+  font-size: 18px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.subs-count svg {
+  width: 16px;
+  height: 16px;
+}
+
+.subs-row.focused {
+  background: var(--accent-dim);
+  color: #fff;
+  box-shadow: none !important;
+}
+
+.subs-row.focused .subs-count {
+  color: #fff;
+}
+
+.subs-status {
+  font-size: 24px;
+  color: var(--text-secondary);
+  text-align: center;
+}
