@@ -361,6 +361,13 @@ export class Player {
     }
   }
 
+  /** Dismiss the online subtitle-search overlay if it is open. Called on every
+   *  view transition (App.showView) so it never lingers over another view or
+   *  reappears when its player view is shown again. */
+  closeSubtitleSearch(): void {
+    this.subsOverlay?.close();
+  }
+
   private ensureSubsOverlay(): SubtitleSearchOverlay | null {
     if (this.subsOverlay) return this.subsOverlay;
     const container = $('#subtitle-search');
@@ -369,6 +376,7 @@ export class Player {
       container,
       (r) => void this.applyOnlineSubtitle(r),
       () => { /* closed */ },
+      (q) => void this.runSubtitleSearch(q),
     );
     return this.subsOverlay;
   }
@@ -386,15 +394,29 @@ export class Player {
   private async openSubtitleSearch(): Promise<void> {
     const overlay = this.ensureSubsOverlay();
     if (!overlay || !this.vod) return;
+    overlay.setQuery(this.vod.title); // prefill the box with the detected title
+    await this.runSubtitleSearch(null);
+  }
+
+  /** Run an online subtitle search and feed the overlay. `query === null` uses the
+   *  structured keys (imdb/tmdb/title); a string is a manual free-form title that
+   *  overrides them via `manualQuery`. Errors/empties stay on screen (no
+   *  auto-close) so the persistent search box can be edited and retried. */
+  private async runSubtitleSearch(query: string | null): Promise<void> {
+    const overlay = this.ensureSubsOverlay();
+    if (!overlay || !this.vod) return;
+    if (query != null) overlay.setQuery(query);
     overlay.showStatus('Searching…');
     try {
-      const results = await subtitleSearchService.search(this.buildSubtitleQuery());
+      const base = this.buildSubtitleQuery();
+      const q = query != null ? { ...base, manualQuery: query } : base;
+      const results = await subtitleSearchService.search(q);
       if (this.vod == null) return;
-      if (!results.length) { overlay.showStatus('No subtitles found', true); return; }
+      if (!results.length) { overlay.showStatus('No subtitles found'); return; }
       overlay.open(results, subtitleSearchService.preferredLanguage());
     } catch (e) {
       log.warn('subtitle search failed:', e);
-      overlay.showStatus('Subtitle search failed', true);
+      overlay.showStatus('Subtitle search failed');
     }
   }
 

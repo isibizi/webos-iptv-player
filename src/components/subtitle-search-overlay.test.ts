@@ -86,4 +86,80 @@ describe('SubtitleSearchOverlay', () => {
       vi.useRealTimers();
     }
   });
+
+  it('prefills the search box with the provided query', () => {
+    const container = document.createElement('div');
+    const overlay = new SubtitleSearchOverlay(container, vi.fn(), vi.fn(), vi.fn());
+    overlay.open([res({})], '', 'Silent Harbor');
+    const input = container.querySelector<HTMLInputElement>('.subs-search-input');
+    expect(input?.value).toBe('Silent Harbor');
+  });
+
+  it('keeps the search box present (with its query) while showing a status', () => {
+    const container = document.createElement('div');
+    const overlay = new SubtitleSearchOverlay(container, vi.fn(), vi.fn(), vi.fn());
+    overlay.setQuery('Silent Harbor');
+    overlay.showStatus('No subtitles found');
+    const input = container.querySelector<HTMLInputElement>('.subs-search-input');
+    expect(input).not.toBeNull();
+    expect(input?.value).toBe('Silent Harbor');
+    expect(container.textContent).toContain('No subtitles found');
+  });
+
+  it('submits the trimmed query on Enter and ignores a blank query', () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const onSearch = vi.fn();
+    const overlay = new SubtitleSearchOverlay(container, vi.fn(), vi.fn(), onSearch);
+    overlay.open([res({})], '', 'Title');
+    const input = container.querySelector<HTMLInputElement>('.subs-search-input')!;
+    input.value = '  hello world  ';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(onSearch).toHaveBeenCalledWith('hello world');
+    input.value = '   ';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(onSearch).toHaveBeenCalledTimes(1);
+    container.remove();
+  });
+
+  it('ArrowDown in the search box moves focus into the results', () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const overlay = new SubtitleSearchOverlay(container, vi.fn(), vi.fn(), vi.fn());
+    overlay.open([res({ id: 'a' }), res({ id: 'b' })], '', 'Title');
+    const input = container.querySelector<HTMLInputElement>('.subs-search-input')!;
+    input.focus();
+    expect(document.activeElement).toBe(input);
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    expect(document.activeElement).not.toBe(input);
+    expect(container.querySelector('.subs-row.focused')?.getAttribute('data-result-index')).toBe('0');
+    container.remove();
+  });
+
+  it('Up from the top result focuses the search box', () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const overlay = new SubtitleSearchOverlay(container, vi.fn(), vi.fn(), vi.fn());
+    overlay.open([res({ id: 'a' }), res({ id: 'b' })], '', 'Title');
+    overlay.handleAction('up');
+    expect(document.activeElement).toBe(container.querySelector('.subs-search-input'));
+    container.remove();
+  });
+
+  it('Back from the search box returns to the list; Back from the list closes', () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const onClose = vi.fn();
+    const overlay = new SubtitleSearchOverlay(container, vi.fn(), onClose, vi.fn());
+    overlay.open([res({ id: 'a' })], '', 'Title');
+    const input = container.querySelector<HTMLInputElement>('.subs-search-input')!;
+    input.focus();
+    overlay.handleAction('back');
+    expect(onClose).not.toHaveBeenCalled();
+    expect(document.activeElement).not.toBe(input);
+    overlay.handleAction('back');
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(overlay.visible).toBe(false);
+    container.remove();
+  });
 });

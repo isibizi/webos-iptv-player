@@ -732,7 +732,56 @@ describe('Player VOD ASS sidecar subtitles', () => {
     expect(tracks.some((t) => t.index === ASS_SUBTITLE_BASE)).toBe(true);
   });
 
+  it('closeSubtitleSearch dismisses an open overlay (called on every view change)', async () => {
+    subtitleSearchServiceMock.__setMockAvailable(true);
+    const host = document.createElement('div');
+    host.id = 'subtitle-search';
+    container.appendChild(host);
+    subtitleSearchServiceMock.search.mockResolvedValueOnce([
+      { providerId: 'subdl', id: '1', language: 'l1', releaseName: 'A', fileName: 'a.srt', format: 'srt', hearingImpaired: false, downloads: 0 },
+    ]);
+    try {
+      const p = player as unknown as Record<string, unknown>;
+      p.vod = {
+        accountId: 'a', kind: 'movie', itemId: 'm1', title: 'Charade', url: 'http://host/m',
+        poster: '', resumeSecs: 0, onBack: vi.fn(), extras: {}, searchMeta: {}, subtitles: [],
+      };
+      await (player as unknown as { runSubtitleSearch: (q: string | null) => Promise<void> }).runSubtitleSearch(null);
+      const overlay = (player as unknown as { subsOverlay: { visible: boolean } }).subsOverlay;
+      expect(overlay.visible).toBe(true);
+      player.closeSubtitleSearch();
+      expect(overlay.visible).toBe(false);
+      expect(host.classList.contains('hidden')).toBe(true);
+    } finally {
+      subtitleSearchServiceMock.__setMockAvailable(false);
+      host.remove();
+    }
+  });
+
+  it('runs a manual query that overrides the structured search keys', async () => {
+    subtitleSearchServiceMock.__setMockAvailable(true);
+    const host = document.createElement('div');
+    host.id = 'subtitle-search';
+    document.body.appendChild(host);
+    subtitleSearchServiceMock.search.mockClear();
+    subtitleSearchServiceMock.search.mockResolvedValueOnce([]);
+    try {
+      const p = player as unknown as Record<string, unknown>;
+      p.vod = {
+        accountId: 'a', kind: 'movie', itemId: 'm1', title: 'Auto Title', url: 'http://host/m',
+        poster: '', resumeSecs: 0, onBack: vi.fn(), extras: {},
+        searchMeta: { imdbId: '123', year: 2020 }, subtitles: [],
+      };
+      await (player as unknown as { runSubtitleSearch: (q: string | null) => Promise<void> }).runSubtitleSearch('My Manual Query');
+      expect(subtitleSearchServiceMock.search).toHaveBeenCalledWith(expect.objectContaining({ manualQuery: 'My Manual Query' }));
+    } finally {
+      subtitleSearchServiceMock.__setMockAvailable(false);
+      host.remove();
+    }
+  });
+
   it('applies an online SRT result as a shown text track', async () => {
+    subtitleSearchServiceMock.__setMockAvailable(true);
     subtitleSearchServiceMock.__setMockAvailable(true);
     try {
       const p = player as unknown as Record<string, unknown>;

@@ -136,6 +136,15 @@ then a D-pad list. Each row reads `<Provider> · <Language> · <ReleaseName> · 
 (SubDL/Assrt don't expose one). All provider text is untrusted, rendered through `html` (escaped).
 Selection is wired via `mouseup` hit-testing for the Magic Remote (a `click` would fail on the TV).
 
+A **persistent search box** sits above the list, prefilled with the detected title. Opening runs
+the structured search automatically; pressing **Up** from the top result focuses the box, and
+editing + **Enter** re-runs the search with `manualQuery` set (the player's `runSubtitleSearch`),
+which overrides the structured keys — for items with no IMDb/TMDB id or a mislabeled title. The box
+owns its own `keydown` (Enter submits, Down hands off to the results, Back returns to the list),
+matching the Search section's box; because the box is always present, "No subtitles found" and
+search errors render inline **without auto-closing**, so the user can retry (only the post-pick
+"Download failed" message auto-dismisses).
+
 ### Applying & restoring
 
 `applyOnlineSubtitle` downloads the subtitle (`{ text, format }`), caches the text in IndexedDB
