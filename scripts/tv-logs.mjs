@@ -38,8 +38,9 @@ try {
   pages = await (await fetch(`${base}/json/list`)).json();
 } catch {
   console.error(
-    `tv-logs: no DevTools endpoint on ${ip}:${port}.\n` +
-      `Enable it once with:  ares-inspect --device <dev> --app <id>`,
+    `tv-logs: no DevTools endpoint on ${ip}:${port}. ` +
+      `Make sure the TV is on and the app is running:\n` +
+      `  ares-launch ${process.env.TV_DEVICE ? `--device ${process.env.TV_DEVICE} ` : ''}${appFilter || '<app-id>'}`,
   );
   process.exit(1);
 }
@@ -48,7 +49,12 @@ const page =
   pages.find((p) => p.type === 'page' && (!appFilter || p.description === appFilter || (p.url || '').includes(appFilter))) ||
   pages.find((p) => p.type === 'page');
 if (!page) {
-  console.error('tv-logs: no inspectable page found.');
+  console.error(
+    `tv-logs: no inspectable page found on ${ip}:${port}` +
+      (appFilter ? ` for "${appFilter}"` : '') + '. ' +
+      `Make sure the TV is on and the app is running:\n` +
+      `  ares-launch ${process.env.TV_DEVICE ? `--device ${process.env.TV_DEVICE} ` : ''}${appFilter || '<app-id>'}`,
+  );
   process.exit(1);
 }
 

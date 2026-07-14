@@ -48,6 +48,16 @@ describe('TabBar', () => {
     expect(focusedLabel()).toBe('Live');
   });
 
+  it('blur() gives up focus so later input is no longer captured', () => {
+    bar.focus();
+    expect(bar.focused).toBe(true);
+    bar.blur();
+    expect(bar.focused).toBe(false);
+    // A subsequent action is inert (handleAction returns early when not focused).
+    bar.handleAction('select');
+    expect(onEnter).not.toHaveBeenCalled();
+  });
+
   it('right/left switch the active section live and call onSwitch, staying focused', () => {
     bar.focus();
     bar.handleAction('right');
@@ -116,14 +126,14 @@ describe('TabBar', () => {
     expect(focusedLabel()).toBe('Live');
   });
 
-  it('enters a tab on a pointer mouseup by coordinate hit-test', () => {
+  it('enters a tab on a pointer click by coordinate hit-test', () => {
     bar.init();
     const seriesBtn = document.querySelectorAll('.tab-bar-item')[2] as HTMLElement;
     seriesBtn.getBoundingClientRect = () =>
       ({ left: 200, top: 0, width: 100, height: 40, right: 300, bottom: 40, x: 200, y: 0, toJSON() {} }) as DOMRect;
     const origFromPoint = document.elementFromPoint;
     document.elementFromPoint = () => seriesBtn;
-    document.dispatchEvent(new MouseEvent('mouseup', { clientX: 250, clientY: 20, bubbles: true }));
+    document.dispatchEvent(new MouseEvent('click', { clientX: 250, clientY: 20, bubbles: true }));
     document.elementFromPoint = origFromPoint;
     expect(onEnter).toHaveBeenCalledWith('series');
     expect(bar.focused).toBe(false);
@@ -192,9 +202,9 @@ describe('TabBar inline search', () => {
       ({ left: 1700, top: 0, width: 44, height: 44, right: 1744, bottom: 44, x: 1700, y: 0, toJSON() {} }) as DOMRect;
     const orig = document.elementFromPoint;
     document.elementFromPoint = () => icon;
-    document.dispatchEvent(new MouseEvent('mouseup', { clientX: 1720, clientY: 20, bubbles: true }));
+    document.dispatchEvent(new MouseEvent('click', { clientX: 1720, clientY: 20, bubbles: true }));
     expect(expanded()).toBe(true);
-    document.dispatchEvent(new MouseEvent('mouseup', { clientX: 1720, clientY: 20, bubbles: true }));
+    document.dispatchEvent(new MouseEvent('click', { clientX: 1720, clientY: 20, bubbles: true }));
     expect(expanded()).toBe(false);
     document.elementFromPoint = orig;
   });

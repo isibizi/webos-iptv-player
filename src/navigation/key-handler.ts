@@ -125,27 +125,18 @@ export const KeyHandler = {
     }, { passive: false });
 
     document.addEventListener('click', (e: MouseEvent) => {
-      // Skip controls that self-handle clicks (their own click handler is the
-      // "OK" action). Without this, the deferred select fires a second time on
-      // whatever view we navigated to, e.g. Cancel in settings → channels view
-      // → plays the focused channel and ends up on the player.
+      // Components that self-activate on click (their own click handler is the
+      // "OK" action) mark their root subtree with `data-self-activate` so this
+      // global handler skips them — otherwise the deferred select below fires a
+      // second time (e.g. on the view we just navigated to). This replaces an
+      // older hardcoded class list; new self-handling components opt in by adding
+      // the attribute, with no edit here.
       //
       // A detached target means a handler that ran earlier in this same click
       // already consumed it by removing the element (e.g. settings "Remove"
-      // deletes its row) — its `.settings-view` ancestor is gone, so the guard
-      // below would miss it and fire a spurious select that deletes a second row.
-      //
-      // `.search-view` self-handles pointer activation on mouseup (Magic Remote OK
-      // fires no click), so excluding it here keeps the desktop mouse from
-      // double-firing select on top of that.
-      //
-      // `.channel-view` (the channel list) likewise self-handles pointer
-      // activation on mouseup — the deferred select would otherwise be routed to
-      // the focused tab bar (and swallowed while the search box is open), and
-      // would double-fire on the freshly-shown player after the mouseup already
-      // played the channel.
+      // deletes its row) — skip it so we don't fire a spurious select.
       const t = e.target as HTMLElement;
-      if (!t.isConnected || t.closest('.player-sidebar, .player-menu, .settings-view, .search-view, .channel-view')) return;
+      if (!t.isConnected || t.closest('[data-self-activate]')) return;
       const target = t.closest<HTMLElement>('[data-focusable]');
       if (target && activeHandler) {
         target.dispatchEvent(new CustomEvent('nav:hover', { bubbles: true }));

@@ -26,6 +26,8 @@ export class ReminderPrompt {
     if (!this.el) {
       this.el = document.createElement('div');
       this.el.className = 'reminder-prompt';
+      // Self-activates on click; mark so the global click handler skips it.
+      this.el.setAttribute('data-self-activate', '');
       document.body.appendChild(this.el);
       this.bindEvents();
     }
@@ -68,9 +70,8 @@ export class ReminderPrompt {
   }
 
   private bindEvents(): void {
-    // Magic Remote OK fires mouseup (no click) and can target the video plane —
-    // hit-test by coordinate. See AGENTS.md webOS gotchas.
-    this.el!.addEventListener('mouseup', (e: MouseEvent) => {
+    // Hit-test the button under the pointer.
+    this.el!.addEventListener('click', (e: MouseEvent) => {
       const hit = document.elementFromPoint(e.clientX, e.clientY);
       const btn = hit?.closest<HTMLElement>('[data-reminder-action]');
       if (!btn) return;

@@ -43,7 +43,11 @@ export class SubtitleSearchOverlay {
     this.onPick = onPick;
     this.onClose = onClose;
     this.onSearch = onSearch;
-    this.el.addEventListener('mouseup', (e: MouseEvent) => {
+    // Activate the result under the pointer on click. This overlay lives inside
+    // the player view's `data-self-activate` subtree, so the global click handler
+    // skips it — even though result rows are `[data-focusable]` — avoiding a
+    // double-fire.
+    this.el.addEventListener('click', (e: MouseEvent) => {
       const row = (e.target as HTMLElement).closest<HTMLElement>('[data-result-index]');
       if (!row) return;
       const i = Number(row.dataset.resultIndex);

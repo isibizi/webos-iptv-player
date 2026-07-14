@@ -85,25 +85,25 @@ describe('AccountSwitcher', () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
-  it('a pointer mouseup on a row selects that account', () => {
+  it('a pointer click on a row selects that account', () => {
     sw.setAccounts(A, 'a1');
     sw.openMenu();
     const row = menuItems()[2] as HTMLElement; // Charlie
     const orig = document.elementFromPoint;
     document.elementFromPoint = () => row;
-    document.dispatchEvent(new MouseEvent('mouseup', { clientX: 10, clientY: 10, bubbles: true }));
+    document.dispatchEvent(new MouseEvent('click', { clientX: 10, clientY: 10, bubbles: true }));
     document.elementFromPoint = orig;
     expect(onSelect).toHaveBeenCalledWith('a3');
     expect(sw.menuOpen).toBe(false);
   });
 
-  it('a pointer mouseup on the avatar toggles the menu', () => {
+  it('a pointer click on the avatar toggles the menu', () => {
     sw.setAccounts(A, 'a1');
     const orig = document.elementFromPoint;
     document.elementFromPoint = () => avatar()!;
-    document.dispatchEvent(new MouseEvent('mouseup', { clientX: 5, clientY: 5, bubbles: true }));
+    document.dispatchEvent(new MouseEvent('click', { clientX: 5, clientY: 5, bubbles: true }));
     expect(menuOpen()).toBe(true);
-    document.dispatchEvent(new MouseEvent('mouseup', { clientX: 5, clientY: 5, bubbles: true }));
+    document.dispatchEvent(new MouseEvent('click', { clientX: 5, clientY: 5, bubbles: true }));
     expect(menuOpen()).toBe(false);
     document.elementFromPoint = orig;
   });

@@ -113,13 +113,15 @@ export class Player {
     this.videoEl = videoEl;
     this.bindVideoEvents(videoEl);
 
-    // Pointer input (desktop mouse + Magic Remote). The Magic Remote OK fires
-    // mousedown/up (and pointer events) but NOT a synthesized click, and its
-    // target can be the video plane — so act on mouseup by COORDINATES, not the
-    // event target. Bound once (init() can re-run on a fresh <video>): the
-    // handlers read this.videoEl live and the container is stable.
+    // Pointer input. Activate OSD controls on click by coordinate hit-test (vs
+    // e.target) since they sit over the video plane. Bound once (init() can re-run
+    // on a fresh <video>): the handlers read this.videoEl live and the container
+    // is stable. The view is marked `data-self-activate` so the global click
+    // handler skips this subtree (also covering the sidebar, player menu and
+    // subtitle overlay nested within).
     if (!this.pointerBound) {
       this.pointerBound = true;
+      this.container.setAttribute('data-self-activate', '');
       this.container.addEventListener('mousemove', (e: MouseEvent) => {
         this.pointerX = e.clientX;
         this.pointerY = e.clientY;
@@ -127,7 +129,7 @@ export class Player {
         // something to aim at; keep it up while the cursor keeps moving.
         if (this.osdVisible) this.resetOsdTimer(); else this.showOSD();
       });
-      this.container.addEventListener('mouseup', (e: MouseEvent) => this.onPointerRelease(e.clientX, e.clientY));
+      this.container.addEventListener('click', (e: MouseEvent) => this.onPointerRelease(e.clientX, e.clientY));
 
       // A broken programme icon: record its URL (capture — `error` doesn't bubble)
       // and re-render so morph drops it and never re-requests it.
@@ -818,9 +820,9 @@ export class Player {
     return true;
   }
 
-  /** A pointer release (mouse or Magic Remote OK): seek if it landed on the bar,
-   *  else activate the play/pause or Go-to-Live control under it. Coordinate-based
-   *  because the Magic Remote OK fires no click and its target may be the video. */
+  /** A pointer release: seek if it landed on the bar, else activate the play/pause
+   *  or Go-to-Live control under it. Coordinate-based because the OSD controls sit
+   *  over the video plane. */
   private onPointerRelease(x: number, y: number): void {
     if (this.seekAtPointer(x, y)) return;
     if (this.hitsControl('[data-playpause]', x, y)) this.pauseToggle();

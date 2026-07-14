@@ -35,8 +35,8 @@ async function seedTwoAccounts(page: Page): Promise<void> {
   });
 }
 
-// Open the avatar dropdown with a coordinate mouseup (Magic Remote OK fires no
-// click; the switcher activates on a mouseup hit-test), then wait for the menu.
+// Open the avatar dropdown with a coordinate mouse press (the switcher activates
+// on a click hit-test), then wait for the menu.
 async function openAccountMenu(page: Page): Promise<void> {
   const avatar = page.locator('.account-avatar');
   await expect(avatar).toBeVisible();
@@ -48,7 +48,7 @@ async function openAccountMenu(page: Page): Promise<void> {
   await expect(page.locator('.account-menu')).toBeVisible();
 }
 
-// Choose an account row by id with a coordinate mouseup (same reason as above).
+// Choose an account row by id with a coordinate mouse press (same reason as above).
 async function pickAccount(page: Page, id: string): Promise<void> {
   const row = page.locator(`.account-menu-item[data-account-id="${id}"]`);
   await expect(row).toBeVisible();

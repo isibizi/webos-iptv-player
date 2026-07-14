@@ -67,7 +67,7 @@ test('M3U-only Search (via the tab bar) filters channels into a vertical list', 
   await expect(page.locator('.catalog-rail')).toHaveCount(0);
 });
 
-test('M3U-only Search: a Magic Remote pointer OK (bare mouseup) plays the channel', async ({ page }) => {
+test('M3U-only Search: a pointer click plays the channel', async ({ page }) => {
   await routePlaylist(page, SEARCH_M3U);
   await routeLiveManifest(page);
   await seedPlaylist(page);
@@ -79,12 +79,11 @@ test('M3U-only Search: a Magic Remote pointer OK (bare mouseup) plays the channe
   await page.locator('.tab-bar-search-input').fill('alpha');
   await expect(page.locator('.search-channel-row')).toHaveCount(2);
 
-  // The Magic Remote OK fires a bare mouseup with no synthesized click, so a
-  // Playwright .click() wouldn't catch the regression — dispatch mouseup at the
-  // row's center, which the view activates by coordinate hit-test.
+  // Dispatch a click at the row's center, which the view activates by coordinate
+  // hit-test.
   await page.locator('.search-channel-row').first().evaluate((el) => {
     const r = el.getBoundingClientRect();
-    el.dispatchEvent(new MouseEvent('mouseup', {
+    el.dispatchEvent(new MouseEvent('click', {
       clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, bubbles: true,
     }));
   });

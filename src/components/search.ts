@@ -35,12 +35,11 @@ export class Search {
   constructor(private container: HTMLElement, private handlers: SearchHandlers) {
     this.nav = new SpatialNav(container);
     this.container.addEventListener('mouseleave', () => this.nav.clearHighlight());
-    // Magic Remote OK fires mouseup (no synthesized click), so activate the result
-    // under the pointer by coordinate hit-test — a click-bound path silently does
-    // nothing on the TV. See AGENTS.md webOS gotchas. (The global click listener
-    // still drives the desktop mouse; it skips `.search-view` so the two don't
-    // double-fire.)
-    this.container.addEventListener('mouseup', (e: MouseEvent) => this.onPointerRelease(e.clientX, e.clientY));
+    // Activate the result under the pointer by coordinate hit-test, so it lands
+    // here regardless of D-pad focus; the container is marked `data-self-activate`
+    // so the global click handler skips this subtree and doesn't double-fire.
+    this.container.setAttribute('data-self-activate', '');
+    this.container.addEventListener('click', (e: MouseEvent) => this.onPointerRelease(e.clientX, e.clientY));
   }
 
   private onPointerRelease(x: number, y: number): void {

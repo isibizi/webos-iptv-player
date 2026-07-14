@@ -143,10 +143,16 @@ export class TabBar {
     this.render();
   }
 
+  // Give up input focus from outside (e.g. the host navigated into content via
+  // the pointer, which doesn't route through the bar). Without this, a stale
+  // `_focused` makes handleKey route later input into the bar and swallow it.
+  blur(): void {
+    if (this._focused) this.dropFocus();
+  }
+
   init(): void {
-    // Magic Remote OK is a mouseup (no click); enter a tab (or expand search) by
-    // hit-testing.
-    document.addEventListener('mouseup', (e: MouseEvent) => {
+    // Enter a tab (or expand search) by hit-testing the item under the pointer.
+    document.addEventListener('click', (e: MouseEvent) => {
       if (!this._shown) return;
       const hit = document.elementFromPoint(e.clientX, e.clientY);
       const item = hit?.closest<HTMLElement>('.tab-bar-item');
@@ -267,6 +273,9 @@ export class TabBar {
     if (this.el) return;
     this.el = document.createElement('div');
     this.el.className = 'tab-bar';
+    // Self-activates on click (its own handler is the "OK" action); mark so the
+    // global click handler skips this subtree (covers the account switcher slot).
+    this.el.setAttribute('data-self-activate', '');
     document.body.appendChild(this.el);
   }
 

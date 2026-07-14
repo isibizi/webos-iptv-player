@@ -93,13 +93,13 @@ describe('Search', () => {
     expect(handlers.onOpenSeries).toHaveBeenCalledWith(account, expect.objectContaining({ seriesId: 's1' }));
   });
 
-  it('opens an Xtream movie result on a Magic Remote pointer mouseup (which fires no click)', async () => {
+  it('opens an Xtream movie result on a pointer click', async () => {
     const { view, handlers } = await openWith({ vod: [vod('10', 'Movie One')] });
     view.setQuery('one');
     const movie = container.querySelector('.catalog-tile[data-stream-id="10"]') as HTMLElement;
     const orig = document.elementFromPoint;
     document.elementFromPoint = () => movie;
-    container.dispatchEvent(new MouseEvent('mouseup', { clientX: 100, clientY: 50, bubbles: true }));
+    container.dispatchEvent(new MouseEvent('click', { clientX: 100, clientY: 50, bubbles: true }));
     document.elementFromPoint = orig;
     expect(handlers.onOpenMovie).toHaveBeenCalledWith(account, expect.objectContaining({ streamId: '10' }));
   });
@@ -202,7 +202,7 @@ describe('Search (M3U-only, no account)', () => {
     expect(handlers.onPlayChannel).toHaveBeenCalledWith(3);
   });
 
-  it('plays a channel row on a Magic Remote pointer mouseup (which fires no click)', async () => {
+  it('plays a channel row on a pointer click', async () => {
     playlistMock.search.mockReturnValue([chan('Alpha News')]);
     playlistMock.indexOf.mockReturnValue(5);
     const { handlers, view } = await openM3U();
@@ -210,7 +210,7 @@ describe('Search (M3U-only, no account)', () => {
     const row = container.querySelector('.search-channel-row') as HTMLElement;
     const orig = document.elementFromPoint;
     document.elementFromPoint = () => row;
-    container.dispatchEvent(new MouseEvent('mouseup', { clientX: 100, clientY: 50, bubbles: true }));
+    container.dispatchEvent(new MouseEvent('click', { clientX: 100, clientY: 50, bubbles: true }));
     document.elementFromPoint = orig;
     expect(handlers.onPlayChannel).toHaveBeenCalledWith(5);
   });

@@ -145,6 +145,9 @@ export class Settings {
 
     // Mouse/pointer support: clicking a focusable element behaves like remote OK.
     // Attached once on the persistent container (render() replaces innerHTML).
+    // Marked `data-self-activate` so the global click handler skips this subtree
+    // (this local handler is the "OK" action).
+    this.container.setAttribute('data-self-activate', '');
     this.container.addEventListener('click', (e: MouseEvent) => {
       const el = (e.target as HTMLElement).closest<HTMLElement>('[data-focusable]');
       if (!el) return;

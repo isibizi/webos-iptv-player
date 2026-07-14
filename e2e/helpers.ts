@@ -62,8 +62,8 @@ export async function seedPlaylist(page: Page, url = PLAYLIST_URL): Promise<void
 }
 
 /** Enter a section via the docked tab bar (always visible for an Xtream account).
- *  Uses a coordinate mouseup, not click, because the bar activates on a mouseup
- *  hit-test (Magic Remote OK fires no click). */
+ *  Uses a coordinate mouse press so the click carries clientX/clientY for the tab
+ *  bar's coordinate hit-test. */
 export async function enterTab(
   page: Page,
   section: 'live' | 'movies' | 'series' | 'settings' | 'search',

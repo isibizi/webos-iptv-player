@@ -194,9 +194,9 @@ describe('KeyHandler', () => {
       expect(handler).toHaveBeenCalledWith('select');
     });
 
-    it('ignores clicks inside the player sidebar/menu (they handle their own)', () => {
+    it('ignores clicks inside a data-self-activate subtree (it handles its own)', () => {
       const sidebar = document.createElement('div');
-      sidebar.className = 'player-sidebar';
+      sidebar.setAttribute('data-self-activate', '');
       const el = document.createElement('div');
       el.setAttribute('data-focusable', '');
       sidebar.appendChild(el);
@@ -208,9 +208,9 @@ describe('KeyHandler', () => {
     });
 
     it('does not fire a deferred select when the click already removed its target', () => {
-      // The clicked control deletes itself mid-click (see key-handler.ts).
+      // The clicked control deletes itself mid-click (see key-handler.ts); the
+      // detached-target guard, not the skip marker, prevents the spurious select.
       const view = document.createElement('div');
-      view.className = 'settings-view';
       const btn = document.createElement('button');
       btn.setAttribute('data-focusable', '');
       btn.addEventListener('click', () => btn.remove());

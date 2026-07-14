@@ -108,12 +108,14 @@ class App {
     this.search = new Search(this.views.search, {
       onRevealTabBar: () => this.tabBar.focus(),
       onBack: () => this.goLive(),
-      onPlayChannel: (idx) => this.playChannel(idx),
+      onPlayChannel: (idx) => { this.tabBar.blur(); this.playChannel(idx); },
       onOpenMovie: (account, vod) => {
+        this.tabBar.blur();
         this.showView('movies');
         this.movies.openItem(account, vod, () => this.showView('search')).catch((err) => log.error('Open movie failed:', err));
       },
       onOpenSeries: (account, series) => {
+        this.tabBar.blur();
         this.showView('series');
         this.series.openItem(account, series, () => this.showView('search')).catch((err) => log.error('Open series failed:', err));
       },

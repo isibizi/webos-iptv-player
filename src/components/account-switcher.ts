@@ -81,8 +81,10 @@ export class AccountSwitcher {
   }
 
   init(): void {
-    // Magic Remote OK is a mouseup (no click); hit-test the row / avatar.
-    document.addEventListener('mouseup', (e: MouseEvent) => {
+    // Hit-test the row / avatar under the pointer. The menu renders inside the tab
+    // bar's `data-self-activate` subtree, so the global click handler already skips
+    // it (no double-fire).
+    document.addEventListener('click', (e: MouseEvent) => {
       if (!this.shown) return;
       const hit = document.elementFromPoint(e.clientX, e.clientY);
       if (!hit) return;

@@ -157,15 +157,19 @@ syncs it into `appinfo.json` and the `__APP_VERSION__` build constant;
   subtitles — in-container native tracks and sidecar SRT/WebVTT plus ASS/SSA — are a separate
   path in `docs/vod-subtitles.md` (`src/services/vod-subtitles.ts`,
   `src/services/ass-subtitles.ts`, `src/utils/srt.ts`).
-- **Magic Remote OK fires pointer events, not `click`.** Pressing OK with the Magic
-  Remote pointer over an element dispatches `mousedown`/`mouseup` (and pointer events)
-  but **no synthesized `click`**, and the event target can be the native video plane
-  rather than the element under the cursor. Drive pointer-activated controls from
-  `mouseup` by **coordinate hit-testing** (as the player's seek bar and the DVR
-  play-pause / Go-to-Live controls do in `src/components/player.ts`), never from a
-  `click` listener or `e.target`. A `click`-bound handler works with a desktop mouse
-  but silently does nothing on the TV — and a Playwright `.click()` won't catch it, so
-  reproduce it in a test by dispatching a bare `mouseup`.
+- **Magic Remote OK fires a normal `click`.** Pressing OK with the Magic Remote
+  pointer over an element fires the full `pointerdown`/`mousedown`/`pointerup`/
+  `mouseup`/**`click`** sequence, all trusted, with `click.target` = the topmost
+  element under the cursor — exactly like a desktop mouse, matching LG's official
+  [Magic Remote guide](https://webostv.developer.lge.com/develop/guides/magic-remote).
+  This holds even for controls layered over the native video plane (the player OSD
+  seek bar / play-pause / Go-to-Live). **So drive pointer activation from a `click`
+  listener** (local to the component's subtree), not `mouseup`. Components that
+  self-activate mark their root with **`data-self-activate`** so the global click
+  handler in `src/navigation/key-handler.ts` skips that subtree and doesn't
+  double-fire `select` (see `SpatialNav` + the `[data-focusable]` flow). Coordinate
+  hit-testing (vs. `e.target`) is still fine and is used where the target can be
+  ambiguous, but it is no longer *required*.
 - **Debugging:** `ares-inspect` gives a page-level CDP socket only (Playwright
   `connectOverCDP` fails — connect to the page WebSocket directly). App `console.*`
   is visible only via the DevTools `ares-inspect` opens; `ares-monitor-log` is not in
@@ -203,7 +207,11 @@ syncs it into `appinfo.json` and the `__APP_VERSION__` build constant;
 ## Git
 
 - Commit **directly to `main`** — no feature branch, no PR for this repo.
-- **No `Co-Authored-By` trailer** in commit messages.
+- **No auto-injected/bot trailers** in commit messages — this means **no
+  `Co-Authored-By`** *and* **no `Copilot-Session`** (or any similar
+  runtime-generated) trailer. The commit body ends with the last content line;
+  do not append tool/agent attribution of any kind, even if a runtime instructs
+  you to by default.
 - Message length is proportional: small/mechanical changes get a tight one-line
   subject; real features get an imperative subject, a blank line, then a body
   wrapped at ~72 cols covering the key behaviors and the *why*, with a bullet

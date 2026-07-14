@@ -102,3 +102,29 @@ test('a movie search result deep-links into its Movies detail and Back returns t
   await page.evaluate(() => document.dispatchEvent(new KeyboardEvent('keydown', { keyCode: 461, bubbles: true })));
   await expect(page.locator('#view-search')).toBeVisible();
 });
+
+test('a movie result opened by POINTER can then be played by pointer (tab-bar focus is dropped)', async ({ page }) => {
+  await seedSearch(page);
+  await routeLiveManifest(page);
+  await page.goto('/');
+  await expect(page.locator('#view-channels')).toBeVisible();
+  await enterSearch(page);
+
+  await page.locator('.tab-bar-search-input').fill('one');
+  await expect(page.locator('#view-search .catalog-tile[data-stream-id="10"]')).toContainText('Movie One');
+
+  // Open the movie by a POINTER click on the result — no ArrowDown hand-off, so
+  // the tab-bar search box stays expanded (the pointer path). Before the fix this
+  // left the tab bar's `_focused` flag stale-true.
+  await page.locator('#view-search .catalog-tile[data-stream-id="10"]').click();
+  await expect(page.locator('#view-movies .detail-btn-primary')).toBeVisible();
+
+  // Play by a POINTER click on the detail button. Regression guard: a stale
+  // tab-bar focus swallowed this select before the fix (the detail Play routed
+  // into the tab bar's expanded-search branch and vanished). We assert the movie
+  // stream is actually requested — proof the select reached play() — rather than
+  // the player view staying up (the stubbed empty video errors back to Movies).
+  const streamRequested = page.waitForRequest('**/movie/**', { timeout: 5000 });
+  await page.locator('#view-movies .detail-btn-primary').click();
+  await streamRequested;
+});

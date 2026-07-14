@@ -144,9 +144,8 @@ test('starting playback shows the OSD with channel info; the yellow key re-opens
 });
 
 test.describe('DVR', () => {
-  // Live DVR pointer controls (regression guard for the on-device bug where the
-  // Magic Remote OK — a bare mouseup, no synthesized click — over the pause /
-  // Go-to-Live controls did nothing because they were wired to `click`).
+  // Live DVR pointer controls activate on click — a regression guard for the
+  // on-device bug where the pause / Go-to-Live controls did nothing.
 
   /**
    * Real live playback with a DVR window can't be relied on in headless Chromium,
@@ -173,17 +172,17 @@ test.describe('DVR', () => {
     });
   }
 
-  /** Fire the Magic Remote OK on a control — a bare mouseup (no click) at its center
-   *  — and read the video state back in the SAME synchronous browser task, so the
-   *  fake stream's retry churn (which calls video.play()) can't intervene between
-   *  the action and the assertion. Re-shows the OSD first (it auto-hides). */
+  /** Fire a pointer click at a control's center and read the video state back in
+   *  the SAME synchronous browser task, so the fake stream's retry churn (which
+   *  calls video.play()) can't intervene between the action and the assertion.
+   *  Re-shows the OSD first (it auto-hides). */
   async function okAndReadVideo(page: Page, selector: string): Promise<{ paused: boolean; currentTime: number }> {
     return page.evaluate((sel) => {
       document.dispatchEvent(new KeyboardEvent('keydown', { keyCode: 405, bubbles: true })); // yellow → showOSD (sync render)
       const el = document.querySelector(sel);
       if (!el) throw new Error(`no control ${sel}`);
       const r = el.getBoundingClientRect();
-      el.dispatchEvent(new MouseEvent('mouseup', {
+      el.dispatchEvent(new MouseEvent('click', {
         bubbles: true,
         clientX: r.left + r.width / 2,
         clientY: r.top + r.height / 2,
@@ -205,7 +204,7 @@ test.describe('DVR', () => {
     await fakeLiveDvrOsd(page);
   }
 
-  test('pause control pauses on a Magic-Remote pointer release (mouseup, no click)', async ({ page }) => {
+  test('pause control pauses on a Magic-Remote pointer click', async ({ page }) => {
     await gotoDvrPlayer(page);
     await expect(page.locator('[data-playpause]')).toBeVisible();
 

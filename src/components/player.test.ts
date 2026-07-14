@@ -178,7 +178,7 @@ describe('Player catch-up seeking', () => {
 
   it('a pointer release over the bar seeks to that fraction of the duration', () => {
     stubBar();
-    container.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: 750, clientY: 18 }));
+    container.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 750, clientY: 18 }));
     expect(video.currentTime).toBe(90); // 0.75 * 120
   });
 
@@ -234,12 +234,12 @@ describe('Player catch-up pause/play', () => {
     expect(video.paused).toBe(false);
   });
 
-  // Magic Remote OK fires mouseup with no synthesized click, so the control is
-  // driven from mouseup by coordinates — mirror the live DVR play/pause test.
-  it('a pointer release (Magic Remote OK) on the play/pause control pauses playback', () => {
+  // The control is driven from click by coordinates — mirror the live DVR
+  // play/pause test.
+  it('a pointer click on the play/pause control pauses playback', () => {
     const btn = container.querySelector('[data-playpause]') as HTMLElement;
     btn.getBoundingClientRect = () => ({ left: 10, right: 42, width: 32, top: 0, bottom: 32 }) as DOMRect;
-    container.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: 26, clientY: 16 }));
+    container.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 26, clientY: 16 }));
     expect(video.paused).toBe(true);
   });
 });
@@ -326,13 +326,11 @@ describe('Player live DVR', () => {
     expect(live.currentTime).toBe(20);
   });
 
-  // The Magic Remote OK fires mouseup (and pointer events) but NOT a synthesized
-  // click, and its target can be the video plane — so the OSD controls must be
-  // driven from mouseup by coordinates, like the seek bar.
-  it('a pointer release (Magic Remote OK) on the pause control pauses playback', () => {
+  // The OSD controls are driven from click by coordinates, like the seek bar.
+  it('a pointer click on the pause control pauses playback', () => {
     const btn = container.querySelector('[data-playpause]') as HTMLElement;
     btn.getBoundingClientRect = () => ({ left: 10, right: 42, width: 32, top: 0, bottom: 32 }) as DOMRect;
-    container.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: 26, clientY: 16 }));
+    container.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 26, clientY: 16 }));
     expect(live.paused).toBe(true);
   });
 
@@ -341,7 +339,7 @@ describe('Player live DVR', () => {
     expect(live.currentTime).toBe(0);
     const btn = container.querySelector('[data-golive]') as HTMLElement;
     btn.getBoundingClientRect = () => ({ left: 500, right: 560, width: 60, top: 0, bottom: 32 }) as DOMRect;
-    container.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: 530, clientY: 16 }));
+    container.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 530, clientY: 16 }));
     expect(live.currentTime).toBe(60 - PAD);
   });
 
