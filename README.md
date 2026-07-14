@@ -4,19 +4,23 @@ An IPTV player for LG webOS TVs. Supports M3U playlists, Xtream Codes accounts, 
 
 ![icon](assets/icon.svg)
 
-## Preview
+## Screenshots
 
 | Channel list | Program guide |
 | --- | --- |
-| ![Channel list](https://github.com/user-attachments/assets/1e90635f-92e1-4c39-9ef4-d2f1a5b1688d) | ![Program guide](https://github.com/user-attachments/assets/3e203180-58ed-40f2-ad46-4c13939d23f6) |
+| ![Channel list](https://github.com/user-attachments/assets/1e90635f-92e1-4c39-9ef4-d2f1a5b1688d) | ![Program guide](https://github.com/user-attachments/assets/8a66bd03-8dde-4cde-9601-06b6a8f34696) |
 
-| Channel info | Playback overlays |
+| Catch-up resume | Channel info |
 | --- | --- |
-| ![Channel info](https://github.com/user-attachments/assets/9b77591d-ac4f-4746-bf69-5d4527f6ce8c) | ![Playback overlays](https://github.com/user-attachments/assets/fd74f4cc-a0a0-4357-add6-2ce2e691af99) |
+| ![Catch-up resume](https://github.com/user-attachments/assets/ec9a1247-a9d7-489b-be1e-d12f93d94d3b) | ![Channel info](https://github.com/user-attachments/assets/9b77591d-ac4f-4746-bf69-5d4527f6ce8c) |
 
-| Subtitles | Movies |
+| Playback overlays | Subtitles |
 | --- | --- |
-| ![Subtitles](https://github.com/user-attachments/assets/5d1fab57-1087-414b-9a20-f900589eac4a) | ![Movies](https://github.com/user-attachments/assets/143c7505-f09f-44f6-9543-bcc56c485635) |
+| ![Playback overlays](https://github.com/user-attachments/assets/fd74f4cc-a0a0-4357-add6-2ce2e691af99) | ![Subtitles](https://github.com/user-attachments/assets/5d1fab57-1087-414b-9a20-f900589eac4a) |
+
+| Subtitle search | Movies |
+| --- | --- |
+| ![Subtitle search](https://github.com/user-attachments/assets/4ef9c97e-131b-4e4f-bf9a-c753d66f2956) | ![Movies](https://github.com/user-attachments/assets/143c7505-f09f-44f6-9543-bcc56c485635) |
 
 | Movie detail | Series detail |
 | --- | --- |

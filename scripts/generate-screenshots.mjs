@@ -6,11 +6,14 @@
 // fixtures and a frozen clock, then captures each view into screenshots/:
 //
 //   channel-list.png   channel list (the README hero)
-//   epg-guide.png      three-pane program guide
+//   epg-guide.png      three-pane program guide, with catch-up resume markers
+//   epg-catchup-resume.png  the Resume / Start Over / Cancel resume prompt
 //   settings.png       settings incl. the LAN-upload QR
 //   player.png         playback overlays: channel switcher + action menu
 //   channel-info.png   channel info bar (the OSD) — live DVR (timeshift) view
 //   subtitles.png      self-rendered WebVTT cues — ::cue colors + positioning
+//   subtitle-search.png  online subtitle search overlay — provider-labeled results
+//                      with the right-aligned download-count badge
 //   movies.png         Movies section — cinematic hero + content rails, with the
 //                      account-switcher dropdown open (picks the active Xtream account)
 //   movie-detail.png   Movie detail — plot/cast/rating + Resume / Play
@@ -97,11 +100,17 @@ const CHANNELS = buildChannels();
 const TOTAL = CHANNELS.length;
 const SPLIT = 78; // News+Sports+Movies in playlist 1, the rest in playlist 2
 const FAVORITE_IDS = ['ch1', 'ch3', 'ch6', 'ch20', 'ch45', 'ch70', 'ch110', 'ch140'];
+// The hero channel advertises catch-up (time-shift), so its already-aired
+// programs can carry resume markers in the guide (epg-catchup-resume shot).
+const CATCHUP_IDS = new Set(['ch0']);
 
 function m3u(slice, withTvg) {
   const lines = [withTvg ? '#EXTM3U url-tvg="https://demo.local/epg.xml"' : '#EXTM3U'];
   for (const ch of slice) {
-    lines.push(`#EXTINF:-1 tvg-id="${ch.id}" group-title="${ch.group}",${ch.name}`);
+    const cu = CATCHUP_IDS.has(ch.id)
+      ? ` catchup="default" catchup-source="https://demo.local/timeshift/${ch.id}.m3u8?start={utc}&end={utcend}" catchup-days="7"`
+      : '';
+    lines.push(`#EXTINF:-1 tvg-id="${ch.id}" group-title="${ch.group}"${cu},${ch.name}`);
     lines.push(`https://demo.local/stream/${ch.id}.m3u8`);
   }
   return lines.join('\n');
@@ -156,6 +165,30 @@ const SUBTITLE_CUES = [
   { text: '<c.blue>竖排字幕</c>', vertical: 'rl', line: 12, snapToLines: false, position: 88 },
   { text: '<c.red>Default</c> — no settings (bottom center)' },
 ];
+
+// Mocked provider search responses for the online-subtitle-search shot
+// (subtitle-search.png). Each body mirrors that provider's real API shape, so the
+// actual providers + aggregator + SubtitleSearchOverlay render them end to end.
+// Only OpenSubtitles reports a download count (SubDL/Assrt don't), so the badge
+// appears only on its rows — the real production behavior.
+const SUB_TITLE = 'Silent Harbor';
+const OS_SUBS_JSON = JSON.stringify({
+  data: [
+    { attributes: { language: 'en', release: `${SUB_TITLE} 2021 1080p BluRay x264`, hearing_impaired: false, download_count: 8432, files: [{ file_id: 101, file_name: 'a.srt' }] } },
+    { attributes: { language: 'en', release: `${SUB_TITLE}.2021.720p.WEB-DL.AAC`, hearing_impaired: true, download_count: 1204, files: [{ file_id: 102, file_name: 'b.srt' }] } },
+    { attributes: { language: 'es', release: `${SUB_TITLE}.2021.1080p.HDR.x265`, hearing_impaired: false, download_count: 517, files: [{ file_id: 103, file_name: 'c.srt' }] } },
+  ],
+});
+const SUBDL_SUBS_JSON = JSON.stringify({
+  subtitles: [
+    { name: 'd.zip', url: '/subtitle/d.zip', language: 'EN', release_name: `${SUB_TITLE} 2021 WEBRip`, hi: false },
+    { name: 'e.zip', url: '/subtitle/e.zip', language: 'FR', release_name: `${SUB_TITLE} 2021 FRENCH WEBRip`, hi: false },
+  ],
+});
+const ASSRT_SUBS_JSON = JSON.stringify({
+  status: 0,
+  sub: { subs: [{ id: 715078, native_name: `${SUB_TITLE}.2021.BluRay.1080p`, videoname: `${SUB_TITLE} 2021`, lang: { desc: '简体中文' } }] },
+});
 
 // ---------------------------------------------------------------------------
 // Xtream catalog (Movies / Series) — synthetic fixtures for the player_api.php
@@ -298,6 +331,18 @@ const REMINDER = {
   stopMs: at(23.25),
 };
 
+// Catch-up progress on two of the hero channel's already-aired programs so the
+// guide renders the resume markers: a finished show (Watched) and a partly
+// watched one (Resume + progress bar). Keyed like the app: FNV-1a of the
+// stripped stream URL + programme start (ms).
+const CATCHUP_URL = `https://demo.local/stream/${CHANNELS[0].id}.m3u8`;
+const CATCHUP_PROGRESS = [
+  // "The Garden Show" 20:00–21:00 — watched to the end.
+  { progStart: at(20), progEnd: at(21), position: 3600, duration: 3600, completed: true, updatedAt: NOW - 80 * 60_000 },
+  // "The Evening Debate" 21:00–22:00 — ~25 min in (42%).
+  { progStart: at(21), progEnd: at(22), position: 1500, duration: 3600, completed: false, updatedAt: NOW - 40 * 60_000 },
+];
+
 function epgXml() {
   const epgChannels = CHANNELS.slice(0, 14);
   const parts = ['<?xml version="1.0" encoding="UTF-8"?>', '<tv>'];
@@ -367,7 +412,7 @@ function startServer() {
 const fulfill = (body, type) => (route) =>
   route.fulfill({ status: 200, contentType: type, headers: { 'access-control-allow-origin': '*' }, body });
 
-async function setupPage(page, { upload = false, fakeStream = false, xtream = false } = {}) {
+async function setupPage(page, { upload = false, fakeStream = false, xtream = false, subs = false, catchup = false } = {}) {
   // Freeze the clock before any app code runs (real timers keep working).
   await page.addInitScript((fixed) => {
     const RealDate = Date;
@@ -417,10 +462,51 @@ async function setupPage(page, { upload = false, fakeStream = false, xtream = fa
     ]));
   }, REMINDER);
 
+  // Seed catch-up progress on the hero channel so its already-aired programs show
+  // the Resume/Watched markers in the guide. Same FNV-1a key the app derives.
+  if (catchup) {
+    await page.addInitScript(({ url, entries }) => {
+      let h = 0x811c9dc5;
+      const stable = url.split('#')[0].split('?')[0];
+      for (let i = 0; i < stable.length; i++) { h ^= stable.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+      const channelKey = (h >>> 0).toString(16).padStart(8, '0');
+      const map = {};
+      for (const e of entries) {
+        map[`${channelKey}|${e.progStart}`] = { ...e, channelKey, expiresAt: e.progEnd + 7 * 86400 * 1000 };
+      }
+      localStorage.setItem('iptv_catchup_progress', JSON.stringify(map));
+    }, { url: CATCHUP_URL, entries: CATCHUP_PROGRESS });
+  }
+
   // Seed a few resume points so the Movies/Series "Continue Watching" rails and
   // the detail "Resume" action render (Xtream shots only).
   if (xtream) {
     await page.addInitScript((seed) => localStorage.setItem('iptv_resume', JSON.stringify(seed)), RESUME_SEED);
+  }
+
+  // Configure the online-subtitle providers (keys/creds so all three are enabled)
+  // and mock their search endpoints so the real providers + aggregator run against
+  // deterministic data. The shapes mirror each provider's API.
+  if (subs) {
+    await page.addInitScript(() => {
+      localStorage.setItem('iptv_online_subtitles', JSON.stringify({
+        preferredLanguage: 'en',
+        subdl: { apiKey: 'demo' },
+        assrt: { apiKey: '' },
+        opensubtitles: { apiKey: 'demo', username: 'demo', password: 'demo', token: '', tokenTs: 0 },
+      }));
+    });
+    const cors = {
+      'access-control-allow-origin': '*',
+      'access-control-allow-methods': 'GET,POST,OPTIONS',
+      'access-control-allow-headers': '*',
+    };
+    const json = (body) => (route) => route.request().method() === 'OPTIONS'
+      ? route.fulfill({ status: 204, headers: cors })
+      : route.fulfill({ status: 200, contentType: 'application/json', headers: cors, body });
+    await page.route('https://api.opensubtitles.com/**', json(OS_SUBS_JSON));
+    await page.route('https://api.subdl.com/**', json(SUBDL_SUBS_JSON));
+    await page.route('https://api.assrt.net/**', json(ASSRT_SUBS_JSON));
   }
 
   // Fake the Luna service bus so the upload service "runs" (settings QR).
@@ -570,17 +656,45 @@ try {
     await context.close();
   }
 
-  // 2) Program guide (EPG).
+  // 2) Program guide (EPG) — the three panes, with catch-up resume markers on the
+  //    hero channel's already-aired programs: a "Watched" badge on a finished show
+  //    and a "Resume" badge + progress bar on a partly-watched one. Focus the
+  //    partly-watched row so the markers and the live row below are centered.
   {
-    const { context, page } = await newPage();
+    const { context, page } = await newPage({ catchup: true });
     await gotoChannels(page, base);
     await remote(page, KEY.RED); // open EPG
     await page.locator('#view-epg').waitFor({ state: 'visible' });
     await page.locator('.epg-now-badge').first().waitFor({ state: 'visible', timeout: 10_000 });
+    await page.locator('.epg-catchup-badge').first().waitFor({ state: 'visible', timeout: 10_000 });
+    await remote(page, 39); // RIGHT → focus the programmes column (first row)
+    for (let n = 0; n < 6; n++) await remote(page, 40); // DOWN → "The Evening Debate" (21:00, Resume)
+    await page.waitForTimeout(300);
     await clearToasts(page);
     await page.waitForTimeout(400);
     await shoot(page, 'epg-guide.png');
     console.log('  epg-guide.png');
+    await context.close();
+  }
+
+  // 2b) EPG catch-up resume prompt — selecting a partly-watched past program opens
+  //     the Resume / Start Over / Cancel dialog at the saved position.
+  {
+    const { context, page } = await newPage({ catchup: true });
+    await gotoChannels(page, base);
+    await remote(page, KEY.RED); // open EPG
+    await page.locator('#view-epg').waitFor({ state: 'visible' });
+    await page.locator('.epg-catchup-badge').first().waitFor({ state: 'visible', timeout: 10_000 });
+    await remote(page, 39); // RIGHT → focus the programmes column
+    for (let n = 0; n < 6; n++) await remote(page, 40); // DOWN → "The Evening Debate" (21:00, Resume)
+    await remote(page, 13); // ENTER → open the resume prompt
+    await page.locator('.catchup-resume-prompt').waitFor({ state: 'visible' });
+    await page.locator('.catchup-resume-btn').first().waitFor({ state: 'visible' });
+    await page.waitForTimeout(300);
+    await clearToasts(page);
+    await page.waitForTimeout(400);
+    await shoot(page, 'epg-catchup-resume.png');
+    console.log('  epg-catchup-resume.png');
     await context.close();
   }
 
@@ -738,7 +852,70 @@ try {
     await context.close();
   }
 
-  // 7) Movies — the cinematic hero + content rails (Continue Watching +
+  // 7) Online subtitle search — the REAL SubtitleSearchOverlay, driven end to end:
+  //     play a movie, open the VOD player menu, pick Subtitles → "Search online…",
+  //     and let the actual providers (network-mocked) + aggregator feed the overlay.
+  //     Only OpenSubtitles reports a download count, so the badge shows on its rows
+  //     and is absent on the SubDL / Assrt ones.
+  {
+    const { context, page } = await newPage({ xtream: true, subs: true });
+    await gotoChannels(page, base);
+    await enterTab(page, 'movies');
+    // The first Continue-Watching tile — guaranteed visible; its detail has a Play button.
+    const movieTile = page.locator('#view-movies .catalog-tile[data-item-id="100"]').first();
+    await movieTile.waitFor({ state: 'visible', timeout: 15_000 });
+    await page.waitForTimeout(600);
+    await movieTile.evaluate((el) => el.dispatchEvent(new CustomEvent('nav:hover', { bubbles: true })));
+    await page.keyboard.press('Enter'); // open detail
+    await page.locator('#view-movies .movies-detail .detail-plot').waitFor({ state: 'visible', timeout: 15_000 });
+    await page.waitForTimeout(600); // let get_vod_info settle (populates searchMeta)
+    // Play the movie → enter the VOD player.
+    const play = page.locator('#view-movies .movies-detail [data-action="play"]').first();
+    await play.evaluate((el) => el.dispatchEvent(new CustomEvent('nav:hover', { bubbles: true })));
+    await page.keyboard.press('Enter');
+    await page.locator('#view-player').waitFor({ state: 'visible' });
+    // Freeze a video frame behind the modal (headless can't decode the VOD stream).
+    await page.evaluate(async ({ inner, outer }) => {
+      const v = document.getElementById('video-player');
+      if (!v) return;
+      const canvas = document.createElement('canvas');
+      canvas.width = 1920; canvas.height = 1080;
+      const c = canvas.getContext('2d');
+      const g = c.createRadialGradient(960, 302, 80, 960, 540, 1200);
+      g.addColorStop(0, inner); g.addColorStop(1, outer);
+      c.fillStyle = g; c.fillRect(0, 0, 1920, 1080);
+      const stream = canvas.captureStream(8);
+      v.srcObject = stream; v.muted = true; v.classList.add('active');
+      await v.play().catch(() => { /* ignore */ });
+      await new Promise((r) => setTimeout(r, 300));
+      v.pause();
+      stream.getTracks().forEach((tr) => tr.stop());
+    }, { inner: FRAME_INNER, outer: FRAME_OUTER });
+    // Open the VOD menu (pointer to the right edge), then select Subtitles →
+    // "Search online…" by dispatching real clicks (no mouse move, so the pointer
+    // handler doesn't dismiss the menu). SEARCH_ONLINE_INDEX is -3.
+    await page.mouse.move(1900, 540);
+    await page.locator('#player-menu.visible').waitFor({ state: 'visible' });
+    await page.locator('#player-menu .menu-item[data-menu-action="__subs_open__"]').dispatchEvent('click');
+    await page.locator('#player-menu .menu-item[data-track-index="-3"]').waitFor({ state: 'visible' });
+    await page.locator('#player-menu .menu-item[data-track-index="-3"]').dispatchEvent('click');
+    // The real providers resolve and SubtitleSearchOverlay renders the ranked rows.
+    await page.locator('#subtitle-search .subs-row').first().waitFor({ state: 'visible', timeout: 10_000 });
+    await page.locator('#subtitle-search .subs-count').first().waitFor({ state: 'visible', timeout: 10_000 });
+    // Hide the menu + OSD behind the modal for a clean frame.
+    await page.evaluate(() => {
+      const s = document.createElement('style');
+      s.textContent = '#player-menu,#player-osd{display:none !important}';
+      document.head.appendChild(s);
+    });
+    await clearToasts(page);
+    await page.waitForTimeout(400);
+    await shoot(page, 'subtitle-search.png');
+    console.log('  subtitle-search.png');
+    await context.close();
+  }
+
+  // 8) Movies — the cinematic hero + content rails (Continue Watching +
   //    per-category rails), with the account-switcher dropdown open (the avatar in
   //    the tab bar picks which Xtream account drives Movies / Series / Search).
   {
@@ -764,7 +941,7 @@ try {
     await context.close();
   }
 
-  // 8) Movie detail — plot/cast/genre/duration + Resume / Play, opened from the
+  // 9) Movie detail — plot/cast/genre/duration + Resume / Play, opened from the
   //    first (Continue Watching) poster, which carries a seeded resume point.
   {
     const { context, page } = await newPage({ xtream: true });
@@ -783,7 +960,7 @@ try {
     await context.close();
   }
 
-  // 9) Series detail — the season selector over the episode list, opened from the
+  // 10) Series detail — the season selector over the episode list, opened from the
   //     first series poster.
   {
     const { context, page } = await newPage({ xtream: true });
@@ -804,7 +981,7 @@ try {
     await context.close();
   }
 
-  // 10) Search — one query across Channels · Movies · Series. The Search tab
+  // 11) Search — one query across Channels · Movies · Series. The Search tab
   //     expands an inline input in the tab bar that drives the results view.
   {
     const { context, page } = await newPage({ xtream: true });

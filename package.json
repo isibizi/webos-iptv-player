@@ -13,7 +13,7 @@
     "watch": "node esbuild.config.mjs --watch",
     "package": "bash build.sh",
     "clean": "rm -rf dist build test-output *.ipk",
-    "preview": "npm run build && node serve.mjs",
+    "preview": "npm run build && node scripts/serve.mjs",
     "screenshots": "node scripts/generate-screenshots.mjs",
     "lint": "npm run lint:css && npm run lint:js",
     "lint:css": "stylelint \"css/**/*.css\"",

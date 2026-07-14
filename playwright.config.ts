@@ -1,6 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
 
-// The preview server (serve.mjs) listens on port 3000.
+// The preview server (scripts/serve.mjs) listens on port 3000.
 const baseURL = 'http://localhost:3000';
 
 // End-to-end tests drive the real app in headless Chromium (close to the

@@ -17,7 +17,7 @@ npm test               # vitest run (unit/integration)
 npm run test:watch     # vitest watch
 npm run test:e2e       # Playwright against the preview server
 npm run test:all       # lint + unit + e2e
-npm run screenshots    # regenerate README preview images
+npm run screenshots    # regenerate README screenshots
 ./build.sh             # package the IPK (needs ares-package from @webos-tools/cli)
 ./build.sh --install [device]   # build + ares-install + cold-restart on a TV
 ```
