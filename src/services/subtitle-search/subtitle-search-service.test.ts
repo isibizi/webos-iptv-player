@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach } from 'vitest';
 import { StorageService } from '../storage-service';
-import { subtitleSearchService } from './subtitle-search-service';
+import { SubtitleSearchService } from './subtitle-search-service';
 import type { OnlineSubtitleResult } from './types';
 
 function r(over: Partial<OnlineSubtitleResult>): OnlineSubtitleResult {
@@ -18,7 +18,7 @@ describe('subtitleSearchService', () => {
       assrt: { apiKey: '' },
       opensubtitles: { apiKey: '', username: '', password: '', token: '', tokenTs: 0 },
     });
-    subtitleSearchService.__setProvidersForTest([
+    const subtitleSearchService = new SubtitleSearchService([
       { id: 'subdl', label: 'SubDL', isConfigured: () => true,
         search: async () => [r({ language: 'en', downloads: 100 }), r({ language: 'zh-CN', downloads: 5 })],
         download: async () => ({ text: 't', format: 'srt' }) },
@@ -35,7 +35,7 @@ describe('subtitleSearchService', () => {
       assrt: { apiKey: '' },
       opensubtitles: { apiKey: 'a', username: 'u', password: 'p', token: '', tokenTs: 0 },
     });
-    subtitleSearchService.__setProvidersForTest([
+    const subtitleSearchService = new SubtitleSearchService([
       { id: 'subdl', label: 'SubDL', isConfigured: () => true,
         search: async () => { throw new Error('boom'); }, download: async () => ({ text: '', format: 'srt' }) },
       { id: 'opensubtitles', label: 'OpenSubtitles', isConfigured: () => true,

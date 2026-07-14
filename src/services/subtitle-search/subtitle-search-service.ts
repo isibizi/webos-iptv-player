@@ -33,11 +33,8 @@ function langMatches(resultLang: string, preferred: string): boolean {
   return base(resultLang) === base(preferred);
 }
 
-class SubtitleSearchService {
-  private providers: SubtitleProvider[] = buildProviders();
-
-  /** @internal test seam */
-  __setProvidersForTest(p: SubtitleProvider[]): void { this.providers = p; }
+export class SubtitleSearchService {
+  constructor(private readonly providers: SubtitleProvider[] = buildProviders()) {}
 
   private configured(): SubtitleProvider[] { return this.providers.filter((p) => p.isConfigured()); }
 
