@@ -16,14 +16,16 @@ export const CONFIG = {
     OSD_TIMEOUT: 5000,
     BUFFER_LENGTH: 30,
     CHANNEL_NUMBER_TIMEOUT: 2000,
-    SEEK_STEP: 30,            // seconds per Left/Right press while seeking catch-up or live DVR
-    HLS_MAX_RECOVERIES: 3,    // bounded hls.js fatal-error retries before giving up → next channel
-    STALL_POLL_MS: 2000,      // native stall watchdog: currentTime poll interval
-    STALL_FREEZE_TICKS: 5,    // ~10s frozen before the first in-place reload
-    STALL_MAX_RELOADS: 2,     // in-place reloads before escalating to the next channel
-    DVR_MIN_WINDOW: 10,       // live DVR: a seekable window must exceed this (s) to offer timeshift
-    DVR_LIVE_EDGE: 10,        // within this many seconds of the window end counts as "at live"
-    DVR_GO_LIVE_PAD: 3,       // Go-to-Live seeks to seekable.end minus this (s), avoiding a stall at the edge
+    SEEK_STEP: 30,              // seconds per Left/Right press while seeking catch-up or live DVR
+    HLS_MAX_RECOVERIES: 3,      // bounded hls.js fatal-error retries before giving up → next channel
+    STALL_POLL_MS: 2000,        // native stall watchdog: currentTime poll interval
+    STALL_FREEZE_TICKS: 5,      // ~10s frozen before the first in-place reload
+    STALL_MAX_RELOADS: 2,       // in-place reloads before escalating to the next channel
+    DVR_MIN_WINDOW: 10,         // live DVR: a seekable window must exceed this (s) to offer timeshift
+    DVR_LIVE_EDGE: 10,          // within this many seconds of the window end counts as "at live"
+    DVR_GO_LIVE_PAD: 3,         // Go-to-Live seeks to seekable.end minus this (s), avoiding a stall at the edge
+    SUBTITLE_OFFSET_STEP: 0.25, // seconds per Left/Right press in the subtitle-sync adjuster
+    SUBTITLE_OFFSET_MAX: 60,    // max |offset| the adjuster allows (seconds)
   },
 
   EPG: {

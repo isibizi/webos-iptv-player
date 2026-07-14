@@ -16,6 +16,7 @@ const log = createLogger('VodSubs');
 export class VodSubtitles {
   private entries: { track: TextTrack; url: string; text?: string; loaded: boolean }[] = [];
   private gen = 0; // bumped on each attach/clear; in-flight loads bail when it changes
+  private offset = 0; // per-stream subtitle timing offset (seconds; + = later)
 
   attach(video: HTMLVideoElement, sidecars: SidecarSubtitle[]): void {
     this.gen++;
@@ -45,7 +46,7 @@ export class VodSubtitles {
       const raw = entry.text != null ? entry.text : await fetchText(entry.url);
       const cues = parseSubtitleFile(raw);
       if (gen !== this.gen) return; // a new item was attached while this was fetching
-      for (const c of cues) entry.track.addCue(new VTTCue(c.start, c.end, c.text));
+      for (const c of cues) entry.track.addCue(new VTTCue(c.start + this.offset, c.end + this.offset, c.text));
       log.info('loaded', cues.length, 'cues from', entry.url);
     } catch (e) {
       entry.loaded = false; // allow a retry on the next show
@@ -66,6 +67,27 @@ export class VodSubtitles {
     track.mode = 'disabled';
     this.entries.push({ track, url: sub.url, text: sub.text, loaded: false });
     return track;
+  }
+
+  /** Shift all sidecar cues (across every owned track) by `seconds`. Positive = later. */
+  setOffset(seconds: number): void {
+    const delta = seconds - this.offset;
+    this.offset = seconds;
+    if (!delta) return;
+    for (const e of this.entries) {
+      const cues = e.track.cues;
+      if (!cues) continue;
+      for (let i = 0; i < cues.length; i++) {
+        const c = cues[i] as VTTCue;
+        c.startTime += delta;
+        c.endTime += delta;
+      }
+    }
+  }
+
+  /** True when `track` is one of the sidecar tracks this instance created. */
+  owns(track: TextTrack): boolean {
+    return this.entries.some((e) => e.track === track);
   }
 
   clear(): void {

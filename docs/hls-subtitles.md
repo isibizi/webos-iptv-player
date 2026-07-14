@@ -199,13 +199,13 @@ feeds, not estimator error.
 | **Forced-subtitle language** | With multiple `FORCED=YES` renditions the *first* is auto-shown, not the one matching the current audio language (the spec's rule). | Rare; a foreign-dialogue caption in the wrong language on a multi-forced stream. |
 | **Discontinuity** | One slope-1 wall↔media line; cues after an ad-splice `EXT-X-DISCONTINUITY` can misalign (carry-forward *stops* there, but a new-domain relative anchor may skew). | A chunk (often an ad break) is offset, rest correct. |
 | **Per-channel feed residual** | The reconstructed `startDate` aligns the two timelines, but a genuine publish-time offset between the subtitle and video feeds leaves a small constant skew on some channels — playlist-only sync can't remove it. | Captions consistently a second or two early/late on one channel. |
-| **No-PDT fallback skew** | When the *video* feed carries no `PROGRAM-DATE-TIME`, `startDate` can't be reconstructed; sync falls back to the live edge (`seekable.end ↔ newest subtitle PDT`), which the buffering hold-back biases. | Captions a few seconds early; `[Subs]` logs `using live-edge anchor`. |
+| **No-PDT fallback skew** | When the *video* feed carries no `PROGRAM-DATE-TIME`, `startDate` can't be reconstructed; sync falls back to the live edge (`seekable.end ↔ newest subtitle PDT`), which the buffering hold-back biases. | Captions a few seconds early; `[HlsSubs]` logs `using live-edge anchor`. |
 | **X-TIMESTAMP-MAP MPEGTS** | Only `LOCAL` is read; PDT-anchoring covers the common case but a `LOCAL:0` + MPEGTS-offset packager with an unrelated PDT origin would desync. | Constant offset on one packager. |
 | **GROUP-ID** | Renditions are collected across all groups; the variant's `SUBTITLES="grp"` association is ignored. One-group masters (the norm) are fine. | Wrong name/rendition on a multi-group master. |
 | **EXT-X-BYTERANGE / EXT-X-DEFINE** | Byte-range segments are fetched whole; `{$var}` URIs aren't substituted. Rare for live WebVTT. | Wrong/duplicate cues, or a 404 → no captions. |
 | **REGION / cue `region:`** | REGION blocks are skipped, so a cue's `region:` setting has no `VTTRegion` to bind and is ignored — the other cue settings (line/position/size/align/vertical) *are* applied. Roll-up captions fall back to static placement. | Rare; a region cue shows at its line/position instead of scrolling within a region. |
 
-### Diagnosing a "no subtitles" channel (from `[Subs]` logs in `ares-inspect`)
+### Diagnosing a "no subtitles" channel (from `[HlsSubs]` logs in `ares-inspect`)
 
 - `subtitles on: …` then nothing, with `cannot self-render this rendition — fmp4`/`encrypted` → an
   unsupported rendition (expected; see limitations).
@@ -311,6 +311,20 @@ track**, and is drawn by the native compositor via `setSubtitleEnable` — the s
   (default rendition; `selectTrack` freezes, §4).
 - **Deferred.** No public HLS+IMSC source exists and it's ~absent from live IPTV, so it's untestable in
   CI and low-value.
+
+## Subtitle offset (sync)
+
+A per-stream timing offset lets the user nudge subtitles when they run early/late.
+Positive = later, negative = earlier; step 0.25 s, range ±60 s, remembered per channel
+under the same `channelPrefKey()` as the subtitle pick (`subtitle_offsets` map).
+
+- **Self-rendered WebVTT** owns its cues, so `HlsSubtitles.setOffset(s)` bakes the offset
+  into new cues and delta-shifts existing ones — the merge/prune/dedup logic stays
+  self-consistent because every cue lives in the same shifted space.
+- The UI is a `SubtitleOffsetOverlay` opened from the player's Subtitles menu ("Subtitle
+  Sync" row), routed input modally by `App`.
+- In-band **CEA-608/708** and **TTML/IMSC** are drawn by the native compositor with no cue
+  access, so the offset control is hidden while they are the active caption.
 
 ---
 

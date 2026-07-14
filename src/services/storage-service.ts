@@ -155,6 +155,19 @@ export const StorageService = {
     set('subtitle_prefs', all);
   },
 
+  // Per-stream subtitle timing offset in seconds (keyed by channelPrefKey, same as the
+  // subtitle pref). Absent or 0 = no shift.
+  getSubtitleOffset(channelId: string): number {
+    if (!channelId) return 0;
+    return get<Record<string, number>>('subtitle_offsets', {})[channelId] ?? 0;
+  },
+  setSubtitleOffset(channelId: string, seconds: number): void {
+    if (!channelId) return;
+    const all = get<Record<string, number>>('subtitle_offsets', {});
+    if (seconds) all[channelId] = seconds; else delete all[channelId];
+    set('subtitle_offsets', all);
+  },
+
   // 'device' = the device's timezone (default), 'feed' = the EPG feed's timezone.
   getTzMode(): TzMode {
     return get<TzMode>('tz_mode', 'device');

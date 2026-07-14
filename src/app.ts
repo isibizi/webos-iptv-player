@@ -88,6 +88,8 @@ class App {
       (index) => this.player.selectAudioTrack(index),
       () => this.player.getSubtitleTracks(),
       (index) => this.player.selectSubtitleTrack(index),
+      () => this.player.subtitleOffsetState(),
+      () => this.player.openSubtitleOffset(),
     );
 
     this.movies = new Movies(this.views.movies, {
@@ -445,6 +447,7 @@ class App {
 
   private showView(name: ViewName): void {
     this.player.closeSubtitleSearch(); // never let the subtitle overlay linger across a view change
+    this.player.closeSubtitleOffset(); // never let the subtitle-sync overlay linger across a view change
     this.epgGrid.dismissPrompt(); // never let the catch-up prompt linger across a view change
     for (const [key, el] of Object.entries(this.views)) {
       if (key === 'loading') continue;
@@ -646,6 +649,12 @@ class App {
     // The docked tab bar consumes input while it holds focus.
     if (this.tabBar.focused) {
       this.tabBar.handleAction(action);
+      return;
+    }
+
+    // The subtitle-sync adjuster is modal over the player: it consumes all input.
+    if (currentView === 'player' && this.player.subtitleOffsetOpen()) {
+      this.player.handleSubtitleOffsetAction(action);
       return;
     }
 

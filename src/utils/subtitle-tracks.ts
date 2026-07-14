@@ -1,4 +1,5 @@
 import type { SubtitleOption, SubtitlePref, ManifestSubtitle, ManifestClosedCaption } from '../types';
+import { CONFIG } from '../config';
 import ISO6391 from 'iso-639-1';
 import { iso6392BTo1 } from 'iso-639-2/2b-to-1';
 import { iso6392TTo1 } from 'iso-639-2/2t-to-1';
@@ -147,4 +148,46 @@ export function parseClosedCaptions(manifest: string): ManifestClosedCaption[] {
  *  tracks collapse to one on/off entry — named only when there's exactly one. */
 export function closedCaptionLabel(ccs: ManifestClosedCaption[]): string {
   return ccs.length === 1 && ccs[0].name ? ccs[0].name : 'Closed Captions';
+}
+
+/** Clamp an offset to the configured range and quantize to the step. Non-finite input
+ *  becomes 0; -0 is normalized to 0. */
+export function clampSubtitleOffset(seconds: number): number {
+  if (!Number.isFinite(seconds)) return 0;
+  const { SUBTITLE_OFFSET_STEP: step, SUBTITLE_OFFSET_MAX: max } = CONFIG.PLAYER;
+  const clamped = Math.max(-max, Math.min(max, seconds));
+  const stepped = Math.round(clamped / step) * step;
+  return Math.round(stepped * 1000) / 1000 || 0;
+}
+
+/** Display an offset as `+X.XX s` / `0.00 s` / `-X.XX s` (ASCII only — no exotic glyphs). */
+export function formatSubtitleOffset(seconds: number): string {
+  const s = clampSubtitleOffset(seconds);
+  const sign = s > 0 ? '+' : s < 0 ? '-' : '';
+  return `${sign}${Math.abs(s).toFixed(2)} s`;
+}
+
+// Original (unshifted) times per foreign cue, so re-applying an offset is idempotent and
+// absolute (never cumulative). "Foreign" = a native TextTrack we don't build ourselves
+// (in-container VOD tracks, the hls.js preview track).
+const foreignCueBase = new WeakMap<object, { s: number; e: number }>();
+
+interface ShiftableCue { startTime: number; endTime: number }
+
+/** Shift every cue of a foreign native text track to base + offset. First sight of a cue
+ *  captures its original times, so re-running with the same offset is a no-op and changing
+ *  the offset is absolute. Best-effort — a platform that rejects cue-time mutation just
+ *  leaves the cues unshifted (never throws). */
+export function shiftForeignTrack(
+  track: { cues: ArrayLike<ShiftableCue> | null } | null,
+  offset: number,
+): void {
+  const cues = track?.cues;
+  if (!cues) return;
+  for (let i = 0; i < cues.length; i++) {
+    const cue = cues[i];
+    let base = foreignCueBase.get(cue);
+    if (!base) { base = { s: cue.startTime, e: cue.endTime }; foreignCueBase.set(cue, base); }
+    try { cue.startTime = base.s + offset; cue.endTime = base.e + offset; } catch { /* platform-managed */ }
+  }
 }

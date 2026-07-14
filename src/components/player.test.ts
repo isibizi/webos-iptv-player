@@ -26,6 +26,7 @@ vi.mock('../services/storage-service', () => ({
     setResume: vi.fn(), clearResume: vi.fn(),
     getPickedOnlineSub: vi.fn(), setPickedOnlineSub: vi.fn(),
     setCatchupProgress: vi.fn(), getCatchupProgress: vi.fn(), clearCatchupProgress: vi.fn(),
+    getSubtitleOffset: vi.fn(() => 0), setSubtitleOffset: vi.fn(),
   },
 }));
 vi.mock('./toast', () => ({ showToast: vi.fn() }));
@@ -462,7 +463,7 @@ describe('Player subtitle self-render (webOS native path)', () => {
     ({ name, lang, isDefault: !!over.isDefault, isForced: !!over.isForced });
 
   const setup = (manifestSubtitles: unknown[], selfRenderIndex = -1) => {
-    subs = { start: vi.fn(), stop: vi.fn(), active: false };
+    subs = { start: vi.fn(), stop: vi.fn(), active: false, setOffset: vi.fn(), owns: vi.fn(() => false) };
     const p = player as unknown as Record<string, unknown>;
     p.hls = null;
     p.videoEl = { textTracks: { length: 0 } };
@@ -554,6 +555,8 @@ describe('Player VOD audio/subtitle track selection (native, in-container)', () 
     vi.mocked(StorageService.setSubtitlePref).mockReset();
     vi.mocked(StorageService.getAudioPref).mockReset();
     vi.mocked(StorageService.setAudioPref).mockReset();
+    vi.mocked(StorageService.getSubtitleOffset).mockReset().mockReturnValue(0);
+    vi.mocked(StorageService.setSubtitleOffset).mockReset();
   });
 
   it('lists subtitle tracks from the native textTracks with the showing one active', () => {
@@ -586,7 +589,7 @@ describe('Player VOD audio/subtitle track selection (native, in-container)', () 
   it('lazily loads a sidecar track when it is shown', () => {
     const text = [textTrack('disabled', { label: 'Track 1' })];
     setup({ text });
-    const vodSubs = { attach: vi.fn(), ensureLoaded: vi.fn(), clear: vi.fn() };
+    const vodSubs = { attach: vi.fn(), ensureLoaded: vi.fn(), clear: vi.fn(), setOffset: vi.fn(), owns: vi.fn(() => false) };
     (player as unknown as { vodSubs: unknown }).vodSubs = vodSubs;
     player.selectSubtitleTrack(0);
     expect(text[0].mode).toBe('showing');
@@ -596,7 +599,7 @@ describe('Player VOD audio/subtitle track selection (native, in-container)', () 
   it('does not load anything when subtitles are turned off', () => {
     const text = [textTrack('showing', { label: 'Track 1' })];
     setup({ text });
-    const vodSubs = { attach: vi.fn(), ensureLoaded: vi.fn(), clear: vi.fn() };
+    const vodSubs = { attach: vi.fn(), ensureLoaded: vi.fn(), clear: vi.fn(), setOffset: vi.fn(), owns: vi.fn(() => false) };
     (player as unknown as { vodSubs: unknown }).vodSubs = vodSubs;
     player.selectSubtitleTrack(-1);
     expect(vodSubs.ensureLoaded).not.toHaveBeenCalled();
@@ -642,6 +645,23 @@ describe('Player VOD audio/subtitle track selection (native, in-container)', () 
     applyAudio();
     expect(audio.map((t) => t.enabled)).toEqual([false, true]);
   });
+
+  it('reports the offset row available and clamps/persists/shifts on setSubtitleOffset', () => {
+    const cue = { startTime: 5, endTime: 7 };
+    const text = [textTrack('showing', { label: 'Track 1' })] as Array<Record<string, unknown>>;
+    text[0].cues = [cue];
+    setup({ text });
+    expect(player.subtitleOffsetState()).toEqual({ available: true, label: '0.00 s' });
+    player.setSubtitleOffset(0.3); // clamps to 0.25
+    expect(StorageService.setSubtitleOffset).toHaveBeenCalledWith('vod:x1:vod:10', 0.25);
+    expect(cue).toEqual({ startTime: 5.25, endTime: 7.25 });
+    expect(player.subtitleOffsetState().label).toBe('+0.25 s');
+  });
+
+  it('reports the offset row unavailable when no subtitle is showing', () => {
+    setup({ text: [textTrack('disabled', { label: 'Track 1' })] });
+    expect(player.subtitleOffsetState().available).toBe(false);
+  });
 });
 
 describe('Player VOD ASS sidecar subtitles', () => {
@@ -654,9 +674,9 @@ describe('Player VOD ASS sidecar subtitles', () => {
   const assSidecar = (over: { id?: string; name?: string; lang?: string; url?: string } = {}) =>
     ({ id: over.id ?? '1', name: over.name ?? 'ASS 1', lang: over.lang ?? 'l1', url: over.url ?? 'http://host/a.ass' });
 
-  let assSubs: { attach: ReturnType<typeof vi.fn>; show: ReturnType<typeof vi.fn>; hide: ReturnType<typeof vi.fn>; destroy: ReturnType<typeof vi.fn> };
+  let assSubs: { attach: ReturnType<typeof vi.fn>; show: ReturnType<typeof vi.fn>; hide: ReturnType<typeof vi.fn>; destroy: ReturnType<typeof vi.fn>; setOffset: ReturnType<typeof vi.fn> };
   const setup = (opts: { text?: unknown[]; ass?: unknown[] } = {}) => {
-    assSubs = { attach: vi.fn(), show: vi.fn(), hide: vi.fn(), destroy: vi.fn() };
+    assSubs = { attach: vi.fn(), show: vi.fn(), hide: vi.fn(), destroy: vi.fn(), setOffset: vi.fn() };
     const p = player as unknown as Record<string, unknown>;
     p.hls = null;
     p.vod = {
@@ -804,6 +824,8 @@ describe('Player VOD ASS sidecar subtitles', () => {
           return track;
         }),
         ensureLoaded: vi.fn(),
+        setOffset: vi.fn(),
+        owns: vi.fn(() => false),
       };
       p.vodSubs = vodSubs;
       await (player as unknown as { applyOnlineSubtitle: (r: unknown) => Promise<void> }).applyOnlineSubtitle({
@@ -828,7 +850,7 @@ describe('Player VOD ASS sidecar subtitles', () => {
       p.vod = v1;
       p.videoEl = { textTracks: [] as unknown[] };
       const addOnline = vi.fn();
-      p.vodSubs = { addOnline, ensureLoaded: vi.fn() };
+      p.vodSubs = { addOnline, ensureLoaded: vi.fn(), setOffset: vi.fn(), owns: vi.fn(() => false) };
       let resolveDl: (v: { text: string; format: 'srt' }) => void = () => {};
       subtitleSearchServiceMock.download.mockImplementationOnce(() => new Promise((res) => { resolveDl = res as typeof resolveDl; }));
       vi.mocked(StorageService.setPickedOnlineSub).mockClear();
@@ -858,7 +880,7 @@ describe('Player VOD ASS sidecar subtitles', () => {
       videoEl.textTracks.push(track);
       return track;
     });
-    p.vodSubs = { addOnline };
+    p.vodSubs = { addOnline, setOffset: vi.fn(), owns: vi.fn(() => false) };
     // Seed the pick + cache-hit for exactly this restore; `Once` + finally-reset
     // keeps these mocks from leaking into later VOD tests. Clear `download`'s
     // history because a prior test in this file exercised it (no global clearMocks).
@@ -1293,5 +1315,19 @@ describe('Player catch-up save/restore lifecycle', () => {
     // Also no write on back
     player.handleAction('back');
     expect(setCatchupProgress()).not.toHaveBeenCalled();
+  });
+});
+
+describe('Player subtitle-offset overlay', () => {
+  it('opens, routes actions, and closes without throwing', () => {
+    document.body.innerHTML = '<div id="pc"></div><div id="subtitle-offset" class="hidden"></div>';
+    const p = new Player(document.getElementById('pc') as HTMLElement, vi.fn());
+    p.init(fakeVideo(0));
+    (p as unknown as { currentChannel: unknown }).currentChannel = { ...CHANNEL };
+    p.openSubtitleOffset();
+    expect(p.subtitleOffsetOpen()).toBe(true);
+    p.handleSubtitleOffsetAction('right');
+    p.handleSubtitleOffsetAction('back');
+    expect(p.subtitleOffsetOpen()).toBe(false);
   });
 });

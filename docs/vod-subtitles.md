@@ -173,3 +173,15 @@ OpenSubtitles password lives only in the TV's `localStorage`.
   WebView, so verify OpenSubtitles downloads on a real TV; SubDL/Assrt are lower-risk.
 - **No exotic Unicode symbols in UI text.** Provider labels and release names are escaped, but the
   TV's font won't render uncommon symbols — stick to letters, digits, punctuation.
+
+## Subtitle offset (sync)
+
+The same per-stream offset (positive = later, step 0.25 s, range ±60 s; remembered under
+`vod:<account>:<kind>:<itemId>`) applies to VOD:
+
+- **Sidecar SRT/WebVTT** cues are owned by `VodSubtitles`, so `setOffset(s)` bakes the
+  offset into loaded cues and shifts existing ones.
+- **ASS/SSA** uses `assjs`'s `ass.delay = s` (remembered so a later `show()` re-applies it).
+- **In-container native tracks** are foreign (the demux owns the cues); they are shifted
+  best-effort by `shiftForeignTrack` (idempotent, base-time cache) — if the platform
+  rejects cue-time mutation the cues simply stay unshifted.

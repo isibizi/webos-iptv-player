@@ -1,7 +1,7 @@
-import { parseWebVTT, applyCueSettings } from '../utils/webvtt';
+import { parseWebVTT, applyCueSettings, type VttCueSettings } from '../utils/webvtt';
 import { createLogger } from '../utils/logger';
 
-const log = createLogger('Subs');
+const log = createLogger('HlsSubs');
 
 const POLL_MS = 2000;        // subtitle media playlist target-duration is ~2s
 const WINDOW = 15;           // only the most recent N segments (~30s); playlists can hold hours
@@ -33,6 +33,7 @@ export class HlsSubtitles {
   private subsUrl = '';
   private gen = 0;            // bumped on stop(); in-flight async bails when it changes
   private _active = false;
+  private offset = 0; // per-stream subtitle timing offset (seconds; + = later)
   private loggedNoAnchor = false; // one-shot: warn once when cues can't be anchored
   private addedKeys = new Map<string, number>(); // dedup repeated cues (key -> cue wall ms)
   // Reconstructed getStartDate (see maybeCalibrate), since webOS returns NaN for HLS.
@@ -152,11 +153,7 @@ export class HlsSubtitles {
           this.addedKeys.set(key, wallMs);
           const start = wallToMediaSeconds(anchor, wallMs);
           try {
-            const cue = new VTTCue(start, start + (c.end - c.start), c.text);
-            // Carry the cue's WebVTT positioning (line/position/size/align/vertical);
-            // guard separately so an unsupported setter can't drop the caption text.
-            if (c.settings) { try { applyCueSettings(cue, c.settings); } catch { /* positioning unsupported */ } }
-            this.track.addCue(cue); added++;
+            this.track.addCue(this.makeCue(start, start + (c.end - c.start), c.text, c.settings)); added++;
           } catch { /* invalid */ }
         }
       }
@@ -169,6 +166,32 @@ export class HlsSubtitles {
     } catch (e) {
       log.debug('subtitles refresh failed:', e);
     }
+  }
+
+  /** Shift all self-rendered cues (and any added later) by `seconds` relative to their true
+   *  media time. Positive = subtitles appear later. */
+  setOffset(seconds: number): void {
+    const delta = seconds - this.offset;
+    this.offset = seconds;
+    if (!delta || !this.track || !this.track.cues) return;
+    const cues = this.track.cues;
+    for (let i = 0; i < cues.length; i++) {
+      const c = cues[i] as VTTCue;
+      c.startTime += delta;
+      c.endTime += delta;
+    }
+  }
+
+  /** True when `track` is the TextTrack this instance self-renders into. */
+  owns(track: TextTrack): boolean {
+    return this.track === track;
+  }
+
+  // Build a cue at (start, end) media time with the active offset baked in.
+  private makeCue(startMedia: number, endMedia: number, text: string, settings?: VttCueSettings): VTTCue {
+    const cue = new VTTCue(startMedia + this.offset, endMedia + this.offset, text);
+    if (settings) { try { applyCueSettings(cue, settings); } catch { /* positioning unsupported */ } }
+    return cue;
   }
 
   // A caption that spans segment boundaries is re-emitted as several same-text cues —

@@ -35,6 +35,8 @@ let audioTracks: AudioTrackOption[];
 let getSubtitleTracks: ReturnType<typeof vi.fn>;
 let selectSubtitleTrack: ReturnType<typeof vi.fn>;
 let subtitleTracks: SubtitleTrackOption[];
+let getSubtitleOffsetState: ReturnType<typeof vi.fn>;
+let openSubtitleOffset: ReturnType<typeof vi.fn>;
 let menu: PlayerMenu;
 
 beforeEach(() => {
@@ -54,10 +56,13 @@ beforeEach(() => {
   subtitleTracks = [];
   getSubtitleTracks = vi.fn(() => subtitleTracks);
   selectSubtitleTrack = vi.fn();
+  getSubtitleOffsetState = vi.fn(() => ({ available: false, label: '0.00 s' }));
+  openSubtitleOffset = vi.fn();
   menu = new PlayerMenu(
     container, getCurrentIndex, onAction,
     getAudioTracks, selectAudioTrack,
     getSubtitleTracks, selectSubtitleTrack,
+    getSubtitleOffsetState, openSubtitleOffset,
   );
 });
 
@@ -318,6 +323,27 @@ describe('PlayerMenu', () => {
       menu.handleAction('down');       // move past "Off" to "Search online…"
       menu.handleAction('select');
       expect(selectSubtitleTrack).toHaveBeenCalledWith(-3);
+    });
+
+    it('shows a Subtitle Sync row in the subtitles submenu and opens the adjuster', () => {
+      subtitleTracks = [{ index: 0, label: 'Track 1', active: true }];
+      getSubtitleOffsetState.mockReturnValue({ available: true, label: '+0.25 s' });
+      menu.show();
+      items().find((i) => i.dataset.menuAction === '__subs_open__')!.click();
+      const offsetRow = items().find((i) => i.dataset.menuAction === '__subs_offset__');
+      expect(offsetRow).toBeTruthy();
+      expect(offsetRow!.textContent).toContain('Subtitle Sync');
+      expect(offsetRow!.textContent).toContain('+0.25 s');
+      offsetRow!.click();
+      expect(openSubtitleOffset).toHaveBeenCalled();
+    });
+
+    it('hides the Subtitle Sync row when offset is unavailable', () => {
+      subtitleTracks = [{ index: 0, label: 'Track 1', active: true }];
+      getSubtitleOffsetState.mockReturnValue({ available: false, label: '0.00 s' });
+      menu.show();
+      items().find((i) => i.dataset.menuAction === '__subs_open__')!.click();
+      expect(items().find((i) => i.dataset.menuAction === '__subs_offset__')).toBeUndefined();
     });
 
     it('greys a subtitle track marked unavailable, but never the Off row', () => {

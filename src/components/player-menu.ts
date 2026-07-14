@@ -24,6 +24,7 @@ const BACK = '__menu_back__';
 const PICK_AUDIO = '__audio_track__';
 const OPEN_SUBS = '__subs_open__';
 const PICK_SUB = '__subs_track__';
+const OPEN_OFFSET = '__subs_offset__';
 
 /**
  * The action overlay shown on the right edge during playback. Owns its own
@@ -42,6 +43,8 @@ export class PlayerMenu {
   private selectAudioTrack: (index: number) => void;
   private getSubtitleTracks: () => SubtitleTrackOption[];
   private selectSubtitleTrack: (index: number) => void;
+  private getSubtitleOffsetState: () => { available: boolean; label: string };
+  private openSubtitleOffset: () => void;
   private isVisible = false;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private focusIdx = 0;
@@ -55,6 +58,8 @@ export class PlayerMenu {
     selectAudioTrack: (index: number) => void,
     getSubtitleTracks: () => SubtitleTrackOption[],
     selectSubtitleTrack: (index: number) => void,
+    getSubtitleOffsetState: () => { available: boolean; label: string },
+    openSubtitleOffset: () => void,
   ) {
     this.getCurrentIndex = getCurrentIndex;
     this.onAction = onAction;
@@ -62,6 +67,8 @@ export class PlayerMenu {
     this.selectAudioTrack = selectAudioTrack;
     this.getSubtitleTracks = getSubtitleTracks;
     this.selectSubtitleTrack = selectSubtitleTrack;
+    this.getSubtitleOffsetState = getSubtitleOffsetState;
+    this.openSubtitleOffset = openSubtitleOffset;
     this.el = $('#player-menu', container);
     this.bindEvents();
   }
@@ -169,6 +176,9 @@ export class PlayerMenu {
       const idx = Number(item.dataset.trackIndex);
       if (!Number.isNaN(idx)) this.selectSubtitleTrack(idx);
       this.openMain();
+    } else if (action === OPEN_OFFSET) {
+      this.hide();
+      this.openSubtitleOffset();
     } else if (action) {
       this.hide();
       this.onAction(action as Action);
@@ -310,6 +320,16 @@ export class PlayerMenu {
             <span class="menu-track-label">${t.label}</span>
           </div>
         `)}
+        ${(() => {
+          const st = this.getSubtitleOffsetState();
+          return st.available ? html`
+            <div class="menu-item ${this.focusIdx === tracks.length + 2 ? 'focused' : ''}"
+                 data-focusable data-menu-action="${OPEN_OFFSET}">
+              <span class="menu-check"></span>
+              <span class="menu-track-label">Subtitle Sync</span>
+              <span class="menu-item-value">${st.label}</span>
+            </div>` : '';
+        })()}
       </div>
     `);
   }

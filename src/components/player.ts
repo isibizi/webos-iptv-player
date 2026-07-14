@@ -6,7 +6,7 @@ import { morph } from '../utils/morph';
 import { dvrWindow, dvrState, type DvrWindow, type DvrState } from '../utils/dvr';
 import { fetchText } from '../utils/fetch-helper';
 import { audioLabel, hlsAudioOptions, nativeAudioOptions, chooseAudioIndex, isPrefMatch, parseAudioRenditions, mergeManifestNames } from '../utils/audio-tracks';
-import { subtitleLabel, hlsSubtitleOptions, manifestSubtitleOptions, nativeSubtitleOptions, chooseSubtitleIndex, isSubtitlePrefMatch, parseSubtitleRenditions, parseClosedCaptions, closedCaptionLabel } from '../utils/subtitle-tracks';
+import { subtitleLabel, hlsSubtitleOptions, manifestSubtitleOptions, nativeSubtitleOptions, chooseSubtitleIndex, isSubtitlePrefMatch, parseSubtitleRenditions, parseClosedCaptions, closedCaptionLabel, clampSubtitleOffset, formatSubtitleOffset, shiftForeignTrack } from '../utils/subtitle-tracks';
 import { PlaylistService } from '../services/playlist-service';
 import { EpgService } from '../services/epg-service';
 import { StorageService } from '../services/storage-service';
@@ -26,6 +26,7 @@ import { PLAY_ICON, PAUSE_ICON } from './icons';
 import { showToast } from './toast';
 import { subtitleSearchService } from '../services/subtitle-search/subtitle-search-service';
 import { SubtitleSearchOverlay } from './subtitle-search-overlay';
+import { SubtitleOffsetOverlay } from './subtitle-offset-overlay';
 import type { OnlineSubtitleResult, SubtitleQuery } from '../services/subtitle-search/types';
 
 const log = createLogger('Player');
@@ -97,6 +98,8 @@ export class Player {
   private vodAssSidecars: SidecarSubtitle[] = []; // the ASS/SSA sidecars of the current VOD item
   private activeAssIndex = -1; // index into vodAssSidecars currently shown (-1 = none)
   private subsOverlay: SubtitleSearchOverlay | null = null; // online subtitle search overlay
+  private subtitleOffsetS = 0; // per-stream subtitle timing offset (seconds; + = later)
+  private offsetOverlay: SubtitleOffsetOverlay | null = null;
   private stallWatchdog: StallWatchdog;
   constructor(container: HTMLElement, onBack: () => void) {
     this.container = container;
@@ -424,6 +427,86 @@ export class Player {
    *  reappears when its player view is shown again. */
   closeSubtitleSearch(): void {
     this.subsOverlay?.close();
+  }
+
+  private ensureOffsetOverlay(): SubtitleOffsetOverlay | null {
+    if (this.offsetOverlay) return this.offsetOverlay;
+    const container = $('#subtitle-offset');
+    if (!container) return null;
+    this.offsetOverlay = new SubtitleOffsetOverlay(container, (s) => this.setSubtitleOffset(s));
+    return this.offsetOverlay;
+  }
+
+  /** Open the subtitle-sync adjuster, seeded with the current offset. */
+  openSubtitleOffset(): void {
+    const o = this.ensureOffsetOverlay();
+    if (o) o.open(this.subtitleOffsetS);
+  }
+
+  subtitleOffsetOpen(): boolean {
+    return this.offsetOverlay?.visible === true;
+  }
+
+  handleSubtitleOffsetAction(action: Action): void {
+    this.offsetOverlay?.handleAction(action);
+  }
+
+  /** Dismiss the subtitle-sync adjuster (called on every view transition). */
+  closeSubtitleOffset(): void {
+    this.offsetOverlay?.close();
+  }
+
+  // Whether an offset-capable subtitle is currently active (a subtitle is on and it's a
+  // path whose cues we can shift — not the native-compositor CC).
+  private subtitleOffsetAvailable(): boolean {
+    if (this.hls) return this.hls.subtitleDisplay === true && (this.hls.subtitleTrack ?? -1) >= 0;
+    if (this.ccEnabled) return false;
+    if (this.vod) {
+      if (this.activeAssIndex >= 0) return true;
+      const list = this.videoEl?.textTracks;
+      if (list) for (let i = 0; i < list.length; i++) {
+        const t = list[i];
+        if ((t.kind === 'subtitles' || t.kind === 'captions') && t.mode === 'showing') return true;
+      }
+      return false;
+    }
+    return this.selfRenderIndex >= 0;
+  }
+
+  /** State for the menu's "Subtitle Sync" row. */
+  subtitleOffsetState(): { available: boolean; label: string } {
+    return { available: this.subtitleOffsetAvailable(), label: formatSubtitleOffset(this.subtitleOffsetS) };
+  }
+
+  /** Set the subtitle offset (clamped), persist it per stream, and apply it live. */
+  setSubtitleOffset(seconds: number): void {
+    this.subtitleOffsetS = clampSubtitleOffset(seconds);
+    const key = this.channelPrefKey();
+    if (key) StorageService.setSubtitleOffset(key, this.subtitleOffsetS);
+    this.applySubtitleOffset();
+  }
+
+  // Push the current offset to every engine. Owned tracks are shifted by their engine;
+  // foreign native tracks (in-container VOD, hls.js preview) go through the idempotent
+  // shifter. Safe to call anytime — inactive engines no-op.
+  private applySubtitleOffset(): void {
+    const s = this.subtitleOffsetS;
+    this.subs.setOffset(s);
+    this.vodSubs.setOffset(s);
+    this.assSubs.setOffset(s);
+    const list = this.videoEl?.textTracks;
+    if (list) for (let i = 0; i < list.length; i++) {
+      const t = list[i];
+      if (t.kind !== 'subtitles' && t.kind !== 'captions') continue;
+      if (this.subs.owns(t) || this.vodSubs.owns(t)) continue; // an engine already shifted these
+      shiftForeignTrack(t, s);
+    }
+  }
+
+  // Load the saved offset for the current stream and apply it (called on tune-in).
+  private loadSubtitleOffset(): void {
+    this.subtitleOffsetS = StorageService.getSubtitleOffset(this.channelPrefKey());
+    this.applySubtitleOffset();
   }
 
   private ensureSubsOverlay(): SubtitleSearchOverlay | null {
@@ -1498,6 +1581,11 @@ export class Player {
   // drives its own rendition; the webOS native path self-renders the chosen WebVTT
   // rendition. selectTrack is never used — it decode-freezes the video on webOS.
   private applySubtitleChoice(index: number): void {
+    this.applySubtitleChoiceRaw(index);
+    this.applySubtitleOffset();
+  }
+
+  private applySubtitleChoiceRaw(index: number): void {
     if (this.hls) {
       this.hls.subtitleDisplay = index >= 0;
       if (index < (this.hls.subtitleTracks?.length || 0)) this.hls.subtitleTrack = index;
@@ -1546,6 +1634,7 @@ export class Player {
   private applySelfRenderSelection(): void {
     if (this.hls) return;
     const pref = StorageService.getSubtitlePref(this.channelPrefKey());
+    this.loadSubtitleOffset();
     if (pref?.cc) { this.applySubtitleChoice(-1); return; } // CC path owns it
     const options = manifestSubtitleOptions(this.manifestSubtitles, this.selfRenderIndex);
     const idx = chooseSubtitleIndex(options, pref);
@@ -1581,6 +1670,7 @@ export class Player {
     this.logSubtitleChoice('hls', options, pref, idx);
     this.hls.subtitleDisplay = idx >= 0;
     if (this.hls.subtitleTrack !== idx) this.hls.subtitleTrack = idx;
+    this.loadSubtitleOffset();
   }
 
   // Re-apply a remembered subtitle choice on the native path once the pipeline/
@@ -1596,6 +1686,7 @@ export class Player {
       const idx = chooseSubtitleIndex(options, pref);
       this.logSubtitleChoice('vod-native', options, pref, idx);
       this.applySubtitleChoice(idx);
+      this.loadSubtitleOffset();
       return;
     }
     if (this.ccAvailable() && pref?.cc) {

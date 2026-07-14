@@ -139,6 +139,25 @@ describe('StorageService', () => {
       expect(localStorage.getItem('iptv_subtitle_prefs')).toBeNull();
     });
   });
+
+  describe('subtitle offsets', () => {
+    it('defaults to 0 for an unknown key', () => {
+      expect(StorageService.getSubtitleOffset('ch1')).toBe(0);
+    });
+    it('round-trips per key and evicts a zero', () => {
+      StorageService.setSubtitleOffset('ch1', 1.25);
+      StorageService.setSubtitleOffset('ch2', -0.5);
+      expect(StorageService.getSubtitleOffset('ch1')).toBe(1.25);
+      expect(StorageService.getSubtitleOffset('ch2')).toBe(-0.5);
+      StorageService.setSubtitleOffset('ch1', 0);
+      expect(StorageService.getSubtitleOffset('ch1')).toBe(0);
+      expect(localStorage.getItem('iptv_subtitle_offsets')).not.toContain('ch1');
+    });
+    it('ignores an empty key', () => {
+      StorageService.setSubtitleOffset('', 2);
+      expect(StorageService.getSubtitleOffset('')).toBe(0);
+    });
+  });
 });
 
 import type { CatchupProgressEntry, ResumeEntry } from '../types';

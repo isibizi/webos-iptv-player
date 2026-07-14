@@ -286,3 +286,52 @@ describe('nativeSubtitleOptions', () => {
     expect(opts.map((o) => o.lang)).toEqual(['', '']);
   });
 });
+
+import { clampSubtitleOffset, formatSubtitleOffset } from './subtitle-tracks';
+
+describe('clampSubtitleOffset', () => {
+  it('quantizes to the 0.25s step', () => {
+    expect(clampSubtitleOffset(0.3)).toBe(0.25);
+    expect(clampSubtitleOffset(0.13)).toBe(0.25);
+    expect(clampSubtitleOffset(-0.4)).toBe(-0.5);
+  });
+  it('clamps to +/-60s', () => {
+    expect(clampSubtitleOffset(100)).toBe(60);
+    expect(clampSubtitleOffset(-100)).toBe(-60);
+  });
+  it('returns 0 for non-finite input and normalizes -0', () => {
+    expect(clampSubtitleOffset(NaN)).toBe(0);
+    expect(Object.is(clampSubtitleOffset(-0.1), 0)).toBe(true);
+  });
+});
+
+describe('formatSubtitleOffset', () => {
+  it('formats with an ASCII sign and two decimals', () => {
+    expect(formatSubtitleOffset(0)).toBe('0.00 s');
+    expect(formatSubtitleOffset(0.25)).toBe('+0.25 s');
+    expect(formatSubtitleOffset(-1.5)).toBe('-1.50 s');
+  });
+});
+
+import { shiftForeignTrack } from './subtitle-tracks';
+
+describe('shiftForeignTrack', () => {
+  const track = (cues: Array<{ startTime: number; endTime: number }>) => ({ cues });
+
+  it('shifts every cue by the offset from its original time (absolute, idempotent)', () => {
+    const t = track([{ startTime: 5, endTime: 7 }, { startTime: 10, endTime: 12 }]);
+    shiftForeignTrack(t, 2);
+    expect(t.cues).toEqual([{ startTime: 7, endTime: 9 }, { startTime: 12, endTime: 14 }]);
+    shiftForeignTrack(t, 2); // re-run does not accumulate
+    expect(t.cues).toEqual([{ startTime: 7, endTime: 9 }, { startTime: 12, endTime: 14 }]);
+    shiftForeignTrack(t, -1); // change is absolute from the captured base
+    expect(t.cues).toEqual([{ startTime: 4, endTime: 6 }, { startTime: 9, endTime: 11 }]);
+    shiftForeignTrack(t, 0);
+    expect(t.cues).toEqual([{ startTime: 5, endTime: 7 }, { startTime: 10, endTime: 12 }]);
+  });
+
+  it('is a no-op for a null track or null cues', () => {
+    expect(() => shiftForeignTrack(null, 3)).not.toThrow();
+    expect(() => shiftForeignTrack({ cues: null }, 3)).not.toThrow();
+  });
+});

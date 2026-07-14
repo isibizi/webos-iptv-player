@@ -106,3 +106,31 @@ describe('VodSubtitles.addOnline (in-memory text)', () => {
     expect(t.cues).toEqual([{ startTime: 1, endTime: 2, text: 'hi' }]);
   });
 });
+
+describe('VodSubtitles.setOffset', () => {
+  it('shifts cues across owned tracks by the delta (absolute)', () => {
+    const t1 = makeTrack(); const t2 = makeTrack();
+    t1.cues.push(new FakeVTTCue(1, 2, 'a'));
+    t2.cues.push(new FakeVTTCue(3, 4, 'b'));
+    seed(subs, [{ track: t1, url: '', loaded: true }, { track: t2, url: '', loaded: true }]);
+    subs.setOffset(0.5);
+    expect(t1.cues[0]).toMatchObject({ startTime: 1.5, endTime: 2.5 });
+    expect(t2.cues[0]).toMatchObject({ startTime: 3.5, endTime: 4.5 });
+    subs.setOffset(0);
+    expect(t1.cues[0]).toMatchObject({ startTime: 1, endTime: 2 });
+  });
+
+  it('bakes the current offset into lazily-loaded cues', async () => {
+    subs.setOffset(2);
+    seed(subs, [{ track, url: 'http://host/a.vtt', loaded: false }]);
+    fetchTextMock.mockResolvedValue('WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nHi\n');
+    await subs.ensureLoaded(track as unknown as TextTrack);
+    expect(track.cues).toEqual([{ startTime: 3, endTime: 4, text: 'Hi' }]);
+  });
+
+  it('owns only the tracks it created', () => {
+    seed(subs, [{ track, url: '', loaded: true }]);
+    expect(subs.owns(track as unknown as TextTrack)).toBe(true);
+    expect(subs.owns(makeTrack() as unknown as TextTrack)).toBe(false);
+  });
+});

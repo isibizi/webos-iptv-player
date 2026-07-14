@@ -18,6 +18,7 @@ interface AssInstance {
   destroy(): unknown;
   hide(): unknown;
   show(): unknown;
+  delay?: number;
 }
 
 /**
@@ -34,6 +35,7 @@ export class AssSubtitles {
   private sidecars: SidecarSubtitle[] = [];
   private ass: AssInstance | null = null;
   private gen = 0; // bumped on attach/show/hide/destroy; in-flight shows bail when it changes
+  private delay = 0; // per-stream subtitle timing offset (seconds; + = later)
 
   // Record the video, the DOM host for the overlay, and the ASS sidecars. No
   // assjs instance is created yet — that waits for the first `show`.
@@ -64,6 +66,7 @@ export class AssSubtitles {
       const overlay = this.ensureOverlay();
       if (!overlay) return;
       this.ass = new ASS(content, video, { container: overlay }) as unknown as AssInstance;
+      if (this.delay) { try { this.ass.delay = this.delay; } catch { /* older assjs */ } }
       log.info('showing ASS sidecar', sidecar.name || sidecar.lang || sidecar.url);
     } catch (e) {
       log.warn('ASS load failed:', e);
@@ -71,6 +74,13 @@ export class AssSubtitles {
   }
 
   // Stop drawing (destroys the instance) while keeping the overlay for reuse.
+  /** Shift ASS cues by `seconds` via assjs's `delay`. Remembered so a later `show`
+   *  re-applies it. Positive = subtitles appear later. */
+  setOffset(seconds: number): void {
+    this.delay = seconds;
+    if (this.ass) { try { this.ass.delay = seconds; } catch { /* older assjs */ } }
+  }
+
   hide(): void {
     this.gen++; // cancel any in-flight show
     this.destroyInstance();
