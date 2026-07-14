@@ -116,6 +116,19 @@ test('M3U-only shows a docked bar with Live/Settings/Search only (no Movies/Seri
   expect((inner.x + inner.width) - (icon.x + icon.width)).toBeLessThan(4);
 });
 
+test('no playlist or account configured shows Live/Settings/Search only (no Movies/Series)', async ({ page }) => {
+  // Seed nothing — first run opens onboarding Settings with the bar docked.
+  await page.goto('/');
+  await expect(page.locator('#view-settings')).toBeVisible();
+
+  // The docked bar must not offer the Xtream-only Movies/Series sections.
+  await expect(page.locator('.tab-bar')).toBeVisible();
+  await expect(page.locator('.tab-bar-item[data-section="movies"]')).toHaveCount(0);
+  await expect(page.locator('.tab-bar-item[data-section="series"]')).toHaveCount(0);
+  await expect(page.locator('.tab-bar-item')).toHaveText(['Live', 'Settings', '']);
+  await expect(page.locator('.account-avatar')).toHaveCount(0);
+});
+
 test('leaving Settings (Cancel) moves the active tab back to Live', async ({ page }) => {
   await seedXtream(page);
   await routeLiveManifest(page);

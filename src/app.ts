@@ -373,6 +373,10 @@ class App {
         // channels if the user navigates back from settings (e.g. with BACK).
         PlaylistService.reset();
         EpgService.reset();
+        // No account at all: drop Movies/Series (Xtream-only) and any stale
+        // account avatars so the docked tab bar shows Live/Settings/Search only.
+        this.tabBar.setSections(false);
+        this.tabBar.setAccounts([], '');
         this.channelList.render();
         this.showView('settings');
         this.settings.render();
