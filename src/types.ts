@@ -72,6 +72,8 @@ export interface CatchupInfo {
   title: string;
   description: string;
   icon: string;
+  /** If set, seek to this position (seconds) once metadata loads — set by resume callers. */
+  resumeSecs?: number;
 }
 
 /** A user-set reminder for an upcoming program. Keyed by channelKey + startMs. */
@@ -288,6 +290,19 @@ export interface SearchMeta {
   year?: number;
   season?: number;
   episode?: number;
+}
+
+/** Resume/history entry for a catch-up programme playback session.
+ *  Keyed by channelKey + progStart; stored per-programme so the EPG can
+ *  surface watched/in-progress status and the player can resume mid-programme. */
+export interface CatchupProgressEntry {
+  channelKey: string;
+  progStart: number;   // programme start epoch ms
+  progEnd: number;     // programme end epoch ms
+  position: number;    // playback position seconds
+  duration: number;    // media duration seconds (0 = unknown)
+  updatedAt: number;   // epoch ms of last checkpoint
+  completed: boolean;  // true once the programme has been watched to the end
 }
 
 // A VOD playback request handed to the player's VOD mode. The player derives no

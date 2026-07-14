@@ -27,6 +27,14 @@ const { reminderMock } = vi.hoisted(() => ({
 vi.mock('../services/reminder-service', () => ({ ReminderService: reminderMock }));
 vi.mock('./toast', () => ({ showToast: vi.fn() }));
 
+const { storageMock } = vi.hoisted(() => ({
+  storageMock: {
+    getCatchupProgressList: vi.fn(() => []),
+    clearCatchupProgress: vi.fn(),
+  },
+}));
+vi.mock('../services/storage-service', () => ({ StorageService: storageMock }));
+
 import { EpgGrid } from './epg-grid';
 
 const Y = 2024, M = 5, D = 15; // Sat Jun 15 2024, 12:00 local = "now"
@@ -137,7 +145,13 @@ describe('EpgGrid mouse interaction', () => {
     expect(progItems()[0].querySelector('.epg-prog-title')!.textContent).toContain('Tomorrow AM');
   });
 
-  it('clicking a past program plays it with catch-up info', () => {
+  it('clicking a past program plays it with catch-up info when channel has catchupSource', () => {
+    state.channels = [
+      { name: 'Chan A', url: 'http://host/a', catchupSource: 'http://host/catchup/{start}' },
+      { name: 'Chan B', url: 'http://host/b' },
+    ];
+    storageMock.getCatchupProgressList.mockReturnValue([]);
+    grid.render();
     clickData('data-prog-idx', 0); // Morning 10:00-11:00, before noon
     expect(onSelect).toHaveBeenCalledTimes(1);
     const [idx, catchup] = onSelect.mock.calls[0];
@@ -246,5 +260,330 @@ describe('EpgGrid reminders', () => {
     grid.handleAction('select');
     expect(onSelect).toHaveBeenCalled();
     expect(reminderMock.add).not.toHaveBeenCalled();
+  });
+});
+
+// --- Catch-up resume/history integration tests ---
+
+describe('EpgGrid catch-up resume markers', () => {
+  const catchupChannel = () => {
+    state.channels = [
+      { name: 'Chan A', url: 'http://host/a', catchupSource: 'http://host/catchup/{start}' },
+    ];
+  };
+
+  beforeEach(() => {
+    catchupChannel();
+    storageMock.getCatchupProgressList.mockReturnValue([]);
+    storageMock.clearCatchupProgress.mockClear();
+  });
+
+  it('renders a Resume badge and progress bar for a partial entry', () => {
+    const startMs = new Date(Y, M, D, 10, 0).getTime();
+    storageMock.getCatchupProgressList.mockReturnValue([
+      { channelKey: 'ck1', progStart: startMs, progEnd: startMs + 3600000, position: 1800, duration: 3600, updatedAt: 0, completed: false },
+    ]);
+    grid.render();
+    const item = container.querySelector('[data-prog-idx="0"]');
+    expect(item!.querySelector('.epg-catchup-badge')!.textContent).toContain('Resume');
+    const bar = item!.querySelector<HTMLElement>('.epg-catchup-progress-fill');
+    expect(bar).not.toBeNull();
+    // 1800/3600 = 50%
+    expect(bar!.style.width).toBe('50%');
+  });
+
+  it('renders a Watched badge for a completed entry', () => {
+    const startMs = new Date(Y, M, D, 10, 0).getTime();
+    storageMock.getCatchupProgressList.mockReturnValue([
+      { channelKey: 'ck1', progStart: startMs, progEnd: startMs + 3600000, position: 3600, duration: 3600, updatedAt: 0, completed: true },
+    ]);
+    grid.render();
+    const item = container.querySelector('[data-prog-idx="0"]');
+    expect(item!.querySelector('.epg-catchup-badge')!.textContent).toContain('Watched');
+    expect(item!.querySelector('.epg-catchup-progress-fill')).toBeNull();
+  });
+
+  it('does not render a marker for a channel without catchupSource', () => {
+    state.channels = [{ name: 'Chan A', url: 'http://host/a' }]; // no catchupSource
+    const startMs = new Date(Y, M, D, 10, 0).getTime();
+    storageMock.getCatchupProgressList.mockReturnValue([
+      { channelKey: 'ck1', progStart: startMs, progEnd: startMs + 3600000, position: 1800, duration: 3600, updatedAt: 0, completed: false },
+    ]);
+    grid.render();
+    expect(container.querySelector('.epg-catchup-badge')).toBeNull();
+  });
+
+  it('does not render a marker for a future programme', () => {
+    const startMs = new Date(Y, M, D, 13, 0).getTime();
+    storageMock.getCatchupProgressList.mockReturnValue([
+      { channelKey: 'ck1', progStart: startMs, progEnd: startMs + 3600000, position: 1800, duration: 3600, updatedAt: 0, completed: false },
+    ]);
+    grid.render();
+    const item = container.querySelector('[data-prog-idx="2"]'); // Afternoon (future)
+    expect(item!.querySelector('.epg-catchup-badge')).toBeNull();
+  });
+
+  it('does not render a marker when no progress entry matches', () => {
+    storageMock.getCatchupProgressList.mockReturnValue([]);
+    grid.render();
+    expect(container.querySelector('.epg-catchup-badge')).toBeNull();
+  });
+
+  it('calls getCatchupProgressList once per render, not once per programme', () => {
+    storageMock.getCatchupProgressList.mockReturnValue([]);
+    grid.render();
+    expect(storageMock.getCatchupProgressList).toHaveBeenCalledTimes(1);
+  });
+
+  it('clamps progress fill between 0 and 100%', () => {
+    const startMs = new Date(Y, M, D, 10, 0).getTime();
+    storageMock.getCatchupProgressList.mockReturnValue([
+      { channelKey: 'ck1', progStart: startMs, progEnd: startMs + 3600000, position: 9999, duration: 3600, updatedAt: 0, completed: false },
+    ]);
+    grid.render();
+    const bar = container.querySelector<HTMLElement>('.epg-catchup-progress-fill');
+    expect(bar!.style.width).toBe('100%');
+  });
+
+  it('shows Resume badge but not progress bar for a partial entry with duration=0', () => {
+    const startMs = new Date(Y, M, D, 10, 0).getTime();
+    storageMock.getCatchupProgressList.mockReturnValue([
+      { channelKey: 'ck1', progStart: startMs, progEnd: startMs + 3600000, position: 15, duration: 0, updatedAt: 0, completed: false },
+    ]);
+    grid.render();
+    const item = container.querySelector('[data-prog-idx="0"]');
+    expect(item!.querySelector('.epg-catchup-badge')!.textContent).toContain('Resume');
+    const bar = item!.querySelector('.epg-catchup-progress-fill');
+    expect(bar).toBeNull();
+  });
+});
+
+describe('EpgGrid catch-up selection behavior', () => {
+  const catchupChannel = () => {
+    state.channels = [
+      { name: 'Chan A', url: 'http://host/a', catchupSource: 'http://host/catchup/{start}' },
+    ];
+  };
+
+  beforeEach(() => {
+    catchupChannel();
+    storageMock.getCatchupProgressList.mockReturnValue([]);
+    storageMock.clearCatchupProgress.mockClear();
+  });
+
+  it('selecting a partial entry opens the resume prompt and does not call onChannelSelect', () => {
+    const startMs = new Date(Y, M, D, 10, 0).getTime();
+    storageMock.getCatchupProgressList.mockReturnValue([
+      { channelKey: 'ck1', progStart: startMs, progEnd: startMs + 3600000, position: 300, duration: 3600, updatedAt: 0, completed: false },
+    ]);
+    grid.render();
+    grid.handleAction('right'); // focus programmes
+    grid.handleAction('select'); // Morning (past, partial)
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(document.querySelector('.catchup-resume-prompt')).not.toBeNull();
+  });
+
+  it('Resume passes resumeSecs to onChannelSelect', () => {
+    const startMs = new Date(Y, M, D, 10, 0).getTime();
+    storageMock.getCatchupProgressList.mockReturnValue([
+      { channelKey: 'ck1', progStart: startMs, progEnd: startMs + 3600000, position: 300, duration: 3600, updatedAt: 0, completed: false },
+    ]);
+    grid.render();
+    grid.handleAction('right');
+    grid.handleAction('select');
+    // Simulate choosing Resume
+    grid.handleAction('select'); // Resume is default focus
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    const [idx, catchup] = onSelect.mock.calls[0];
+    expect(idx).toBe(0);
+    expect(catchup.resumeSecs).toBe(300);
+  });
+
+  it('Start Over clears the entry and starts from zero', () => {
+    const startMs = new Date(Y, M, D, 10, 0).getTime();
+    storageMock.getCatchupProgressList.mockReturnValue([
+      { channelKey: 'ck1', progStart: startMs, progEnd: startMs + 3600000, position: 300, duration: 3600, updatedAt: 0, completed: false },
+    ]);
+    grid.render();
+    grid.handleAction('right');
+    grid.handleAction('select');
+    // Navigate to Start Over (right from Resume)
+    grid.handleAction('right');
+    grid.handleAction('select');
+    expect(storageMock.clearCatchupProgress).toHaveBeenCalled();
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    const [, catchup] = onSelect.mock.calls[0];
+    expect(catchup.resumeSecs).toBeUndefined();
+  });
+
+  it('Cancel leaves EPG unchanged and does not call onChannelSelect', () => {
+    const startMs = new Date(Y, M, D, 10, 0).getTime();
+    storageMock.getCatchupProgressList.mockReturnValue([
+      { channelKey: 'ck1', progStart: startMs, progEnd: startMs + 3600000, position: 300, duration: 3600, updatedAt: 0, completed: false },
+    ]);
+    grid.render();
+    grid.handleAction('right');
+    grid.handleAction('select');
+    // Navigate to Cancel
+    grid.handleAction('right');
+    grid.handleAction('right');
+    grid.handleAction('select');
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('while prompt is visible, actions route to it and EPG focus does not move', () => {
+    const startMs = new Date(Y, M, D, 10, 0).getTime();
+    storageMock.getCatchupProgressList.mockReturnValue([
+      { channelKey: 'ck1', progStart: startMs, progEnd: startMs + 3600000, position: 300, duration: 3600, updatedAt: 0, completed: false },
+    ]);
+    grid.render();
+    grid.handleAction('right');
+    grid.handleAction('select'); // opens prompt
+    // Now pressing down should NOT move EPG programme focus
+    grid.handleAction('down');
+    // Prompt is still visible and EPG focus hasn't moved
+    expect(document.querySelector('.catchup-resume-prompt.hidden')).toBeNull();
+  });
+
+  it('selecting a completed entry plays from zero without prompt', () => {
+    const startMs = new Date(Y, M, D, 10, 0).getTime();
+    storageMock.getCatchupProgressList.mockReturnValue([
+      { channelKey: 'ck1', progStart: startMs, progEnd: startMs + 3600000, position: 3600, duration: 3600, updatedAt: 0, completed: true },
+    ]);
+    grid.render();
+    grid.handleAction('right');
+    grid.handleAction('select');
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    const [, catchup] = onSelect.mock.calls[0];
+    expect(catchup.resumeSecs).toBeUndefined();
+    // No prompt opened
+    expect(document.querySelector('.catchup-resume-prompt:not(.hidden)')).toBeNull();
+  });
+
+  it('selecting an untouched past entry plays normally without prompt', () => {
+    storageMock.getCatchupProgressList.mockReturnValue([]);
+    grid.render();
+    grid.handleAction('right');
+    grid.handleAction('select'); // Morning, past, no progress
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    const [, catchup] = onSelect.mock.calls[0];
+    expect(catchup.resumeSecs).toBeUndefined();
+  });
+
+  it('programme title remains XSS-safe in the resume prompt', () => {
+    state.programmes['Chan A'] = [
+      prog(10, 0, 11, 0, '<img src=x onerror=alert(1)>'),
+      prog(11, 30, 12, 30, 'Noon Show'),
+      prog(13, 0, 14, 0, 'Afternoon'),
+    ];
+    const startMs = new Date(Y, M, D, 10, 0).getTime();
+    storageMock.getCatchupProgressList.mockReturnValue([
+      { channelKey: 'ck1', progStart: startMs, progEnd: startMs + 3600000, position: 300, duration: 3600, updatedAt: 0, completed: false },
+    ]);
+    grid.render();
+    grid.handleAction('right');
+    grid.handleAction('select');
+    expect(document.querySelector('.catchup-resume-message img')).toBeNull();
+  });
+});
+
+describe('EpgGrid non-catchup channel selection', () => {
+  beforeEach(() => {
+    // Channel without catchupSource
+    state.channels = [{ name: 'Chan A', url: 'http://host/a' }];
+    storageMock.getCatchupProgressList.mockReturnValue([]);
+    grid.render();
+  });
+
+  it('selecting a past programme on a non-catchup channel passes no CatchupInfo', () => {
+    grid.handleAction('right'); // focus programmes
+    grid.handleAction('select'); // Morning (past)
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    const [idx, catchup] = onSelect.mock.calls[0];
+    expect(idx).toBe(0);
+    expect(catchup).toBeUndefined();
+  });
+});
+
+describe('EpgGrid prompt visibility query', () => {
+  beforeEach(() => {
+    state.channels = [
+      { name: 'Chan A', url: 'http://host/a', catchupSource: 'http://host/catchup/{start}' },
+    ];
+    const startMs = new Date(Y, M, D, 10, 0).getTime();
+    storageMock.getCatchupProgressList.mockReturnValue([
+      { channelKey: 'ck1', progStart: startMs, progEnd: startMs + 3600000, position: 300, duration: 3600, updatedAt: 0, completed: false },
+    ]);
+    grid.render();
+  });
+
+  it('isPromptVisible returns false when prompt is not open', () => {
+    expect(grid.isPromptVisible).toBe(false);
+  });
+
+  it('isPromptVisible returns true when catch-up prompt is open', () => {
+    grid.handleAction('right');
+    grid.handleAction('select'); // opens prompt
+    expect(grid.isPromptVisible).toBe(true);
+  });
+
+  it('isPromptVisible returns false after prompt is dismissed', () => {
+    grid.handleAction('right');
+    grid.handleAction('select'); // opens prompt
+    grid.handleAction('back'); // cancel prompt
+    expect(grid.isPromptVisible).toBe(false);
+  });
+
+  it('back action while prompt is visible cancels prompt, does not leave EPG', () => {
+    grid.handleAction('right');
+    grid.handleAction('select'); // opens prompt
+    grid.handleAction('back');
+    expect(grid.isPromptVisible).toBe(false);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('dismissPrompt hides the prompt if it is open', () => {
+    grid.handleAction('right');
+    grid.handleAction('select'); // opens prompt
+    expect(grid.isPromptVisible).toBe(true);
+    grid.dismissPrompt();
+    expect(grid.isPromptVisible).toBe(false);
+  });
+});
+
+describe('EpgGrid click pointer activation', () => {
+  beforeEach(() => {
+    state.channels = [
+      { name: 'Chan A', url: 'http://host/a', catchupSource: 'http://host/catchup/{start}' },
+    ];
+    storageMock.getCatchupProgressList.mockReturnValue([]);
+    grid.render();
+  });
+
+  it('click on a programme activates it', () => {
+    const item = container.querySelector<HTMLElement>('[data-prog-idx="0"]')!;
+    item.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(onSelect).toHaveBeenCalledTimes(1);
+  });
+
+  it('click outside any item does nothing', () => {
+    container.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('binds click once (no accumulation)', () => {
+    const c = document.createElement('div');
+    document.body.appendChild(c);
+    const spy = vi.spyOn(c, 'addEventListener');
+    new EpgGrid(c, vi.fn());
+    const clicks = spy.mock.calls.filter(([t]) => t === 'click').length;
+    expect(clicks).toBe(1);
+    spy.mockRestore();
+  });
+
+  it('mouseover still updates focus without full render', () => {
+    const item1 = container.querySelector<HTMLElement>('[data-prog-idx="1"]')!;
+    item1.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    expect(item1.classList.contains('focused')).toBe(true);
   });
 });

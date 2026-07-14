@@ -25,6 +25,7 @@ vi.mock('../services/storage-service', () => ({
     getAudioPref: vi.fn(), setAudioPref: vi.fn(),
     setResume: vi.fn(), clearResume: vi.fn(),
     getPickedOnlineSub: vi.fn(), setPickedOnlineSub: vi.fn(),
+    setCatchupProgress: vi.fn(), getCatchupProgress: vi.fn(), clearCatchupProgress: vi.fn(),
   },
 }));
 vi.mock('./toast', () => ({ showToast: vi.fn() }));
@@ -44,10 +45,16 @@ import { showToast } from './toast';
 import { probeMedia } from '../services/media-probe';
 import { getCachedSubtitle, setCachedSubtitle } from '../services/idb-cache';
 import { CONFIG } from '../config';
+import { channelKey } from '../utils/channel';
 
 const CHANNEL = {
   id: 'c1', name: 'Chan', logo: '', group: '', url: 'http://host/play/c1', extras: null,
   playlistIds: [], catchup: 'default', catchupSource: 'http://host/catchup/c1?start={utc}&end={utcend}', catchupDays: 7,
+};
+// Channel without catchupSource — catch-up progress must never be written.
+const CHANNEL_NO_CATCHUP = {
+  id: 'c2', name: 'NoCatchup', logo: '', group: '', url: 'http://host/play/c2', extras: null,
+  playlistIds: [], catchupDays: 0,
 };
 // 120-second catch-up programme.
 const CATCHUP = { start: 1_000_000, end: 1_000_120, title: 'Prog', description: '', icon: '' };
@@ -1049,5 +1056,242 @@ describe('extFromUrl', () => {
     expect(extFromUrl('http://host/series/u/p/e1.mkv?token=x')).toBe('mkv');
     expect(extFromUrl('http://host/series/u/p/e1.avi#frag')).toBe('avi');
     expect(extFromUrl('http://host/movie/u/p/10')).toBe('');
+  });
+});
+
+describe('Player catch-up save/restore lifecycle', () => {
+  // Outer beforeEach provides: player (with fakeVideo(120) via player.init(video)), video
+  const setCatchupProgress = () => vi.mocked(StorageService.setCatchupProgress);
+
+  beforeEach(() => {
+    setCatchupProgress().mockClear();
+  });
+
+  it('applies resumeSecs from CatchupInfo on loadedmetadata', () => {
+    player.play(0, { ...CATCHUP, resumeSecs: 45 });
+    video.dispatchEvent(new Event('loadedmetadata'));
+    expect(video.currentTime).toBe(45);
+  });
+
+  it('clamps resumeSecs to duration-1 if it would overshoot', () => {
+    player.play(0, { ...CATCHUP, resumeSecs: 999 });
+    video.dispatchEvent(new Event('loadedmetadata'));
+    expect(video.currentTime).toBe(119); // Math.min(999, 120-1)
+  });
+
+  it('does not seek when resumeSecs is absent', () => {
+    player.play(0, CATCHUP);
+    video.dispatchEvent(new Event('loadedmetadata'));
+    expect(video.currentTime).toBe(0);
+  });
+
+  it('saves on pause with channelKey, progStart epoch ms, and position', () => {
+    player.play(0, CATCHUP);
+    video.currentTime = 60;
+    setCatchupProgress().mockClear();
+    player.handleAction('pause');
+    expect(setCatchupProgress()).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channelKey: channelKey(CHANNEL),
+        progStart: CATCHUP.start * 1000,
+        progEnd: CATCHUP.end * 1000,
+        position: 60,
+      }),
+      CHANNEL.catchupDays,
+    );
+  });
+
+  it('saves on seeked', () => {
+    player.play(0, CATCHUP);
+    video.currentTime = 50;
+    setCatchupProgress().mockClear();
+    video.dispatchEvent(new Event('seeked'));
+    expect(setCatchupProgress()).toHaveBeenCalledWith(
+      expect.objectContaining({ position: 50 }),
+      CHANNEL.catchupDays,
+    );
+  });
+
+  it('saves on stop (back action)', () => {
+    player.play(0, CATCHUP);
+    video.currentTime = 70;
+    setCatchupProgress().mockClear();
+    player.handleAction('back');
+    expect(setCatchupProgress()).toHaveBeenCalledWith(
+      expect.objectContaining({ position: 70 }),
+      CHANNEL.catchupDays,
+    );
+  });
+
+  it('saves on channel switch (channelUp)', () => {
+    player.play(0, CATCHUP);
+    video.currentTime = 80;
+    setCatchupProgress().mockClear();
+    player.channelUp();
+    expect(setCatchupProgress()).toHaveBeenCalledWith(
+      expect.objectContaining({ position: 80 }),
+      CHANNEL.catchupDays,
+    );
+  });
+
+  it('saves on switching to VOD (playVod)', () => {
+    player.play(0, CATCHUP);
+    video.currentTime = 90;
+    setCatchupProgress().mockClear();
+    player.playVod({
+      url: 'http://host/movie.mp4', title: 'Movie', poster: '',
+      accountId: 'x1', itemId: '1', kind: 'vod', resumeSecs: 0,
+      subtitles: [], onBack: vi.fn(),
+    });
+    expect(setCatchupProgress()).toHaveBeenCalledWith(
+      expect.objectContaining({ position: 90 }),
+      CHANNEL.catchupDays,
+    );
+  });
+
+  it('throttles periodic saves to CHECKPOINT_INTERVAL via timeupdate', () => {
+    player.play(0, CATCHUP);
+    setCatchupProgress().mockClear();
+
+    // First timeupdate — no time elapsed, no save.
+    video.currentTime = 15;
+    video.dispatchEvent(new Event('timeupdate'));
+    expect(setCatchupProgress()).not.toHaveBeenCalled();
+
+    // Advance past CHECKPOINT_INTERVAL.
+    vi.advanceTimersByTime(CONFIG.CATCHUP.CHECKPOINT_INTERVAL + 100);
+    video.currentTime = 45;
+    video.dispatchEvent(new Event('timeupdate'));
+    expect(setCatchupProgress()).toHaveBeenCalledTimes(1);
+    expect(setCatchupProgress()).toHaveBeenCalledWith(
+      expect.objectContaining({ position: 45 }),
+      CHANNEL.catchupDays,
+    );
+
+    // Another timeupdate immediately after — still within interval, no second save.
+    setCatchupProgress().mockClear();
+    video.currentTime = 46;
+    video.dispatchEvent(new Event('timeupdate'));
+    expect(setCatchupProgress()).not.toHaveBeenCalled();
+  });
+
+  it('does not save on timeupdate for live playback (no catch-up)', () => {
+    player.play(0); // live, no catchup
+    setCatchupProgress().mockClear();
+    vi.advanceTimersByTime(CONFIG.CATCHUP.CHECKPOINT_INTERVAL + 100);
+    video.dispatchEvent(new Event('timeupdate'));
+    expect(setCatchupProgress()).not.toHaveBeenCalled();
+  });
+
+  it('marks completed=true when the ended event fires on a catch-up stream', () => {
+    HTMLMediaElement.prototype.play = vi.fn().mockResolvedValue(undefined);
+    HTMLMediaElement.prototype.pause = vi.fn();
+    HTMLMediaElement.prototype.load = vi.fn();
+    const v = document.createElement('video');
+    Object.defineProperty(v, 'duration', { value: 120, configurable: true });
+    container.appendChild(v);
+    player.init(v);
+
+    player.play(0, CATCHUP);
+    v.currentTime = 118;
+    setCatchupProgress().mockClear();
+    v.dispatchEvent(new Event('ended'));
+    expect(setCatchupProgress()).toHaveBeenCalledWith(
+      expect.objectContaining({ completed: true }),
+      CHANNEL.catchupDays,
+    );
+  });
+
+  it('saves with current position before suspend and queues that position for resume', () => {
+    HTMLMediaElement.prototype.play = vi.fn().mockResolvedValue(undefined);
+    HTMLMediaElement.prototype.pause = vi.fn();
+    HTMLMediaElement.prototype.load = vi.fn();
+    const v = document.createElement('video');
+    Object.defineProperty(v, 'duration', { value: 120, configurable: true });
+    // suspend() only saves when the element was playing; a real DOM element is always paused
+    // without an actual src, so override paused to simulate the playing state.
+    Object.defineProperty(v, 'paused', { get: () => false, configurable: true });
+    container.appendChild(v);
+    player.init(v);
+
+    player.play(0, CATCHUP);
+    v.currentTime = 55;
+    setCatchupProgress().mockClear();
+
+    player.suspend();
+    // Progress saved with the pre-suspend position before the element was destroyed.
+    expect(setCatchupProgress()).toHaveBeenCalledWith(
+      expect.objectContaining({ position: 55 }),
+      CHANNEL.catchupDays,
+    );
+
+    // After resume(), play() must queue 55 as the resume position.
+    player.resume();
+    const p = player as unknown as { pendingResumeSecs: number };
+    expect(p.pendingResumeSecs).toBe(55);
+  });
+
+  it('preserves a pending resume seek when suspended before loadedmetadata applies it', () => {
+    HTMLMediaElement.prototype.play = vi.fn().mockResolvedValue(undefined);
+    HTMLMediaElement.prototype.pause = vi.fn();
+    HTMLMediaElement.prototype.load = vi.fn();
+    const v = document.createElement('video');
+    Object.defineProperty(v, 'duration', { value: 120, configurable: true });
+    Object.defineProperty(v, 'paused', { get: () => false, configurable: true });
+    container.appendChild(v);
+    player.init(v);
+
+    // Resume from 45s, but the resume seek only runs on loadedmetadata — which we
+    // never dispatch here, so currentTime stays 0 (the race window).
+    player.play(0, { ...CATCHUP, resumeSecs: 45 });
+    expect(v.currentTime).toBe(0);
+
+    player.suspend();
+    player.resume();
+    // The requested 45s must survive — not collapse to 0 from the un-advanced element.
+    const p = player as unknown as { pendingResumeSecs: number };
+    expect(p.pendingResumeSecs).toBe(45);
+  });
+
+  it('does not write zero-position progress after suspend recreates the element', () => {
+    HTMLMediaElement.prototype.play = vi.fn().mockResolvedValue(undefined);
+    HTMLMediaElement.prototype.pause = vi.fn();
+    HTMLMediaElement.prototype.load = vi.fn();
+    const v = document.createElement('video');
+    Object.defineProperty(v, 'duration', { value: 120, configurable: true });
+    Object.defineProperty(v, 'paused', { get: () => false, configurable: true });
+    container.appendChild(v);
+    player.init(v);
+
+    player.play(0, CATCHUP);
+    v.currentTime = 55;
+    player.suspend();
+    setCatchupProgress().mockClear(); // ignore the suspend save
+
+    // resume() calls play() with a fresh element (currentTime=0); that must not overwrite.
+    player.resume();
+    expect(setCatchupProgress()).not.toHaveBeenCalled();
+
+    // The fresh element's first timeupdate should also be silent (checkpoint timer reset).
+    const freshEl = (player as unknown as { videoEl: HTMLVideoElement }).videoEl;
+    freshEl.dispatchEvent(new Event('timeupdate'));
+    expect(setCatchupProgress()).not.toHaveBeenCalled();
+  });
+
+  it('does not save catch-up progress when channel has no catchupSource', () => {
+    playlistMock.getByIndex.mockReturnValue(CHANNEL_NO_CATCHUP);
+    player.play(0, CATCHUP);
+    video.currentTime = 60;
+    setCatchupProgress().mockClear();
+    player.handleAction('pause');
+    expect(setCatchupProgress()).not.toHaveBeenCalled();
+
+    // Also no write on seeked
+    video.dispatchEvent(new Event('seeked'));
+    expect(setCatchupProgress()).not.toHaveBeenCalled();
+
+    // Also no write on back
+    player.handleAction('back');
+    expect(setCatchupProgress()).not.toHaveBeenCalled();
   });
 });

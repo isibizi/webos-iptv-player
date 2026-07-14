@@ -78,6 +78,13 @@ export class Player {
   private manifestAudio: ManifestAudio[] = []; // real track names parsed from the HLS master (webOS)
   private manifestSubtitles: ManifestSubtitle[] = []; // subtitle names parsed from the HLS master (webOS)
   private manifestClosedCaptions: ManifestClosedCaption[] = []; // CEA-608/708 declared in the HLS master (webOS)
+  // Catch-up progress checkpointing. Wall-clock time of the last periodic save;
+  // reset to Date.now() on every new catch-up session so the first checkpoint
+  // fires CHECKPOINT_INTERVAL after tune-in, not immediately.
+  private catchupCheckpointAt = 0;
+  // Position (seconds) saved from the video element before suspend() destroys it.
+  // play() consumes this to restore the position on resume; -1 = not pending.
+  private catchupSuspendPos = -1;
   private ccEnabled = false; // live state of the native caption compositor (setSubtitleEnable)
   private selfRenderIndex = -1; // manifest subtitle rendition currently self-rendered (-1 = off)
   private masterUrl = ''; // HLS master URL of the active stream, for re-pointing self-render
@@ -169,7 +176,7 @@ export class Player {
     el.addEventListener('error', () => this.onError());
     el.addEventListener('loadedmetadata', () => {
       log.info('loadedmetadata', el.videoWidth + 'x' + el.videoHeight, '| duration:', el.duration);
-      if (this.vod && this.pendingResumeSecs > 0 && Number.isFinite(el.duration)) {
+      if ((this.vod || this.catchupInfo) && this.pendingResumeSecs > 0 && Number.isFinite(el.duration) && el.duration > 0) {
         el.currentTime = Math.min(this.pendingResumeSecs, el.duration - 1);
         this.pendingResumeSecs = 0;
       }
@@ -189,6 +196,7 @@ export class Player {
     el.addEventListener('waiting', () => log.debug('waiting (buffering)'));
     el.addEventListener('stalled', () => log.warn('stalled'));
     el.addEventListener('timeupdate', () => this.refreshProgress());
+    el.addEventListener('seeked', () => { if (this.catchupInfo) this.saveCatchupProgress(); });
     el.addEventListener('ended', () => this.onEnded());
   }
 
@@ -197,6 +205,14 @@ export class Player {
     if (this.wasPlayingBeforeHide) return; // already suspended
     this.wasPlayingBeforeHide = !this.videoEl.paused;
     if (this.wasPlayingBeforeHide) {
+      // Save catch-up position and remember it for resume() BEFORE the element is destroyed.
+      // Prefer a not-yet-applied resume seek: if we suspend before loadedmetadata
+      // seeks to pendingResumeSecs, currentTime is still 0 and would otherwise
+      // collapse the resume point to the start on the next play().
+      if (this.catchupInfo) {
+        this.catchupSuspendPos = Math.max(this.videoEl.currentTime, this.pendingResumeSecs);
+        this.saveCatchupProgress();
+      }
       this.stallWatchdog.stop();
       this.subs.stop();
       if (this.hls) {
@@ -261,11 +277,26 @@ export class Player {
       return;
     }
 
+    // Save progress for the outgoing catch-up session (channel switch, stopping catch-up).
+    // Skip when resuming from suspend: catchupSuspendPos >= 0 means the element is fresh
+    // (currentTime=0) and we already saved the real position in suspend().
+    if (this.catchupSuspendPos < 0) this.saveCatchupProgress();
+
+    // Determine resume position: prefer the pre-suspend position if available, else the
+    // position requested by the caller (CatchupInfo.resumeSecs). Reset for live channels.
+    if (this.catchupSuspendPos >= 0) {
+      this.pendingResumeSecs = this.catchupSuspendPos;
+      this.catchupSuspendPos = -1;
+    } else {
+      this.pendingResumeSecs = catchup?.resumeSecs ?? 0;
+    }
+
     log.info('play index', channelIndex, '|', channel.name, catchup ? '(catchup)' : '');
     this.currentChannel = channel;
     this.currentIndex = channelIndex;
     this.catchupInfo = catchup || null;
     this.vod = null;
+    this.catchupCheckpointAt = Date.now(); // reset periodic-save timer for the new session
     this.failedIcons.clear(); // fresh icon-load attempts per channel/programme visit
     StorageService.setLastChannel(channelIndex);
 
@@ -285,6 +316,7 @@ export class Player {
     this.stallWatchdog.stop();
     if (!this.videoEl) { log.warn('playVod ignored — no video element'); return; }
     log.info('playVod', v.title, '| resume', v.resumeSecs);
+    this.saveCatchupProgress(); // save any active catch-up before switching to VOD
     this.currentChannel = null;
     this.currentIndex = -1;
     this.catchupInfo = null;
@@ -326,6 +358,30 @@ export class Player {
       duration: dur,
       updatedAt: Date.now(),
     });
+  }
+
+  private saveCatchupProgress(opts?: { completed?: boolean }): void {
+    const info = this.catchupInfo;
+    const ch = this.currentChannel;
+    if (!info || !ch || !ch.catchupSource) return;
+    const el = this.videoEl;
+    const pos = el ? (el.currentTime || 0) : 0;
+    const progStartMs = info.start * 1000;
+    const progEndMs = info.end * 1000;
+    const epgDur = info.end - info.start; // seconds, as fallback when media duration unknown
+    const dur = el && Number.isFinite(el.duration) && el.duration > 0 ? el.duration : epgDur;
+    const isCompleted = (opts?.completed ?? false) || (dur > 0 && pos >= dur - CONFIG.CATCHUP.FINISH_PAD);
+    // Avoid writing a sub-threshold position that would delete a valid stored entry.
+    if (!isCompleted && pos < CONFIG.CATCHUP.RESUME_MIN_SECS) return;
+    StorageService.setCatchupProgress({
+      channelKey: channelKey(ch),
+      progStart: progStartMs,
+      progEnd: progEndMs,
+      position: pos,
+      duration: dur,
+      updatedAt: Date.now(),
+      completed: isCompleted,
+    }, ch.catchupDays);
   }
 
   private handleVodAction(action: Action): void {
@@ -506,13 +562,17 @@ export class Player {
     }
     if (this.catchupInfo && this.currentIndex >= 0) {
       log.info('catch-up ended — resuming live');
+      this.saveCatchupProgress({ completed: true });
+      const idx = this.currentIndex;
+      this.catchupInfo = null; // clear before play() so it doesn't re-save with pos=0
       this.recreateVideoEl();
-      this.play(this.currentIndex);
+      this.play(idx);
     }
   }
 
   stop(): void {
     if (this.vod) this.saveVodResume();
+    this.saveCatchupProgress(); // save before the video element is torn down
     this.stallWatchdog.stop();
     this.subs.stop();
     this.vodSubs.clear();
@@ -538,6 +598,8 @@ export class Player {
     this.vodAssSidecars = [];
     this.activeAssIndex = -1;
     this.pendingResumeSecs = 0;
+    this.catchupCheckpointAt = 0;
+    this.catchupSuspendPos = -1;
   }
 
   private loadStream(url: string, extras: Record<string, string> | null, opts?: { direct?: boolean }): void {
@@ -876,6 +938,7 @@ export class Player {
       this.stopDvrPauseTick();
     } else {
       v.pause?.();
+      if (this.catchupInfo) this.saveCatchupProgress();
       if (this.isLiveDvr()) this.startDvrPauseTick();
     }
     if (this.osdVisible) { this.renderOSD(); this.resetOsdTimer(); } else this.showOSD();
@@ -898,7 +961,17 @@ export class Player {
   /** Live-update the bar + labels in place (on timeupdate / after a seek). */
   private refreshProgress(): void {
     const v = this.videoEl;
-    if (!this.osdVisible || !v) return;
+    if (!v) return;
+    // Throttled periodic catch-up checkpoint — runs regardless of OSD visibility
+    // so progress is saved even when the OSD has auto-hidden.
+    if (this.catchupInfo) {
+      const now = Date.now();
+      if (now - this.catchupCheckpointAt >= CONFIG.CATCHUP.CHECKPOINT_INTERVAL) {
+        this.catchupCheckpointAt = now;
+        this.saveCatchupProgress();
+      }
+    }
+    if (!this.osdVisible) return;
     if (this.vod) {
       const dur = Number.isFinite(v.duration) ? v.duration : 0;
       const bar = $('.osd-progress-bar', this.container) as HTMLElement | null;

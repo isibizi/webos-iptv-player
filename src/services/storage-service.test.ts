@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { Channel } from '../types';
 import { StorageService } from './storage-service';
 import { channelKey } from '../utils/channel';
@@ -141,7 +141,7 @@ describe('StorageService', () => {
   });
 });
 
-import type { ResumeEntry } from '../types';
+import type { CatchupProgressEntry, ResumeEntry } from '../types';
 
 const resume = (over: Partial<ResumeEntry>): ResumeEntry => ({
   accountId: 'x1', kind: 'vod', itemId: '10', name: 'Movie One', poster: '', ext: 'mp4',
@@ -204,5 +204,178 @@ describe('StorageService resume store', () => {
     StorageService.setPickedOnlineSub('acc', 'vod', 'm1', { providerId: 'subdl', id: '9', name: 'Alpha', lang: 'l1', format: 'srt' });
     expect(StorageService.getPickedOnlineSub('acc', 'vod', 'm1')).toMatchObject({ id: '9', format: 'srt' });
     expect(StorageService.getPickedOnlineSub('acc', 'vod', 'zzz')).toBeNull();
+  });
+});
+
+describe('StorageService catchup progress store', () => {
+  beforeEach(() => { localStorage.clear(); });
+
+  const HOUR = 3600 * 1000;
+  const DAY = 24 * HOUR;
+  // Arbitrary fixed epoch so tests do not depend on real time.
+  const baseNow = 1_700_000_000_000;
+
+  const mkEntry = (over: Partial<CatchupProgressEntry> = {}): CatchupProgressEntry => ({
+    channelKey: 'ck1',
+    progStart: baseNow - HOUR,
+    progEnd: baseNow + HOUR,
+    position: 60,
+    duration: 3600,
+    updatedAt: baseNow,
+    completed: false,
+    ...over,
+  });
+
+  it('returns null when no entry exists', () => {
+    expect(StorageService.getCatchupProgress('ck1', baseNow - HOUR, baseNow)).toBeNull();
+  });
+
+  it('round-trips a catchup progress entry', () => {
+    StorageService.setCatchupProgress(mkEntry(), 7, baseNow);
+    const got = StorageService.getCatchupProgress('ck1', baseNow - HOUR, baseNow);
+    expect(got).not.toBeNull();
+    expect(got!.position).toBe(60);
+    expect(got!.completed).toBe(false);
+  });
+
+  it('isolates entries by channelKey', () => {
+    StorageService.setCatchupProgress(mkEntry({ channelKey: 'ck1' }), 7, baseNow);
+    expect(StorageService.getCatchupProgress('ck2', baseNow - HOUR, baseNow)).toBeNull();
+  });
+
+  it('isolates entries by progStart', () => {
+    StorageService.setCatchupProgress(mkEntry(), 7, baseNow);
+    expect(StorageService.getCatchupProgress('ck1', baseNow - 2 * HOUR, baseNow)).toBeNull();
+  });
+
+  it('does not store when position is below the minimum resume threshold', () => {
+    StorageService.setCatchupProgress(mkEntry({ position: 14 }), 7, baseNow);
+    expect(StorageService.getCatchupProgress('ck1', baseNow - HOUR, baseNow)).toBeNull();
+  });
+
+  it('clears an existing entry when position drops below the minimum resume threshold', () => {
+    StorageService.setCatchupProgress(mkEntry({ position: 60 }), 7, baseNow);
+    StorageService.setCatchupProgress(mkEntry({ position: 5 }), 7, baseNow);
+    expect(StorageService.getCatchupProgress('ck1', baseNow - HOUR, baseNow)).toBeNull();
+  });
+
+  it('retains a completed entry rather than clearing it', () => {
+    StorageService.setCatchupProgress(mkEntry({ position: 3570, completed: true }), 7, baseNow);
+    const got = StorageService.getCatchupProgress('ck1', baseNow - HOUR, baseNow);
+    expect(got).not.toBeNull();
+    expect(got!.completed).toBe(true);
+  });
+
+  it('does not auto-clear a near-end entry that is not yet marked completed', () => {
+    // Unlike Xtream resume, catch-up never auto-clears near the end.
+    StorageService.setCatchupProgress(mkEntry({ position: 3590, duration: 3600, completed: false }), 7, baseNow);
+    expect(StorageService.getCatchupProgress('ck1', baseNow - HOUR, baseNow)).not.toBeNull();
+  });
+
+  it('clears one entry explicitly without touching others', () => {
+    StorageService.setCatchupProgress(mkEntry({ channelKey: 'ck1' }), 7, baseNow);
+    StorageService.setCatchupProgress(mkEntry({ channelKey: 'ck2' }), 7, baseNow);
+    StorageService.clearCatchupProgress('ck1', baseNow - HOUR);
+    expect(StorageService.getCatchupProgress('ck1', baseNow - HOUR, baseNow)).toBeNull();
+    expect(StorageService.getCatchupProgress('ck2', baseNow - HOUR, baseNow)).not.toBeNull();
+  });
+
+  it('expires an entry at progEnd + catchupDays', () => {
+    const progEnd = baseNow + HOUR;
+    StorageService.setCatchupProgress(mkEntry({ progEnd }), 3, baseNow);
+    // One ms before expiry: still valid.
+    expect(StorageService.getCatchupProgress('ck1', baseNow - HOUR, progEnd + 3 * DAY - 1)).not.toBeNull();
+    // One ms past expiry: null.
+    expect(StorageService.getCatchupProgress('ck1', baseNow - HOUR, progEnd + 3 * DAY + 1)).toBeNull();
+  });
+
+  it('uses 7-day fallback retention when catchupDays is 0', () => {
+    const progEnd = baseNow + HOUR;
+    StorageService.setCatchupProgress(mkEntry({ progEnd }), 0, baseNow);
+    expect(StorageService.getCatchupProgress('ck1', baseNow - HOUR, progEnd + 7 * DAY - 1)).not.toBeNull();
+    expect(StorageService.getCatchupProgress('ck1', baseNow - HOUR, progEnd + 7 * DAY + 1)).toBeNull();
+  });
+
+  it('prunes expired entries from storage during a set so storage does not grow forever', () => {
+    const progEnd = baseNow + HOUR;
+    const storeKey = `ck1|${baseNow - HOUR}`;
+    StorageService.setCatchupProgress(mkEntry({ progEnd }), 1, baseNow);
+    expect(JSON.parse(localStorage.getItem('iptv_catchup_progress')!)).toHaveProperty(storeKey);
+    // Writing another entry after ck1's expiry (progEnd + 1 day) prunes ck1.
+    const afterExpiry = progEnd + DAY + 1;
+    StorageService.setCatchupProgress(mkEntry({ channelKey: 'ck2', progEnd: baseNow + 30 * DAY }), 7, afterExpiry);
+    expect(JSON.parse(localStorage.getItem('iptv_catchup_progress')!)).not.toHaveProperty(storeKey);
+  });
+
+  it('prunes expired entries from storage during a get so storage does not grow forever', () => {
+    const progEnd = baseNow + HOUR;
+    const storeKey = `ck1|${baseNow - HOUR}`;
+    StorageService.setCatchupProgress(mkEntry({ progEnd }), 1, baseNow);
+    expect(JSON.parse(localStorage.getItem('iptv_catchup_progress')!)).toHaveProperty(storeKey);
+    const afterExpiry = progEnd + DAY + 1;
+    // Reading any key triggers pruning of all expired entries.
+    StorageService.getCatchupProgress('ck2', baseNow, afterExpiry);
+    expect(JSON.parse(localStorage.getItem('iptv_catchup_progress')!)).not.toHaveProperty(storeKey);
+  });
+
+  it('does not persist an already-expired entry (dead-on-arrival check)', () => {
+    // An entry whose progEnd + catchupDays is already in the past at compute time
+    // must not be stored. This can happen when progEnd is far in the past or
+    // catchupDays is 0 (using the fallback) and progEnd + fallback < now.
+    const veryOldProgEnd = baseNow - 30 * DAY;
+    StorageService.setCatchupProgress(mkEntry({ progEnd: veryOldProgEnd }), 0, baseNow);
+    // The entry should not exist in storage (check raw storage, not through
+    // getCatchupProgress which prunes). With progEnd in the past and 7-day fallback,
+    // expiresAt is already <= now, so it must not be written at all.
+    const storeKey = `ck1|${baseNow - HOUR}`;
+    const raw = JSON.parse(localStorage.getItem('iptv_catchup_progress') ?? '{}');
+    expect(raw).not.toHaveProperty(storeKey);
+  });
+
+  describe('getCatchupProgressList', () => {
+    it('returns all non-expired entries for the given channel key', () => {
+      StorageService.setCatchupProgress(mkEntry({ channelKey: 'ck1', progStart: baseNow - 2 * HOUR }), 7, baseNow);
+      StorageService.setCatchupProgress(mkEntry({ channelKey: 'ck1', progStart: baseNow - 3 * HOUR }), 7, baseNow);
+      StorageService.setCatchupProgress(mkEntry({ channelKey: 'ck2', progStart: baseNow - HOUR }), 7, baseNow);
+      const list = StorageService.getCatchupProgressList('ck1', baseNow);
+      expect(list).toHaveLength(2);
+      expect(list.every(e => e.channelKey === 'ck1')).toBe(true);
+    });
+
+    it('returns an empty array when no entries exist', () => {
+      expect(StorageService.getCatchupProgressList('ck1', baseNow)).toEqual([]);
+    });
+
+    it('excludes expired entries', () => {
+      const progEnd = baseNow + HOUR;
+      StorageService.setCatchupProgress(mkEntry({ progEnd }), 1, baseNow);
+      const afterExpiry = progEnd + DAY + 1;
+      expect(StorageService.getCatchupProgressList('ck1', afterExpiry)).toEqual([]);
+    });
+
+    it('prunes expired entries from storage', () => {
+      const progEnd = baseNow + HOUR;
+      StorageService.setCatchupProgress(mkEntry({ progEnd }), 1, baseNow);
+      const storeKey = `ck1|${baseNow - HOUR}`;
+      const afterExpiry = progEnd + DAY + 1;
+      StorageService.getCatchupProgressList('ck1', afterExpiry);
+      const stored = JSON.parse(localStorage.getItem('iptv_catchup_progress') ?? '{}');
+      expect(stored).not.toHaveProperty(storeKey);
+    });
+
+    it('does not write to storage when nothing is pruned', () => {
+      StorageService.setCatchupProgress(mkEntry(), 7, baseNow);
+      const spy = vi.spyOn(Storage.prototype, 'setItem');
+      StorageService.getCatchupProgressList('ck1', baseNow);
+      expect(spy).not.toHaveBeenCalled();
+      spy.mockRestore();
+    });
+
+    it('strips the internal expiresAt field from returned entries', () => {
+      StorageService.setCatchupProgress(mkEntry(), 7, baseNow);
+      const list = StorageService.getCatchupProgressList('ck1', baseNow);
+      expect(list).toHaveLength(1);
+      expect((list[0] as any).expiresAt).toBeUndefined();
+    });
   });
 });

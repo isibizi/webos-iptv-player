@@ -1,10 +1,12 @@
-import type { Action, NumberEvent, CatchupInfo, Programme } from '../types';
+import type { Action, NumberEvent, CatchupInfo, CatchupProgressEntry, Programme } from '../types';
 import { html, raw } from '../utils/dom';
 import { morph } from '../utils/morph';
 import { channelKey } from '../utils/channel';
 import { PlaylistService } from '../services/playlist-service';
 import { EpgService } from '../services/epg-service';
+import { StorageService } from '../services/storage-service';
 import { ReminderService } from '../services/reminder-service';
+import { CatchupResumePrompt } from './catchup-resume-prompt';
 import { showToast } from './toast';
 import { formatTime, formatDayLabel, displayDayKey, startOfDisplayDay, addDisplayDays, formatDuration } from '../utils/time';
 import { bellIcon, REPLAY_ICON } from './icons';
@@ -19,6 +21,7 @@ export class EpgGrid {
   private dayInitialized = false;
   private focusCol: FocusCol = 'channels';
   private focusProg = 0;
+  private resumePrompt = new CatchupResumePrompt();
 
   constructor(container: HTMLElement, onChannelSelect: (index: number, catchup?: CatchupInfo) => void) {
     this.container = container;
@@ -33,6 +36,16 @@ export class EpgGrid {
     this.dayInitialized = false;
     this.selectedDay = 0;
     this.focusProg = 0;
+  }
+
+  /** Whether the catch-up resume prompt is currently visible. */
+  get isPromptVisible(): boolean {
+    return this.resumePrompt.visible;
+  }
+
+  /** Dismiss the catch-up resume prompt if it is open. */
+  dismissPrompt(): void {
+    if (this.resumePrompt.visible) this.resumePrompt.hide();
   }
 
   private getDateOptions(): Date[] {
@@ -102,6 +115,15 @@ export class EpgGrid {
     const todayMs = startOfDisplayDay(new Date()).getTime();
     const programmes = this.getCurrentProgrammes();
 
+    // Load catch-up progress once per render for the current channel.
+    const hasCatchup = !!(channel && channel.catchupSource);
+    let progressMap: Map<number, CatchupProgressEntry> | undefined;
+    if (hasCatchup && channel) {
+      const chKey = channelKey(channel);
+      const entries = StorageService.getCatchupProgressList(chKey);
+      progressMap = new Map(entries.map(e => [e.progStart, e]));
+    }
+
     morph(this.container, html`
       <div class="epg-view">
         <div class="epg-header">
@@ -160,6 +182,7 @@ export class EpgGrid {
                     // via catch-up), live (airing now), and upcoming.
                     const state = stopMs <= now ? 'past' : startMs > now ? 'future' : 'live';
                     const current = state === 'live';
+                    const progress = state === 'past' && hasCatchup ? progressMap!.get(startMs) : undefined;
                     return html`
                       <div class="epg-programme-item state-${state} ${current ? 'current' : ''} ${foc ? 'focused' : ''}"
                            data-key="${String(p.start.getTime())}"
@@ -175,7 +198,9 @@ export class EpgGrid {
                             ${current ? raw('<span class="epg-now-badge"><span class="epg-now-dot"></span>LIVE</span>') : ''}
                             ${p.title}
                             ${state === 'future' && channel ? raw(bellIcon(ReminderService.has(channelKey(channel), startMs))) : ''}
+                            ${progress ? html`<span class="epg-catchup-badge ${progress.completed ? 'watched' : 'resume'}">${progress.completed ? 'Watched' : 'Resume'}</span>` : ''}
                           </div>
+                          ${progress && !progress.completed && progress.duration > 0 ? html`<div class="epg-catchup-progress"><div class="epg-catchup-progress-fill" style="width: ${Math.min(100, Math.max(0, Math.round(progress.position / progress.duration * 100)))}%"></div></div>` : ''}
                           ${p.description ? html`<div class="epg-prog-desc">${p.description.slice(0, 200)}</div>` : ''}
                         </div>
                       </div>
@@ -254,7 +279,7 @@ export class EpgGrid {
     el?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }
 
-  private playSelectedProgramme(): void {
+  private playSelectedProgramme(resumeSecs?: number): void {
     const programmes = this.getCurrentProgrammes();
     const prog = programmes[this.focusProg];
     if (!prog) return;
@@ -262,14 +287,16 @@ export class EpgGrid {
     const progStart = Math.floor(prog.start.getTime() / 1000);
     const progStop = Math.floor(prog.stop.getTime() / 1000);
 
+    const channel = PlaylistService.channels[this.selectedChannelIdx];
     let catchup: CatchupInfo | undefined;
-    if (progStart < now && progStop) {
+    if (progStart < now && progStop && channel && channel.catchupSource) {
       catchup = {
         start: progStart,
         end: progStop,
         title: prog.title,
         description: prog.description || '',
         icon: prog.icon || '',
+        resumeSecs,
       };
     }
     this.onChannelSelect(this.selectedChannelIdx, catchup);
@@ -277,8 +304,30 @@ export class EpgGrid {
 
   private activateFocusedProgramme(): void {
     const prog = this.getCurrentProgrammes()[this.focusProg];
-    if (prog && prog.start.getTime() > Date.now()) this.toggleReminder();
-    else this.playSelectedProgramme();
+    if (!prog) return;
+    if (prog.start.getTime() > Date.now()) { this.toggleReminder(); return; }
+
+    const channel = PlaylistService.channels[this.selectedChannelIdx];
+    if (channel && channel.catchupSource) {
+      const chKey = channelKey(channel);
+      const startMs = prog.start.getTime();
+      const entries = StorageService.getCatchupProgressList(chKey);
+      const entry = entries.find(e => e.progStart === startMs);
+      if (entry && !entry.completed) {
+        // Partial entry — show resume prompt
+        this.resumePrompt.show(prog.title, entry.position, {
+          onResume: () => { this.playSelectedProgramme(entry.position); },
+          onStartOver: () => {
+            StorageService.clearCatchupProgress(chKey, startMs);
+            this.playSelectedProgramme();
+          },
+          onCancel: () => { /* leave EPG unchanged */ },
+        });
+        return;
+      }
+      // Completed or untouched — play from start (no prompt)
+    }
+    this.playSelectedProgramme();
   }
 
   private toggleReminder(): void {
@@ -304,6 +353,11 @@ export class EpgGrid {
   }
 
   handleAction(action: Action, _event?: NumberEvent): void {
+    if (this.resumePrompt.visible) {
+      this.resumePrompt.handleAction(action);
+      return;
+    }
+
     const channelCount = PlaylistService.channels.length;
     const progCount = this.getCurrentProgrammes().length;
 

@@ -186,8 +186,9 @@ h3 {
   display: block;
 }
 
-/* Program-reminder prompt (in-app OK/Cancel overlay) */
-.reminder-prompt {
+/* Program-reminder & catch-up resume prompts — overlay modals */
+.reminder-prompt,
+.catchup-resume-prompt {
   position: fixed;
   top: 0;
   right: 0;
@@ -199,8 +200,13 @@ h3 {
   background: rgba(0, 0, 0, 0.6);
   z-index: 10000;
 }
-.reminder-prompt.hidden { display: none; }
-.reminder-dialog {
+.reminder-prompt.hidden,
+.catchup-resume-prompt.hidden {
+  display: none;
+}
+
+.reminder-dialog,
+.catchup-resume-dialog {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -208,13 +214,23 @@ h3 {
   max-width: 720px;
   text-align: center;
 }
-.reminder-message {
+
+.reminder-message,
+.catchup-resume-message {
   color: var(--text-primary);
   font-size: 30px;
   margin: 0 0 32px;
 }
-.reminder-buttons { display: flex; gap: 24px; justify-content: center; }
-.reminder-btn {
+
+.reminder-buttons,
+.catchup-resume-buttons {
+  display: flex;
+  gap: 24px;
+  justify-content: center;
+}
+
+.reminder-btn,
+.catchup-resume-btn {
   min-width: 160px;
   padding: 14px 32px;
   font-size: 26px;
@@ -224,7 +240,9 @@ h3 {
   border-radius: var(--radius);
   cursor: pointer;
 }
-.reminder-btn.focused {
+
+.reminder-btn.focused,
+.catchup-resume-btn.focused {
   border-color: var(--focus-ring);
   background: var(--accent-dim);
   box-shadow: 0 0 12px var(--accent-glow);

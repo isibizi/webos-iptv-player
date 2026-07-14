@@ -42,6 +42,14 @@ export const CONFIG = {
     SEARCH_RESULT_CAP: 30,              // max results rendered per Search group (Channels/Movies/Series)
   },
 
+  // Catch-up (time-shift) resume and history store tuning.
+  CATCHUP: {
+    RESUME_MIN_SECS: 15,                // below this, treat as "start over" (don't store a resume point)
+    FINISH_PAD: 30,                     // within this of the end = finished; caller sets completed: true
+    FALLBACK_RETENTION_DAYS: 7,         // retention when the channel's catchupDays is 0 or absent
+    CHECKPOINT_INTERVAL: 30 * 1000,     // how often the player should call setCatchupProgress
+  },
+
   // Max characters shown for a reminder's programme title and channel name
   // before an ellipsis, so long names don't overflow the toast/alert/in-app prompt.
   REMINDER: {

@@ -441,6 +441,7 @@ class App {
 
   private showView(name: ViewName): void {
     this.player.closeSubtitleSearch(); // never let the subtitle overlay linger across a view change
+    this.epgGrid.dismissPrompt(); // never let the catch-up prompt linger across a view change
     for (const [key, el] of Object.entries(this.views)) {
       if (key === 'loading') continue;
       if (key === name) show(el);
@@ -628,6 +629,13 @@ class App {
     // A reminder prompt overlays every view and consumes input first.
     if (this.reminderPrompt.visible) {
       this.reminderPrompt.handleAction(action);
+      return;
+    }
+
+    // The catch-up resume prompt is body-mounted but logically inside the EPG;
+    // consume all actions (including back/blue globals) while it is visible.
+    if (this.epgGrid.isPromptVisible) {
+      this.epgGrid.handleAction(action, event);
       return;
     }
 

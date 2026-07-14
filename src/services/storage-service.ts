@@ -1,5 +1,5 @@
 import { CONFIG } from '../config';
-import type { AudioPref, Channel, PlaylistEntry, Reminder, ResumeEntry, ResumeKind, SubtitlePref, TzMode } from '../types';
+import type { AudioPref, CatchupProgressEntry, Channel, PlaylistEntry, Reminder, ResumeEntry, ResumeKind, SubtitlePref, TzMode } from '../types';
 import type { OnlineSubtitleConfig, PickedOnlineSub } from './subtitle-search/types';
 import { channelKey } from '../utils/channel';
 import { genPlaylistId } from '../utils/playlist-id';
@@ -246,6 +246,72 @@ export const StorageService = {
     const all = get<Record<string, PickedOnlineSub>>('online_sub_picks', {});
     all[`${accountId}|${kind}|${itemId}`] = pick;
     set('online_sub_picks', all);
+  },
+
+  // Catch-up progress, one entry per programme per channel.
+  // Keyed `${channelKey}|${progStart}` inside a single 'catchup_progress' map.
+  // Each stored blob extends CatchupProgressEntry with a pre-computed expiresAt
+  // so the prune sweep never needs per-entry catchupDays.
+  getCatchupProgress(chKey: string, progStart: number, now?: number): CatchupProgressEntry | null {
+    const n = now ?? Date.now();
+    const all = get<Record<string, CatchupProgressEntry & { expiresAt: number }>>('catchup_progress', {});
+    let pruned = false;
+    for (const k of Object.keys(all)) {
+      if (all[k].expiresAt <= n) { delete all[k]; pruned = true; }
+    }
+    if (pruned) set('catchup_progress', all);
+    const stored = all[`${chKey}|${progStart}`];
+    if (!stored) return null;
+    const { expiresAt: _x, ...entry } = stored;
+    return entry;
+  },
+
+  setCatchupProgress(entry: CatchupProgressEntry, catchupDays: number, now?: number): void {
+    const n = now ?? Date.now();
+    const effDays = catchupDays > 0 ? catchupDays : CONFIG.CATCHUP.FALLBACK_RETENTION_DAYS;
+    const all = get<Record<string, CatchupProgressEntry & { expiresAt: number }>>('catchup_progress', {});
+    // Prune expired entries on every write so the map does not grow forever.
+    for (const k of Object.keys(all)) {
+      if (all[k].expiresAt <= n) delete all[k];
+    }
+    const key = `${entry.channelKey}|${entry.progStart}`;
+    if (!entry.completed && entry.position < CONFIG.CATCHUP.RESUME_MIN_SECS) {
+      delete all[key];
+    } else {
+      const expiresAt = entry.progEnd + effDays * 86400 * 1000;
+      // Do not persist entries that are already expired at compute time (dead-on-arrival).
+      if (expiresAt > n) {
+        all[key] = { ...entry, expiresAt };
+      } else {
+        delete all[key];
+      }
+    }
+    set('catchup_progress', all);
+  },
+
+  clearCatchupProgress(chKey: string, progStart: number): void {
+    const all = get<Record<string, CatchupProgressEntry & { expiresAt: number }>>('catchup_progress', {});
+    delete all[`${chKey}|${progStart}`];
+    set('catchup_progress', all);
+  },
+
+  getCatchupProgressList(chKey: string, now?: number): CatchupProgressEntry[] {
+    const n = now ?? Date.now();
+    const all = get<Record<string, CatchupProgressEntry & { expiresAt: number }>>('catchup_progress', {});
+    let pruned = false;
+    for (const k of Object.keys(all)) {
+      if (all[k].expiresAt <= n) { delete all[k]; pruned = true; }
+    }
+    if (pruned) set('catchup_progress', all);
+    const prefix = `${chKey}|`;
+    const result: CatchupProgressEntry[] = [];
+    for (const k of Object.keys(all)) {
+      if (k.startsWith(prefix)) {
+        const { expiresAt: _x, ...entry } = all[k];
+        result.push(entry);
+      }
+    }
+    return result;
   },
 
 };
