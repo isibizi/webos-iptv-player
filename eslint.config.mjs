@@ -1,5 +1,6 @@
 import compat from 'eslint-plugin-compat';
 import tsParser from '@typescript-eslint/parser';
+import { DENYLIST } from './scripts/compat-gate.mjs';
 
 // webOS 5 ships Chromium 68. esbuild down-levels post-68 *syntax* (optional
 // chaining, etc.) but it does NOT polyfill missing *APIs*, which would silently
@@ -26,18 +27,10 @@ export default [
       // (If a custom object legitimately has one of these names, disable per-line.)
       'no-restricted-syntax': [
         'error',
-        { selector: "CallExpression > MemberExpression[property.name='flat']", message: 'Array.prototype.flat is Chrome 69+ — not on webOS 5 (Chromium 68). Use reduce/concat.' },
-        { selector: "CallExpression > MemberExpression[property.name='flatMap']", message: 'Array.prototype.flatMap is Chrome 69+ — not on webOS 5 (Chromium 68).' },
-        { selector: "CallExpression > MemberExpression[property.name='at']", message: 'Array/String.prototype.at is Chrome 92+ — not on webOS 5 (Chromium 68). Use [index] / length-1.' },
-        { selector: "CallExpression > MemberExpression[property.name='replaceAll']", message: 'String.prototype.replaceAll is Chrome 85+ — not on webOS 5 (Chromium 68). Use .replace(/x/g, …).' },
-        { selector: "CallExpression > MemberExpression[property.name='replaceChildren']", message: 'Element.replaceChildren is Chrome 86+ — not on webOS 5 (Chromium 68).' },
-        { selector: "CallExpression > MemberExpression[property.name='findLast']", message: 'Array.prototype.findLast is Chrome 97+ — not on webOS 5 (Chromium 68). Reverse-iterate or use a loop.' },
-        { selector: "CallExpression > MemberExpression[property.name='findLastIndex']", message: 'Array.prototype.findLastIndex is Chrome 97+ — not on webOS 5 (Chromium 68).' },
-        { selector: "CallExpression > MemberExpression[property.name='toSorted']", message: 'Array.prototype.toSorted is Chrome 110+ — not on webOS 5 (Chromium 68). Use [...arr].sort().' },
-        { selector: "CallExpression > MemberExpression[property.name='toReversed']", message: 'Array.prototype.toReversed is Chrome 110+ — not on webOS 5 (Chromium 68). Use [...arr].reverse().' },
-        { selector: "CallExpression > MemberExpression[property.name='toSpliced']", message: 'Array.prototype.toSpliced is Chrome 110+ — not on webOS 5 (Chromium 68).' },
-        { selector: "CallExpression > MemberExpression[property.name='isWellFormed']", message: 'String.prototype.isWellFormed is Chrome 111+ — not on webOS 5 (Chromium 68).' },
-        { selector: "CallExpression > MemberExpression[property.name='toWellFormed']", message: 'String.prototype.toWellFormed is Chrome 111+ — not on webOS 5 (Chromium 68).' },
+        ...DENYLIST.filter((e) => e.kind === 'method').map((e) => ({
+          selector: `CallExpression > MemberExpression[property.name='${e.name}']`,
+          message: e.message,
+        })),
       ],
     },
   },
@@ -45,6 +38,16 @@ export default [
     // Tests run in Node under vitest, never on the webOS 5 WebView, so the
     // Chromium-68 compatibility gates don't apply to them.
     files: ['src/**/*.test.ts'],
+    plugins: { compat },
+    rules: {
+      'compat/compat': 'off',
+      'no-restricted-syntax': 'off',
+    },
+  },
+  {
+    // polyfills.ts intentionally installs APIs the compat gate bans; it is the
+    // one place allowed to reference them.
+    files: ['src/polyfills.ts'],
     plugins: { compat },
     rules: {
       'compat/compat': 'off',

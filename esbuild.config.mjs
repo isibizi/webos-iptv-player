@@ -1,6 +1,7 @@
 import * as esbuild from 'esbuild';
 import { cpSync, readFileSync, writeFileSync, readdirSync, appendFileSync } from 'fs';
 import postcss from 'postcss';
+import { scanBundle, formatViolations } from './scripts/compat-gate.mjs';
 
 const isWatch = process.argv.includes('--watch');
 // Read version from package.json (single source of truth)
@@ -61,19 +62,43 @@ const define = {
 // webOS 5/6 and leave the app stuck on the loading screen.
 const TARGET = ['chrome68'];
 
-await esbuild.build({
+// Shared config for the main app bundle (src/app.ts). The shipped build, the
+// compat-gate scan, and the dev watch rebuild all use this; they differ only in
+// minify / sourcemap / write.
+const appBuild = {
   entryPoints: ['src/app.ts'],
   bundle: true,
   outfile: 'dist/js/app.js',
   format: 'iife',
   target: TARGET,
-  minify: !isWatch,
-  sourcemap: isWatch,
   external: ['hls.js', 'mpegts.js'],
   define,
-});
+};
 
-// Desktop preview libs — separate bundle loaded only in preview
+if (isWatch) {
+  // Dev watch: rebuild unminified with sourcemaps on every change. Owns the
+  // app bundle in watch mode — no separate one-shot build.
+  const ctx = await esbuild.context({ ...appBuild, minify: false, sourcemap: true });
+  await ctx.watch();
+  console.log('Watching for changes...');
+} else {
+  // Shipped app bundle → dist/js/app.js (minified, goes into the IPK).
+  await esbuild.build({ ...appBuild, minify: true });
+
+  // webOS 5 (Chromium 68) bundle compat gate. Down-leveling handles post-68
+  // *syntax*, but not *APIs* — and dependencies get bundled in without passing
+  // through the eslint source gate. Scan a NON-minified build of the same entry
+  // (same tree-shaken graph, readable identifiers) for banned APIs.
+  const scan = await esbuild.build({ ...appBuild, minify: false, write: false });
+  const violations = scanBundle(scan.outputFiles[0].text);
+  if (violations.length > 0) {
+    throw new Error(formatViolations(violations));
+  }
+  console.log('Compat gate: bundle is Chromium-68 clean.');
+}
+
+// Desktop preview libs — separate bundle loaded only in preview, excluded from
+// the IPK. Built in both modes.
 await esbuild.build({
   entryPoints: ['src/preview-libs.ts'],
   bundle: true,
@@ -82,21 +107,5 @@ await esbuild.build({
   target: TARGET,
   minify: true,
 });
-
-if (isWatch) {
-  const ctx = await esbuild.context({
-    entryPoints: ['src/app.ts'],
-    bundle: true,
-    outfile: 'dist/js/app.js',
-    format: 'iife',
-    target: TARGET,
-    minify: false,
-    sourcemap: true,
-    external: ['hls.js', 'mpegts.js'],
-    define,
-  });
-  await ctx.watch();
-  console.log('Watching for changes...');
-}
 
 console.log('Build complete.');

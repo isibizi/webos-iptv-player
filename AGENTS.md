@@ -104,10 +104,19 @@ syncs it into `appinfo.json` and the `__APP_VERSION__` build constant;
 - **webOS 5 target.** esbuild builds with `target: ['chrome68']` (webOS 5's
   Chromium). Modern syntax (`?.`, `??`, …) is fine — esbuild down-levels it — but
   modern *APIs* aren't polyfilled and silently fail on a real TV. `npm run lint` is
-  the guard: `eslint-plugin-compat` plus a name denylist in `eslint.config.mjs`
-  (keyed to the `chrome 68` `browserslist`) flags post-68 APIs — `.flat()`, `.at()`,
-  `replaceAll`, `structuredClone`, … — that would otherwise hang the app on a blank
-  loading screen. **Don't change the target without reason.**
+  the guard: `eslint-plugin-compat` plus a method denylist in `eslint.config.mjs`
+  (derived from the shared `DENYLIST` in `scripts/compat-gate.mjs`, keyed to the
+  `chrome 68` `browserslist`) flags post-68 APIs — `.flat()`, `.at()`, `replaceAll`,
+  `structuredClone`, … — that would otherwise hang the app on a blank loading
+  screen. A second, **build-time** gate in `esbuild.config.mjs` AST-scans a
+  non-minified build of the app bundle (`scanBundle` in `scripts/compat-gate.mjs`,
+  parsing with the TypeScript compiler API — so string/comment hits and `typeof`
+  guards are ignored) to catch post-68 APIs pulled in by **dependencies**, which
+  the source lint never sees; these fail the build too. That one file holds the
+  `DENYLIST` and the `ALLOWLIST` of accepted (`polyfilled`/`guarded`/`accepted-risk`)
+  exceptions. Polyfilled fixes are installed in `src/polyfills.ts` (imported first
+  in `src/app.ts`) — e.g. `Array.prototype.flatMap` and `Object.fromEntries`, both
+  used unguarded by the bundled `assjs`. **Don't change the target without reason.**
 - **Build-time constants** `__APP_VERSION__`, `__APP_ID__`, `__SERVICE_ID__` are
   injected via esbuild `define`. Keep all three in lockstep across
   `esbuild.config.mjs` (build), `vitest.config.ts` (tests), and the `declare const`
