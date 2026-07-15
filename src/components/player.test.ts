@@ -250,6 +250,46 @@ describe('Player catch-up pause/play', () => {
     container.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 26, clientY: 16 }));
     expect(video.paused).toBe(true);
   });
+
+  it('resyncAV seeks backward by RESYNC_SEEK_BACK to force a pipeline re-lock', () => {
+    player.handleAction('right'); // → 30
+    player.handleAction('right'); // → 60
+    player.resyncAV();
+    expect(video.currentTime).toBe(60 - CONFIG.PLAYER.RESYNC_SEEK_BACK);
+  });
+
+  it('resyncAV clamps the seek target at 0', () => {
+    video.currentTime = 0.3;
+    player.resyncAV();
+    expect(video.currentTime).toBe(0);
+  });
+
+  it('resyncAV debounces while a resync is already in flight', () => {
+    player.handleAction('right'); // → 30
+    player.handleAction('right'); // → 60
+    player.resyncAV();            // → 59.5, now resyncing
+    expect(video.currentTime).toBe(60 - CONFIG.PLAYER.RESYNC_SEEK_BACK);
+    video.currentTime = 100;      // pretend playback advanced
+    player.resyncAV();            // no-op while resyncing
+    expect(video.currentTime).toBe(100);
+  });
+
+  it('shows a Resyncing… message and clears it once playback resumes', () => {
+    const osd = container.querySelector('#player-osd')!;
+    player.resyncAV();
+    expect(osd.textContent).toContain('Resyncing');
+    video.dispatchEvent(new Event('playing'));
+    expect(osd.textContent).not.toContain('Resyncing');
+  });
+
+  it('a pointer click on the resync control seeks backward', () => {
+    player.handleAction('right'); // → 30
+    player.handleAction('right'); // → 60
+    const btn = container.querySelector('[data-resync]') as HTMLElement;
+    btn.getBoundingClientRect = () => ({ left: 900, right: 932, width: 32, top: 0, bottom: 32 }) as DOMRect;
+    container.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 916, clientY: 16 }));
+    expect(video.currentTime).toBe(60 - CONFIG.PLAYER.RESYNC_SEEK_BACK);
+  });
 });
 
 describe('Player catch-up completion', () => {
@@ -297,6 +337,13 @@ describe('Player live DVR', () => {
   it('is seekable within the window and shows a seek bar', () => {
     expect(player.canSeek()).toBe(true);
     expect(container.querySelector('[data-seekbar]')).not.toBeNull();
+  });
+
+  it('resyncAV is a no-op on live (no finite decode to re-lock)', () => {
+    expect(live.currentTime).toBe(60);
+    player.resyncAV();
+    expect(live.currentTime).toBe(60);
+    expect(container.querySelector('[data-resync]')).toBeNull();
   });
 
   it('Left rewinds by the step, moving the bar', () => {
@@ -964,6 +1011,15 @@ describe('Player VOD mode', () => {
     player.init(video);
     player.playVod(req());
     expect(player.canSeek()).toBe(true); // playVod shows the OSD
+  });
+
+  it('resyncAV seeks backward by RESYNC_SEEK_BACK on VOD', () => {
+    const video = fakeVideo(3600);
+    player.init(video);
+    player.playVod(req());
+    video.currentTime = 900;
+    player.resyncAV();
+    expect(video.currentTime).toBe(900 - CONFIG.PLAYER.RESYNC_SEEK_BACK);
   });
 
   it('renders the VOD OSD through the Live markup (title + stream info, no .osd-vod)', () => {

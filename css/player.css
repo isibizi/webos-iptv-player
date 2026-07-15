@@ -253,6 +253,26 @@
   display: block;
 }
 
+/* Resync A/V button — reuses the play/pause icon-button sizing. */
+.osd-resync-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.osd-resync-btn svg {
+  width: 24px;
+  height: 24px;
+  display: block;
+}
+
 .osd-dvr-behind {
   min-width: 72px;
 }

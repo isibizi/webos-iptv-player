@@ -22,7 +22,7 @@ import { resolutionBadge, hdrLabel, frameRateLabel, parseVariants, pickVariant, 
 import { extFromUrl, containerMime } from '../utils/url';
 import { probeMedia } from '../services/media-probe';
 import { createLogger } from '../utils/logger';
-import { PLAY_ICON, PAUSE_ICON } from './icons';
+import { PLAY_ICON, PAUSE_ICON, RESYNC_ICON } from './icons';
 import { showToast } from './toast';
 import { subtitleSearchService } from '../services/subtitle-search/subtitle-search-service';
 import { SubtitleSearchOverlay } from './subtitle-search-overlay';
@@ -86,6 +86,10 @@ export class Player {
   // Position (seconds) saved from the video element before suspend() destroys it.
   // play() consumes this to restore the position on resume; -1 = not pending.
   private catchupSuspendPos = -1;
+  // Manual A/V resync (catch-up / VOD): true from the resync seek until playback
+  // resumes, gating the "Resyncing…" message and debouncing repeat presses.
+  private resyncing = false;
+  private resyncTimer: ReturnType<typeof setTimeout> | null = null;
   private ccEnabled = false; // live state of the native caption compositor (setSubtitleEnable)
   private selfRenderIndex = -1; // manifest subtitle rendition currently self-rendered (-1 = off)
   private masterUrl = ''; // HLS master URL of the active stream, for re-pointing self-render
@@ -195,7 +199,7 @@ export class Player {
     // Some platforms populate audio/text tracks asynchronously, after loadedmetadata.
     el.audioTracks?.addEventListener?.('addtrack', () => this.applyNativeAudioSelection());
     el.textTracks?.addEventListener?.('addtrack', () => this.applyNativeSubtitleSelection());
-    el.addEventListener('playing', () => log.info('playing'));
+    el.addEventListener('playing', () => { log.info('playing'); if (this.resyncing) this.endResync(); });
     el.addEventListener('waiting', () => log.debug('waiting (buffering)'));
     el.addEventListener('stalled', () => log.warn('stalled'));
     el.addEventListener('timeupdate', () => this.refreshProgress());
@@ -683,6 +687,8 @@ export class Player {
     this.pendingResumeSecs = 0;
     this.catchupCheckpointAt = 0;
     this.catchupSuspendPos = -1;
+    this.resyncing = false;
+    if (this.resyncTimer) { clearTimeout(this.resyncTimer); this.resyncTimer = null; }
   }
 
   private loadStream(url: string, extras: Record<string, string> | null, opts?: { direct?: boolean }): void {
@@ -972,6 +978,7 @@ export class Player {
     if (this.seekAtPointer(x, y)) return;
     if (this.hitsControl('[data-playpause]', x, y)) this.pauseToggle();
     else if (this.hitsControl('[data-golive]', x, y)) this.goToLive();
+    else if (this.hitsControl('[data-resync]', x, y)) this.resyncAV();
   }
 
   private hitsControl(selector: string, x: number, y: number): boolean {
@@ -1007,6 +1014,33 @@ export class Player {
   private goToOldest(): void {
     const win = this.liveDvrWindow();
     if (win) this.seekTo(win.start);
+  }
+
+  /** Manually re-lock audio/video that has drifted over a long continuous
+   *  catch-up/VOD decode. A small backward seek is the only thing that re-locks
+   *  A/V on webOS — it flushes the native pipeline and re-fetches the segment — so
+   *  it costs a ~2s rebuffer, masked by a "Resyncing…" message that clears on the
+   *  next `playing`. Catch-up / VOD only. */
+  resyncAV(): void {
+    const v = this.videoEl;
+    if (!v) return;
+    if (!(this.vod || this.catchupInfo)) return;               // catch-up / VOD only
+    if (!Number.isFinite(v.duration) || v.duration <= 0) return;
+    if (this.resyncing || v.seeking) return;                   // debounce repeat presses
+    this.resyncing = true;
+    const target = Math.max(0, v.currentTime - CONFIG.PLAYER.RESYNC_SEEK_BACK);
+    log.info('A/V resync — seek', v.currentTime.toFixed(2), '→', target.toFixed(2));
+    this.updateOSDMessage('Resyncing…');
+    v.currentTime = target;
+    if (this.resyncTimer) clearTimeout(this.resyncTimer);
+    this.resyncTimer = setTimeout(() => this.endResync(), CONFIG.PLAYER.RESYNC_TIMEOUT);
+  }
+
+  private endResync(): void {
+    if (!this.resyncing) return;
+    this.resyncing = false;
+    if (this.resyncTimer) { clearTimeout(this.resyncTimer); this.resyncTimer = null; }
+    if (this.osdVisible) this.renderOSD(); // repaint over the "Resyncing…" message
   }
 
   /** Pause/resume. On live DVR, if the retained window rolled past the paused
@@ -1119,6 +1153,16 @@ export class Player {
     `;
   }
 
+  /** The OSD "Resync A/V" button (catch-up + VOD only). Pointer-hit-tested by
+   *  onPointerRelease; invokes resyncAV() to flush the pipeline and re-lock A/V. */
+  private resyncButton(): Safe {
+    return html`
+      <button class="osd-resync-btn" data-resync aria-label="Resync audio and video">
+        ${raw(RESYNC_ICON)}
+      </button>
+    `;
+  }
+
   private dvrProgressRow(st: DvrState): Safe {
     return html`
       <div class="osd-progress-row osd-dvr-row">
@@ -1185,6 +1229,7 @@ export class Player {
           <div class="osd-progress-bar" style="width: ${fraction * 100}%"></div>
         </div>
         <span class="osd-time-end">${dur > 0 ? formatPosition(dur) : ''}</span>
+        ${this.resyncButton()}
       </div>
     `);
   }
@@ -1228,6 +1273,7 @@ export class Player {
               <div class="osd-progress-bar" style="width: ${progress * 100}%"></div>
             </div>
             <span class="osd-time-end">${formatPosition(dur)}</span>
+            ${this.resyncButton()}
           </div>
           ${catchup.description ? html`<div class="osd-description">${catchup.description}</div>` : ''}
         </div>

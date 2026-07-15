@@ -50,6 +50,7 @@ An IPTV player for LG webOS TVs. Supports M3U playlists, Xtream Codes accounts, 
 - **Native HDR & Dolby passthrough** — the stream goes straight to the TV's decoder, so HDR10, HLG, Dolby Vision®, and Dolby Atmos® pass through untouched ([why](docs/native-vs-hls.js.md))
 - **Audio & subtitle tracks** — pick from the player menu, remembered per channel or VOD item; subtitles cover in-manifest WebVTT (live), in-container / sidecar SRT/WebVTT/ASS (VOD), and online search (SubDL, OpenSubtitles, and Assrt) — with a manual title box to refine the query — when no bundled subtitle fits
 - **On-screen display** — program title, progress, and a live stream-info readout (resolution, HDR, frame rate, codec, audio channels)
+- **Resync A/V** (🔄) — one tap on the playback bar re-locks audio and video that drift apart during a long catch-up or on-demand stream
 
 **Navigation**
 
