@@ -105,14 +105,14 @@ async function fetchRange(
 // containers, servers without range support, or an unparseable header.
 export async function probeMedia(url: string, cacheKey: string): Promise<MediaInfo | null> {
   const parser = parserFor(url);
-  if (!parser) return null;
+  if (!parser) { log.debug('unsupported container', extFromUrl(url) || '(none)', cacheKey); return null; }
 
   const cached = await getCachedCatalog<MediaInfo>(cacheKey);
-  if (cached) return cached.data;
+  if (cached) { log.debug('cache hit', cacheKey); return cached.data; }
 
   try {
     const front = await fetchRange(url, 0, FRONT_BYTES, true);
-    if (!front) return null;
+    if (!front) { log.warn('no usable range response', cacheKey); return null; }
     let info = parser(front.bytes);
 
     if (!info && parser === parseMp4Info && front.total > front.bytes.length) {
@@ -121,8 +121,9 @@ export async function probeMedia(url: string, cacheKey: string): Promise<MediaIn
       if (tail) info = parseMp4Info(tail.bytes);
     }
 
-    if (!info) return null;
+    if (!info) { log.warn('unparseable header', extFromUrl(url), cacheKey); return null; }
     await setCachedCatalog(cacheKey, info);
+    log.debug('probed', cacheKey, info.videoCodec || '?', `${info.width}x${info.height}`, info.hdr || '');
     return info;
   } catch (err) {
     log.warn('probe failed:', err);

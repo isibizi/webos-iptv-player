@@ -3,6 +3,9 @@ import type { AudioPref, CatchupProgressEntry, Channel, PlaylistEntry, Reminder,
 import type { OnlineSubtitleConfig, PickedOnlineSub } from './subtitle-search/types';
 import { channelKey } from '../utils/channel';
 import { genPlaylistId } from '../utils/playlist-id';
+import { createLogger } from '../utils/logger';
+
+const log = createLogger('Storage');
 
 const PREFIX = CONFIG.STORAGE_PREFIX;
 
@@ -25,11 +28,13 @@ function set(key: string, value: unknown): boolean {
     localStorage.setItem(PREFIX + key, JSON.stringify(value));
     return true;
   } catch {
+    log.warn(`quota hit writing '${key}' — evicting playlist cache`);
     evictCache();
     try {
       localStorage.setItem(PREFIX + key, JSON.stringify(value));
       return true;
     } catch {
+      log.error(`write of '${key}' still failed after eviction — dropping`);
       return false;
     }
   }

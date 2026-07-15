@@ -28,7 +28,10 @@ export function registerReminderService(service: LunaService): void {
   service.register('fireReminderAlert', (msg) => {
     const { title = '', channelName = '', channelKey = '', appId = '' } = msg.payload || {};
     console.log('[reminder] fireReminderAlert for "' + title + '"');
-    fireAlert(buildAlertPayload(title, channelName, channelKey, appId),
-      (result) => msg.respond({ fired: true, result }));
+    fireAlert(buildAlertPayload(title, channelName, channelKey, appId), (ok, detail) => {
+      if (ok) console.log('[reminder] alert fired: ' + detail);
+      else console.error('[reminder] alert failed: ' + detail);
+      msg.respond({ fired: ok, result: detail });
+    });
   });
 }

@@ -488,6 +488,7 @@ export class Player {
     const key = this.channelPrefKey();
     if (key) StorageService.setSubtitleOffset(key, this.subtitleOffsetS);
     this.applySubtitleOffset();
+    log.debug('subtitle offset', formatSubtitleOffset(this.subtitleOffsetS), key ? '(persisted)' : '(not persisted)');
   }
 
   // Push the current offset to every engine. Owned tracks are shifted by their engine;

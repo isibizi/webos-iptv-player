@@ -11,6 +11,9 @@ import { genPlaylistId } from '../utils/playlist-id';
 import { CONFIG } from '../config';
 import { showToast } from './toast';
 import qrcode from 'qrcode-generator';
+import { createLogger } from '../utils/logger';
+
+const log = createLogger('Settings');
 
 /** Generate a PNG data URL containing a QR code for the given text. */
 function qrDataUrl(text: string): string {
@@ -553,14 +556,18 @@ export class Settings {
     this.setXtreamStatus(id, html`Checking\u2026`, '');
     const info = await createXtreamClient({ baseUrl: url, username, password }).getAccountInfo();
     if (!info) {
+      log.warn('Xtream verify failed — server unreachable or non-JSON');
       this.setXtreamStatus(id, html`Couldn\u2019t verify account.`, 'err');
       return;
     }
     if (!info.auth) {
+      log.warn('Xtream verify rejected — credentials not accepted (auth 0)');
       this.setXtreamStatus(id, html`Login failed \u2014 check credentials.`, 'err');
       return;
     }
     const status = info.status || 'Active';
+    log.info('Xtream verify OK —', status, '| expires', formatExpiry(info.expiresAt),
+      '|', info.activeConnections + '/' + info.maxConnections, 'connections');
     this.setXtreamStatus(
       id,
       html`${status} \u00b7 ${formatExpiry(info.expiresAt)} \u00b7 ${info.activeConnections}/${info.maxConnections} connections`,

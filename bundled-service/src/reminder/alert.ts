@@ -50,11 +50,11 @@ export function buildAlertPayload(title: string, channelName: string, channelKey
 
 // Side-effecting — the verified luna-send-pub exec path. luna-send-pub is the
 // only handle allowed to call createAlert, and only in Developer Mode.
-export function fireAlert(payload: AlertPayload, cb: (result: string) => void): void {
+export function fireAlert(payload: AlertPayload, cb: (ok: boolean, detail: string) => void): void {
   execFile(
     '/usr/bin/luna-send-pub',
     ['-n', '1', 'luna://com.webos.notification/createAlert', JSON.stringify(payload)],
     { timeout: 6000 },
-    (err, stdout) => cb(err ? String(err) : String(stdout).trim()),
+    (err, stdout) => cb(!err, err ? String(err) : String(stdout).trim()),
   );
 }

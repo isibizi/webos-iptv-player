@@ -44,6 +44,7 @@ export class SubtitleSearchService {
 
   async search(q: SubtitleQuery): Promise<OnlineSubtitleResult[]> {
     const providers = this.configured();
+    if (!providers.length) { log.info('online search skipped — no providers configured'); return []; }
     const settled = await Promise.all(providers.map(async (p) => {
       try { return await p.search(q); }
       catch (e) { log.warn(p.id, 'search failed:', e); return [] as OnlineSubtitleResult[]; }
@@ -52,12 +53,15 @@ export class SubtitleSearchService {
     const pref = this.preferredLanguage();
     const rank = (x: OnlineSubtitleResult) => (langMatches(x.language, pref) ? 0 : 1);
     const providerOrder = (x: OnlineSubtitleResult) => this.providers.findIndex((p) => p.id === x.providerId);
-    return merged.sort((a, b) => rank(a) - rank(b) || b.downloads - a.downloads || providerOrder(a) - providerOrder(b));
+    const results = merged.sort((a, b) => rank(a) - rank(b) || b.downloads - a.downloads || providerOrder(a) - providerOrder(b));
+    log.info('online search:', results.length, 'result(s) from', providers.length, 'provider(s)');
+    return results;
   }
 
   download(r: OnlineSubtitleResult): Promise<SubtitleText> {
     const p = this.providers.find((x) => x.id === r.providerId);
     if (!p) return Promise.reject(new Error(`no provider ${r.providerId}`));
+    log.info('downloading subtitle from', r.providerId, '|', r.language || '?');
     return p.download(r);
   }
 }

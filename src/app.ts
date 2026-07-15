@@ -554,6 +554,7 @@ class App {
     StorageService.setSelectedXtreamAccountId(id);
     const account = this.activeXtreamAccount();
     if (!account) return;
+    log.info('Xtream account switched to', account.name);
     this.tabBar.setAccounts(
       StorageService.getPlaylists().filter((p) => p.source === 'xtream' && p.xtream),
       account.id,
