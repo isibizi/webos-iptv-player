@@ -8,15 +8,20 @@ updates:
   - package-ecosystem: "npm" # See documentation for possible values
     directory: "/" # Location of package manifests
     schedule:
-      interval: "weekly"
+      interval: "monthly"
     groups:
       # Bundle all minor and patch npm updates into a single PR
       npm-minor-patch:
         update-types:
           - "minor"
           - "patch"
+    ignore:
+      # typescript-eslint caps supported TypeScript at <6.1.0, so major
+      # TypeScript bumps break npm ci until the toolchain catches up
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "github-actions" # Keeps .github/workflows actions up to date
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
