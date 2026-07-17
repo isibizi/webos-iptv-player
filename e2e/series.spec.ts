@@ -1,4 +1,4 @@
-import { test, expect, routeLiveManifest, SAMPLE_M3U, enterTab } from './helpers';
+import { test, expect, routeLiveManifest, neuterVideo, SAMPLE_M3U, enterTab } from './helpers';
 
 // Seed one Xtream account (enables the tab bar) and stub the player_api.php
 // series calls + the get.php/xmltv.php the live path uses.
@@ -40,6 +40,9 @@ async function seedSeries(page: import('@playwright/test').Page): Promise<void> 
 test('browse Series, open a detail, and play an episode', async ({ page }) => {
   await seedSeries(page);
   await routeLiveManifest(page);
+  // Keep VOD alive so the empty mock episode file doesn't fire `error` and
+  // auto-eject the player, which would race this test's own Back navigation.
+  await neuterVideo(page);
   await page.goto('/');
   await expect(page.locator('#view-channels')).toBeVisible();
 

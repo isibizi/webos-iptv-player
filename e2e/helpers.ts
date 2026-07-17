@@ -54,6 +54,22 @@ export async function routeLiveManifest(page: Page): Promise<void> {
     route.fulfill({ status: 200, contentType: 'application/vnd.apple.mpegurl', body: LIVE_MANIFEST }));
 }
 
+/**
+ * Keep VOD alive in the player by neutering the <video> element so an empty mock
+ * movie/episode body can't fire `error` and auto-eject back to the catalog. The
+ * player's VOD error handler (player.ts `onError`) calls the very `onBack()` the
+ * Back key uses, so without this the eject races the test's own scripted
+ * navigation and drops the detail screen. Must run before the page loads.
+ */
+export async function neuterVideo(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const P = HTMLMediaElement.prototype;
+    P.load = function () { /* no-op */ };
+    P.play = function () { return Promise.resolve(); };
+    Object.defineProperty(P, 'src', { configurable: true, set() { /* no-op */ }, get() { return ''; } });
+  });
+}
+
 /** Pre-seed one configured URL playlist so the app boots into the channel list. */
 export async function seedPlaylist(page: Page, url = PLAYLIST_URL): Promise<void> {
   await page.addInitScript((u) => {

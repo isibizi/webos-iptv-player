@@ -1,4 +1,4 @@
-import { test, expect, routeLiveManifest, SAMPLE_M3U, enterTab } from './helpers';
+import { test, expect, routeLiveManifest, neuterVideo, SAMPLE_M3U, enterTab } from './helpers';
 
 // A minimal ASS body with one dialogue active from t=0, so assjs renders it as
 // soon as it initializes over the (paused, t=0) video.
@@ -75,6 +75,9 @@ async function seedMovies(
 test('browse Movies, open a detail, and start playback', async ({ page }) => {
   await seedMovies(page);
   await routeLiveManifest(page);
+  // Keep VOD alive so the empty mock movie file doesn't fire `error` and
+  // auto-eject the player, which would race this test's own Back navigation.
+  await neuterVideo(page);
   await page.goto('/');
   await expect(page.locator('#view-channels')).toBeVisible();
 
@@ -139,12 +142,7 @@ test('VOD playback suppresses the live channel sidebar and shows a VOD-only menu
   await routeLiveManifest(page);
   // Keep VOD alive in the player: neuter the <video> so the empty mock movie
   // file doesn't fire `error` and eject back to Movies before we probe the edges.
-  await page.addInitScript(() => {
-    const P = HTMLMediaElement.prototype;
-    P.load = function () { /* no-op */ };
-    P.play = function () { return Promise.resolve(); };
-    Object.defineProperty(P, 'src', { configurable: true, set() { /* no-op */ }, get() { return ''; } });
-  });
+  await neuterVideo(page);
   await page.goto('/');
   await expect(page.locator('#view-channels')).toBeVisible();
 
@@ -188,12 +186,7 @@ test('a VOD sidecar subtitle attaches as a native text track and loads its cues 
   await seedMovies(page, { subtitles: true });
   await routeLiveManifest(page);
   // Keep VOD alive so the neutered <video> doesn't eject before we probe tracks.
-  await page.addInitScript(() => {
-    const P = HTMLMediaElement.prototype;
-    P.load = function () { /* no-op */ };
-    P.play = function () { return Promise.resolve(); };
-    Object.defineProperty(P, 'src', { configurable: true, set() { /* no-op */ }, get() { return ''; } });
-  });
+  await neuterVideo(page);
   await page.goto('/');
   await expect(page.locator('#view-channels')).toBeVisible();
 
