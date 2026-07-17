@@ -13,8 +13,12 @@
 // objects) — DOM nodes and the like can't cross the protocol, so JSON.stringify
 // what you need:
 //   scripts/tv.sh eval --app <id> 'JSON.stringify(<expression>)'
-import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import {
+  CdpClient,
+  resolveCdpWebSocketUrl,
+  resolveConfiguredDeviceIp,
+} from './cdp-client.mjs';
 
 const args = process.argv.slice(2);
 const opt = (name, def) => {
@@ -24,6 +28,16 @@ const opt = (name, def) => {
 const appFilter = opt('--app', '');
 const port = opt('--port', '9998');
 const file = opt('--file', opt('-f', ''));
+const deviceName = process.env.TV_DEVICE ? `--device ${process.env.TV_DEVICE} ` : '';
+const launchCommand = `ares-launch ${deviceName}${appFilter || '<app-id>'}`;
+const launchHint = `Make sure the TV is on and the app is running:\n  ${launchCommand}`;
+const toErrorMessage = (value) => {
+  if (value instanceof Error && value.message) return value.message;
+  if (typeof value?.message === 'string' && value.message) return value.message;
+  return String(value);
+};
+const isDiscoveryFailure = (message) =>
+  message === 'fetch failed' || message.startsWith('CDP target discovery failed:');
 // Everything that isn't a recognized flag (or a flag's value) is the expression.
 const flags = new Set(['--app', '--port', '--file', '-f']);
 const positional = args
@@ -50,83 +64,55 @@ if (!expression.trim()) {
 // Resolve the device IP from ares-setup-device (no secrets needed for CDP).
 let ip;
 try {
-  const raw = execFileSync('ares-setup-device', ['-F', '-j'], { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] });
-  const list = JSON.parse(raw);
-  const want = process.env.TV_DEVICE || '';
-  const dev = list.find((d) => (want ? d.name === want : d.default)) || list[0];
-  ip = dev?.deviceinfo?.ip;
-  if (!ip) throw new Error('no device ip');
+  ip = resolveConfiguredDeviceIp();
 } catch (e) {
-  console.error(`tv-eval: cannot resolve device IP from ares-setup-device: ${e.message}`);
+  console.error(`tv-eval: ${toErrorMessage(e)}`);
   process.exit(1);
 }
 
-const base = `http://${ip}:${port}`;
-let pages;
+let client;
+let exitCode = 0;
 try {
-  pages = await (await fetch(`${base}/json/list`)).json();
-} catch {
-  console.error(
-    `tv-eval: no DevTools endpoint on ${ip}:${port}. ` +
-      `Make sure the TV is on and the app is running:\n` +
-      `  ares-launch ${process.env.TV_DEVICE ? `--device ${process.env.TV_DEVICE} ` : ''}${appFilter || '<app-id>'}`,
-  );
-  process.exit(1);
-}
-
-const page =
-  pages.find((p) => p.type === 'page' && (!appFilter || p.description === appFilter || (p.url || '').includes(appFilter))) ||
-  pages.find((p) => p.type === 'page');
-if (!page) {
-  console.error(
-    `tv-eval: no inspectable page found on ${ip}:${port}` +
-      (appFilter ? ` for "${appFilter}"` : '') + '. ' +
-      `Make sure the TV is on and the app is running:\n` +
-      `  ares-launch ${process.env.TV_DEVICE ? `--device ${process.env.TV_DEVICE} ` : ''}${appFilter || '<app-id>'}`,
-  );
-  process.exit(1);
-}
-
-const wsUrl = page.webSocketDebuggerUrl.replace('localhost', ip).replace('127.0.0.1', ip);
-const ws = new WebSocket(wsUrl);
-let id = 0;
-const call = (method, params = {}) =>
-  new Promise((resolve, reject) => {
-    const wantId = ++id;
-    const onMessage = (e) => {
-      const m = JSON.parse(e.data);
-      if (m.id !== wantId) return;
-      ws.removeEventListener('message', onMessage);
-      m.error ? reject(new Error(m.error.message)) : resolve(m.result);
-    };
-    ws.addEventListener('message', onMessage);
-    ws.send(JSON.stringify({ id: wantId, method, params }));
+  const wsUrl = await resolveCdpWebSocketUrl({
+    host: ip,
+    port,
+    target: appFilter,
+    targetSelection: 'legacy-tv-app',
   });
+  client = await CdpClient.connect(wsUrl);
 
-await new Promise((resolve, reject) => {
-  ws.onopen = resolve;
-  ws.onerror = () => reject(new Error('ws connection failed'));
-});
-
-try {
   // awaitPromise resolves an async expression; returnByValue ships the result
   // back as JSON rather than a remote handle.
-  const { result, exceptionDetails } = await call('Runtime.evaluate', {
+  const { result, exceptionDetails } = await client.call('Runtime.evaluate', {
     expression,
     returnByValue: true,
     awaitPromise: true,
   });
   if (exceptionDetails) {
     console.error(`tv-eval: ${exceptionDetails.exception?.description || exceptionDetails.text}`);
-    process.exit(1);
+    exitCode = 1;
+  } else {
+    if (result.type === 'undefined') console.log('undefined');
+    else if (result.value !== undefined && typeof result.value === 'object') {
+      console.log(JSON.stringify(result.value, null, 2));
+    } else {
+      console.log(String(result.value ?? result.description ?? ''));
+    }
   }
-  if (result.type === 'undefined') console.log('undefined');
-  else if (result.value !== undefined && typeof result.value === 'object') console.log(JSON.stringify(result.value, null, 2));
-  else console.log(String(result.value ?? result.description ?? ''));
 } catch (e) {
-  console.error(`tv-eval: ${e.message}`);
-  process.exit(1);
+  const message = toErrorMessage(e);
+  if (message === 'No inspectable page targets available.') {
+    console.error(
+      `tv-eval: no inspectable page found on ${ip}:${port}` +
+        (appFilter ? ` for "${appFilter}"` : '') + `. ${launchHint}`,
+    );
+  } else if (isDiscoveryFailure(message)) {
+    console.error(`tv-eval: no DevTools endpoint on ${ip}:${port}. ${launchHint}`);
+  } else {
+    console.error(`tv-eval: ${message}`);
+  }
+  exitCode = 1;
 } finally {
-  ws.close();
+  client?.close();
 }
-process.exit(0);
+process.exit(exitCode);

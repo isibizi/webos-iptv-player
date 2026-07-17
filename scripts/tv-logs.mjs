@@ -6,7 +6,11 @@
 // Usage:
 //   node scripts/tv-logs.mjs [--app <id>] [--port 9998] [--seconds N] [--history]
 // IP comes from `ares-setup-device` (default device, or TV_DEVICE=<name>).
-import { execFileSync } from 'node:child_process';
+import {
+  CdpClient,
+  resolveCdpTarget,
+  resolveConfiguredDeviceIp,
+} from './cdp-client.mjs';
 
 const args = process.argv.slice(2);
 const opt = (name, def) => {
@@ -17,53 +21,51 @@ const appFilter = opt('--app', '');
 const port = opt('--port', '9998');
 const seconds = parseInt(opt('--seconds', '0'), 10); // 0 = run until Ctrl-C
 const history = args.includes('--history');
+const deviceName = process.env.TV_DEVICE ? `--device ${process.env.TV_DEVICE} ` : '';
+const launchCommand = `ares-launch ${deviceName}${appFilter || '<app-id>'}`;
+const launchHint = `Make sure the TV is on and the app is running:\n  ${launchCommand}`;
+const toErrorMessage = (value) => {
+  if (value instanceof Error && value.message) return value.message;
+  if (typeof value?.message === 'string' && value.message) return value.message;
+  return String(value);
+};
+const isDiscoveryFailure = (message) =>
+  message === 'fetch failed' || message.startsWith('CDP target discovery failed:');
 
 // Resolve the device IP from ares-setup-device (no secrets needed for CDP).
 let ip;
 try {
-  const raw = execFileSync('ares-setup-device', ['-F', '-j'], { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] });
-  const list = JSON.parse(raw);
-  const want = process.env.TV_DEVICE || '';
-  const dev = list.find((d) => (want ? d.name === want : d.default)) || list[0];
-  ip = dev?.deviceinfo?.ip;
-  if (!ip) throw new Error('no device ip');
+  ip = resolveConfiguredDeviceIp();
 } catch (e) {
-  console.error(`tv-logs: cannot resolve device IP from ares-setup-device: ${e.message}`);
+  console.error(`tv-logs: ${toErrorMessage(e)}`);
   process.exit(1);
 }
 
-const base = `http://${ip}:${port}`;
-let pages;
+let page;
+let wsUrl;
 try {
-  pages = await (await fetch(`${base}/json/list`)).json();
-} catch {
-  console.error(
-    `tv-logs: no DevTools endpoint on ${ip}:${port}. ` +
-      `Make sure the TV is on and the app is running:\n` +
-      `  ares-launch ${process.env.TV_DEVICE ? `--device ${process.env.TV_DEVICE} ` : ''}${appFilter || '<app-id>'}`,
-  );
+  ({ target: page, wsUrl } = await resolveCdpTarget({
+    host: ip,
+    port,
+    target: appFilter,
+    targetSelection: 'legacy-tv-app',
+  }));
+} catch (e) {
+  const message = toErrorMessage(e);
+  if (message === 'No inspectable page targets available.') {
+    console.error(
+      `tv-logs: no inspectable page found on ${ip}:${port}` +
+        (appFilter ? ` for "${appFilter}"` : '') + `. ${launchHint}`,
+    );
+  } else if (isDiscoveryFailure(message)) {
+    console.error(`tv-logs: no DevTools endpoint on ${ip}:${port}. ${launchHint}`);
+  } else {
+    console.error(`tv-logs: ${message}`);
+  }
   process.exit(1);
 }
 
-const page =
-  pages.find((p) => p.type === 'page' && (!appFilter || p.description === appFilter || (p.url || '').includes(appFilter))) ||
-  pages.find((p) => p.type === 'page');
-if (!page) {
-  console.error(
-    `tv-logs: no inspectable page found on ${ip}:${port}` +
-      (appFilter ? ` for "${appFilter}"` : '') + '. ' +
-      `Make sure the TV is on and the app is running:\n` +
-      `  ares-launch ${process.env.TV_DEVICE ? `--device ${process.env.TV_DEVICE} ` : ''}${appFilter || '<app-id>'}`,
-  );
-  process.exit(1);
-}
-
-const wsUrl = page.webSocketDebuggerUrl.replace('localhost', ip).replace('127.0.0.1', ip);
-console.error(`tv-logs: attached to "${page.title}" (${page.description || page.url})`);
-
-const ws = new WebSocket(wsUrl);
-let id = 0;
-const send = (method, params = {}) => ws.send(JSON.stringify({ id: ++id, method, params }));
+console.error(`tv-logs: attached to "${page?.title || ''}" (${page?.description || page?.url || ''})`);
 
 // Render a CDP RemoteObject argument as a short string.
 const render = (a) => {
@@ -80,26 +82,42 @@ const render = (a) => {
 // receive-time would mislabel old entries as "now").
 const stamp = (ts) => new Date(ts ?? Date.now()).toTimeString().slice(0, 8);
 
-ws.onopen = () => {
-  send('Runtime.enable');
-  if (history) send('Log.enable'); // replays buffered browser-side log entries
-  send('Console.enable');
-};
-ws.onmessage = (e) => {
-  const m = JSON.parse(e.data);
-  if (m.method === 'Runtime.consoleAPICalled') {
-    const text = (m.params.args || []).map(render).join(' ');
-    const tag = m.params.type === 'log' ? '' : `.${m.params.type}`;
-    console.log(`${stamp(m.params.timestamp)} [console${tag}] ${text}`);
-  } else if (m.method === 'Runtime.exceptionThrown') {
-    const d = m.params.exceptionDetails;
-    console.log(`${stamp(m.params.timestamp)} [exception] ${d.exception?.description || d.text}`);
-  } else if (m.method === 'Log.entryAdded') {
-    console.log(`${stamp(m.params.entry.timestamp)} [${m.params.entry.level}] ${m.params.entry.text}`);
-  }
-};
-ws.onerror = (e) => console.error('tv-logs: ws error', e.message || e);
-ws.onclose = () => process.exit(0);
+let client;
+try {
+  client = await CdpClient.connect(wsUrl);
+} catch (e) {
+  console.error('tv-logs: ws error', toErrorMessage(e));
+  process.exit(0);
+}
 
-if (seconds > 0) setTimeout(() => ws.close(), seconds * 1000);
-process.on('SIGINT', () => ws.close());
+client.on('Runtime.consoleAPICalled', (params) => {
+  const text = (params.args || []).map(render).join(' ');
+  const tag = params.type === 'log' ? '' : `.${params.type}`;
+  console.log(`${stamp(params.timestamp)} [console${tag}] ${text}`);
+});
+client.on('Runtime.exceptionThrown', (params) => {
+  const details = params.exceptionDetails;
+  console.log(`${stamp(params.timestamp)} [exception] ${details.exception?.description || details.text}`);
+});
+client.on('Log.entryAdded', (params) => {
+  console.log(`${stamp(params.entry.timestamp)} [${params.entry.level}] ${params.entry.text}`);
+});
+client.socket.addEventListener('error', (event) => {
+  console.error('tv-logs: ws error', event.message || event);
+});
+client.socket.addEventListener('close', () => {
+  process.exit(0);
+});
+
+const callAndCloseOnError = (method) => {
+  void client.call(method).catch((error) => {
+    console.error(`tv-logs: ${toErrorMessage(error)}`);
+    client.close();
+  });
+};
+callAndCloseOnError('Runtime.enable');
+if (history) callAndCloseOnError('Log.enable'); // replays buffered browser-side log entries
+callAndCloseOnError('Console.enable');
+
+if (seconds > 0) setTimeout(() => client.close(), seconds * 1000);
+process.on('SIGINT', () => client.close());

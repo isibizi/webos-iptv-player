@@ -13,6 +13,7 @@
 #   scripts/tv.sh logs [--app <id>] ...   # stream the app's DevTools console
 #   scripts/tv.sh eval [--app <id>] '<js>'# evaluate JS in the app page (CDP);
 #                                         # also: --file <path.js>, or `-` for stdin
+#   scripts/tv.sh perf [--app <id>] ...   # CDP perf counters, recordings, GC, snapshots
 #
 # Pick a non-default device with TV_DEVICE=<name>; override the expect timeout
 # with TV_TIMEOUT=<seconds> (default 120).
@@ -20,12 +21,15 @@ set -uo pipefail
 
 action="${1:-}"; shift || true
 
-# logs/eval talk CDP over the network, not ssh — hand straight to the node client.
+# logs/eval/perf talk CDP over the network, not ssh — hand straight to the node client.
 if [ "$action" = "logs" ]; then
   exec node "$(dirname "$0")/tv-logs.mjs" "$@"
 fi
 if [ "$action" = "eval" ]; then
   exec node "$(dirname "$0")/tv-eval.mjs" "$@"
+fi
+if [ "$action" = "perf" ]; then
+  exec node "$(dirname "$0")/tv-perf.mjs" "$@"
 fi
 
 info=$(ares-setup-device -F -j 2>/dev/null) || { echo "tv.sh: ares-setup-device failed" >&2; exit 1; }
@@ -95,7 +99,7 @@ interact
 EOF
     ;;
   *)
-    echo "usage: tv.sh {run '<command>' | push <local> <remote> | shell | logs ... | eval '<js>'}" >&2
+    echo "usage: tv.sh {run '<command>' | push <local> <remote> | shell | logs ... | eval '<js>' | perf ...}" >&2
     exit 2
     ;;
 esac
