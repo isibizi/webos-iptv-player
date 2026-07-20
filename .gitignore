@@ -1,6 +1,7 @@
 node_modules/
 dist/
 *.ipk
+*.manifest.json
 .DS_Store
 
 # Test artifacts

@@ -5,6 +5,7 @@
   "type": "web",
   "main": "index.html",
   "title": "webOS IPTV Player",
+  "appDescription": "IPTV player with M3U, Xtream, XMLTV, and catch-up.",
   "icon": "icon.png",
   "largeIcon": "largeIcon.png",
   "iconColor": "#241e52",

@@ -44,6 +44,9 @@ ares-package --no-minify -e "*preview-libs.js" dist build/bundled-service -o .
 IPK=$(ls -t *.ipk 2>/dev/null | head -1)
 info "Built: $IPK ($(du -h "$IPK" | cut -f1))"
 
+info "Generating Homebrew Channel manifest..."
+npm run manifest -- "$IPK"
+
 # Deploy if --install flag
 if [ "$1" = "--install" ]; then
   DEVICE="${2:-$(ares-setup-device -F -j 2>/dev/null | node -e "

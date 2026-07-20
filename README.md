@@ -84,26 +84,53 @@ forward-compatible. Features only newer engines support natively (flex `gap`,
 webOS 4.x and older (Chromium 53 and earlier) lack JavaScript and CSS features
 the app relies on, and are not supported.
 
+## Prerequisites
+
+Command-line installation and local builds require
+[Node.js](https://nodejs.org/) (v18+) and the
+[webOS CLI tools](https://webostv.developer.lge.com/develop/tools/cli-installation):
+
+```bash
+npm install -g @webos-tools/cli
+```
+
+Adding the repository directly in Homebrew Channel does not require these tools.
+
 ## Install on your TV
+
+### Homebrew Channel
+
+Install the community
+[webOS Homebrew Channel](https://github.com/webosbrew/webos-homebrew-channel),
+then open **Settings → Add repository** and enter:
+
+```text
+https://raw.githubusercontent.com/lennylxx/webos-iptv-player/main/homebrew-repository.json
+```
+
+To prefill the repository URL from a computer configured with `ares-cli`, run:
+
+```bash
+ares-launch --device tv org.webosbrew.hbchannel -p '{"launchMode":"addRepository","url":"https://raw.githubusercontent.com/lennylxx/webos-iptv-player/main/homebrew-repository.json"}'
+```
+
+Confirm **Add repository** on the TV. Homebrew Channel can then install the app
+and detect updates from later GitHub releases.
+
+### Developer Mode
 
 1. **Download the app.** On your computer, open the
    [Releases page](https://github.com/lennylxx/webos-iptv-player/releases/latest)
    and download the latest `.ipk` file.
 
-2. **Install the webOS CLI tools.** Install [Node.js](https://nodejs.org/) (v18+), then run:
-
-   ```bash
-   npm install -g @webos-tools/cli
-   ```
-
-3. **Turn on Developer Mode on the TV.**
+2. **Turn on Developer Mode on the TV.**
    - Create a free account at the [LG webOS Developer site](https://webostv.developer.lge.com/).
    - On the TV, open the **LG Content Store**, search for **Developer Mode**, then
      install and open it.
    - Sign in with your LG developer account and switch **Dev Mode Status** to **ON**.
      The TV restarts. Note the **IP address** and **passphrase** the app shows.
 
-4. **Register your TV.** Add it as a device named `tv` (replace the IP with your TV's):
+3. **Register your TV.** Add it as a device named `tv` (replace the IP with your TV's):
 
    ```bash
    ares-setup-device --add tv -i "username=prisoner" -i "host=127.0.0.1" -i "port=9922"
@@ -115,30 +142,27 @@ the app relies on, and are not supported.
    ares-novacom --device tv --getkey
    ```
 
-5. **Install the app.**
+4. **Install the app.**
 
    ```bash
    ares-install --device tv ./com.lennylxx.iptv_<version>_all.ipk
    ```
 
-## Requirements
+## Development
 
-- [Node.js](https://nodejs.org/) (v18+)
-- [webOS CLI tools](https://webostv.developer.lge.com/develop/tools/cli-installation) (`ares-*` commands)
-
-## Setup
+### Setup
 
 ```bash
 npm install
 ```
 
-## Build
+### Build
 
 ```bash
 ./build.sh
 ```
 
-## Build & Install to TV
+### Build & Install to TV
 
 ```bash
 ./build.sh --install [device-name]
@@ -146,7 +170,7 @@ npm install
 
 If no device name is given, the default device from `ares-setup-device` is used.
 
-## Preview in Browser
+### Preview in Browser
 
 ```bash
 npm run preview
