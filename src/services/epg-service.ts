@@ -86,6 +86,12 @@ class EpgServiceImpl {
       const parseDone = log.time('parse');
       const result = parseXMLTV(text);
       parseDone();
+      // Drop programmes that ended > 2 h ago to reduce memory and IDB size.
+      const cutoff = Date.now() - 2 * 60 * 60 * 1000;
+      for (const id of Object.keys(result.programmes)) {
+        result.programmes[id] = result.programmes[id].filter(p => p.stop.getTime() > cutoff);
+        if (!result.programmes[id].length) delete result.programmes[id];
+      }
       this.channels = result.channels;
       this.programmes = result.programmes;
       this.tzOffsetMinutes = result.tzOffsetMinutes ?? null;

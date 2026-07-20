@@ -40,6 +40,10 @@ class PlaylistServiceImpl {
       StorageService.migrateFavoriteKeys(this.channels);
       return this.channels;
     }
+    if (this.channels.length && StorageService.isCacheSkipped()) {
+      log.info('Playlist too large to cache — reusing', this.channels.length, 'in-memory channels');
+      return this.channels;
+    }
     log.info('Cache miss — refreshing from network');
     return this.refresh();
   }
@@ -121,7 +125,11 @@ class PlaylistServiceImpl {
     this.buildGroups();
     this.buildPlaylistTabs();
     StorageService.migrateFavoriteKeys(this.channels);
-    StorageService.setCachedPlaylist(allChannels, epgUrls);
+    if (!StorageService.isCacheSkipped()) {
+      StorageService.setCachedPlaylist(allChannels, epgUrls);
+    } else {
+      log.info('Skipping cache write — playlist too large for localStorage');
+    }
     log.info('Refresh complete:', allChannels.length, 'total channels,', epgUrls.length, 'epg urls');
     done();
     return allChannels;

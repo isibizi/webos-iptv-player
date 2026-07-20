@@ -23,6 +23,7 @@ import { initTheme, applyTheme, applyOverlayStyle } from './services/theme-servi
 import { channelKey } from './utils/channel';
 import { truncate } from './utils/text';
 import { $, show, hide } from './utils/dom';
+import { clearAllIdbCaches } from './services/idb-cache';
 import { createLogger, installGlobalErrorHandlers, logEnvironment } from './utils/logger';
 import type { Action, NumberEvent, CatchupInfo, PlaylistEntry } from './types';
 
@@ -51,6 +52,17 @@ class App {
   async init(): Promise<void> {
     const done = log.time('init');
     log.info('Initializing app');
+
+    // Crash recovery: if the previous session did not shut down cleanly, the
+    // 'session_alive' flag is still in localStorage. Clear all caches to break
+    // a potential OOM crash loop (large EPG/catalog in IDB, oversized playlist).
+    if (StorageService.get('session_alive', false)) {
+      log.warn('Previous session did not exit cleanly — clearing caches');
+      StorageService.evictCache();
+      void clearAllIdbCaches();
+    }
+    StorageService.set('session_alive', true);
+
     initTheme();
     this.views = {
       channels: $('#view-channels')!,
@@ -165,8 +177,10 @@ class App {
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') {
         log.info('App backgrounded — stopping bundled service');
+        StorageService.remove('session_alive');
         this.stopUploadService();
       } else if (document.visibilityState === 'visible') {
+        StorageService.set('session_alive', true);
         log.info('App foregrounded — restarting bundled service');
         void (async () => {
           await this.startUploadService();
@@ -877,7 +891,7 @@ class App {
 
   private async onSettingsSaved(action: SaveAction): Promise<void> {
     if (action === 'reload') {
-      StorageService.remove('cached_playlist');
+      StorageService.evictCache();
       this.showView('channels');
       await this.loadData();
       return;

@@ -46,6 +46,7 @@ const { state, storageMock, themeMock, toastMock, uploadMock, xtreamMock } = vi.
       setTzMode: vi.fn(),
       setOnlineSubtitleConfig: vi.fn((cfg: any) => { state.onlineSubtitles = cfg; }),
       remove: vi.fn(),
+      evictCache: vi.fn(),
     },
     toastMock: { showToast: vi.fn() },
     uploadMock: {
@@ -66,7 +67,7 @@ const { state, storageMock, themeMock, toastMock, uploadMock, xtreamMock } = vi.
 
 vi.mock('../services/storage-service', () => ({ StorageService: storageMock }));
 vi.mock('../services/theme-service', () => themeMock);
-vi.mock('../services/idb-cache', () => ({ clearCachedEpg: vi.fn(async () => {}) }));
+vi.mock('../services/idb-cache', () => ({ clearAllIdbCaches: vi.fn(async () => {}) }));
 vi.mock('./toast', () => ({ showToast: toastMock.showToast }));
 vi.mock('../services/xtream-client', () => ({
   createXtreamClient: () => ({ getAccountInfo: xtreamMock.getAccountInfo }),
@@ -80,7 +81,7 @@ vi.mock('../services/upload-client', () => ({
 }));
 
 import { Settings } from './settings';
-import { clearCachedEpg } from '../services/idb-cache';
+import { clearAllIdbCaches } from '../services/idb-cache';
 
 let container: HTMLElement;
 let onSave: ReturnType<typeof vi.fn>;
@@ -327,8 +328,8 @@ describe('Settings editing', () => {
 
   it('clears the playlist and EPG caches and shows a toast', () => {
     click('#clear-cache');
-    expect(storageMock.remove).toHaveBeenCalledWith('cached_playlist');
-    expect(clearCachedEpg).toHaveBeenCalled();
+    expect(storageMock.evictCache).toHaveBeenCalled();
+    expect(clearAllIdbCaches).toHaveBeenCalled();
     expect(toastMock.showToast).toHaveBeenCalledWith('Cache cleared');
   });
 

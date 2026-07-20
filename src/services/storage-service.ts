@@ -47,12 +47,36 @@ function remove(key: string): void {
 
 function evictCache(): void {
   remove('cached_playlist');
+  remove('cache_skip_until');
+}
+
+// Cap a Record-based preference map to PREF_MAP_MAX_ENTRIES by dropping the
+// oldest-looking keys (order is insertion-order in V8/modern engines). Prevents
+// maps like audio_prefs / subtitle_prefs from growing without bound over months.
+function capMap<T>(map: Record<string, T>, max: number): Record<string, T> {
+  const keys = Object.keys(map);
+  if (keys.length <= max) return map;
+  const keep = keys.slice(keys.length - max);
+  const out: Record<string, T> = {};
+  for (const k of keep) out[k] = map[k];
+  return out;
+}
+
+function clearAll(): void {
+  const keys: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith(PREFIX)) keys.push(k);
+  }
+  for (const k of keys) localStorage.removeItem(k);
 }
 
 export const StorageService = {
   get,
   set,
   remove,
+  evictCache,
+  clearAll,
 
   getPlaylists(): PlaylistEntry[] {
     const list = get<PlaylistEntry[]>('playlists', []);
@@ -161,7 +185,7 @@ export const StorageService = {
     if (!channelId) return;
     const all = get<Record<string, AudioPref>>('audio_prefs', {});
     all[channelId] = pref;
-    set('audio_prefs', all);
+    set('audio_prefs', capMap(all, CONFIG.PREF_MAP_MAX_ENTRIES));
   },
 
   // Preferred subtitle per channel (keyed by channelKey). Absent = follow the
@@ -174,7 +198,7 @@ export const StorageService = {
     if (!channelId) return;
     const all = get<Record<string, SubtitlePref>>('subtitle_prefs', {});
     all[channelId] = pref;
-    set('subtitle_prefs', all);
+    set('subtitle_prefs', capMap(all, CONFIG.PREF_MAP_MAX_ENTRIES));
   },
 
   // Per-stream subtitle timing offset in seconds (keyed by channelPrefKey, same as the
@@ -216,7 +240,13 @@ export const StorageService = {
   },
   setCachedPlaylist(channels: Channel[], epgUrls: string[] = []): void {
     if (!channels.length) return;
-    set('cached_playlist', { version: CACHE_VERSION, channels, epgUrls, timestamp: Date.now() });
+    if (!set('cached_playlist', { version: CACHE_VERSION, channels, epgUrls, timestamp: Date.now() })) {
+      set('cache_skip_until', Date.now() + CONFIG.PLAYLIST_REFRESH_INTERVAL);
+    }
+  },
+  isCacheSkipped(): boolean {
+    const until = get<number>('cache_skip_until', 0);
+    return until > 0 && Date.now() < until;
   },
 
   // Resume points, one localStorage map keyed `${accountId}|${kind}|${itemId}`.
@@ -280,7 +310,7 @@ export const StorageService = {
   setPickedOnlineSub(accountId: string, kind: ResumeKind, itemId: string, pick: PickedOnlineSub): void {
     const all = get<Record<string, PickedOnlineSub>>('online_sub_picks', {});
     all[`${accountId}|${kind}|${itemId}`] = pick;
-    set('online_sub_picks', all);
+    set('online_sub_picks', capMap(all, CONFIG.PREF_MAP_MAX_ENTRIES));
   },
 
   // Catch-up progress, one entry per programme per channel.

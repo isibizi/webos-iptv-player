@@ -131,7 +131,7 @@ describe('EpgService.refresh — empty-EPG caching', () => {
   it('caches an EPG that has programmes', async () => {
     vi.mocked(parseXMLTV).mockReturnValue({
       channels: { c1: { name: 'C1', icon: '' } },
-      programmes: { c1: [prog({})] },
+      programmes: { c1: [prog({ start: h(0), stop: h(1) })] },
       tzOffsetMinutes: null,
     });
     await EpgService.refresh();

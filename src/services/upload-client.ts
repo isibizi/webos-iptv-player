@@ -155,7 +155,7 @@ class UploadClientImpl {
     }
 
     StorageService.setPlaylists([...manual, ...uploadEntries]);
-    StorageService.remove('cached_playlist');
+    StorageService.evictCache();
     log.info('Reconciled uploads:', uploadEntries.length, 'upload playlist(s)');
   }
 }

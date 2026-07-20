@@ -3,7 +3,7 @@ import { $, $$, html, raw, type Safe } from '../utils/dom';
 import { morph } from '../utils/morph';
 import { SpatialNav } from '../navigation/spatial-nav';
 import { StorageService } from '../services/storage-service';
-import { clearCachedEpg } from '../services/idb-cache';
+import { clearAllIdbCaches } from '../services/idb-cache';
 import { UploadClient, uploadIdFromUrl } from '../services/upload-client';
 import { createXtreamClient } from '../services/xtream-client';
 import { normalizeXtreamBaseUrl } from '../utils/xtream-url';
@@ -466,8 +466,8 @@ export class Settings {
     } else if (el.id === 'refresh-data') {
       this.onSave('reload');
     } else if (el.id === 'clear-cache') {
-      StorageService.remove('cached_playlist');
-      void clearCachedEpg();
+      StorageService.evictCache();
+      void clearAllIdbCaches();
       showToast('Cache cleared');
     } else if (el.tagName === 'INPUT') {
       (el as HTMLInputElement).focus();
@@ -791,7 +791,7 @@ export class Settings {
 
     const remaining = StorageService.getPlaylists().filter(pl => pl.url !== url);
     StorageService.setPlaylists(remaining);
-    StorageService.remove('cached_playlist');
+    StorageService.evictCache();
     showToast('Uploaded playlist removed');
 
     await this.refreshUploads();

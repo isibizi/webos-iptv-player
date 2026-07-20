@@ -140,6 +140,42 @@ export async function setCachedCatalog(key: string, data: unknown): Promise<void
   });
 }
 
+export async function clearCachedCatalog(): Promise<void> {
+  const db = await openDb();
+  if (!db) return;
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(CATALOG_STORE, 'readwrite');
+      tx.objectStore(CATALOG_STORE).clear();
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    } catch {
+      resolve();
+    }
+  });
+}
+
+export async function clearCachedSubtitles(): Promise<void> {
+  const db = await openDb();
+  if (!db) return;
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(SUBTITLE_STORE, 'readwrite');
+      tx.objectStore(SUBTITLE_STORE).clear();
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    } catch {
+      resolve();
+    }
+  });
+}
+
+export async function clearAllIdbCaches(): Promise<void> {
+  await clearCachedEpg();
+  await clearCachedCatalog();
+  await clearCachedSubtitles();
+}
+
 export async function getCachedSubtitle(key: string): Promise<string | null> {
   const db = await openDb();
   if (!db) return null;

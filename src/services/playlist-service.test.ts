@@ -6,6 +6,7 @@ const { storageMock, fetchTextMock } = vi.hoisted(() => ({
     getCachedPlaylist: vi.fn(),
     getPlaylists: vi.fn(),
     setCachedPlaylist: vi.fn(),
+    isCacheSkipped: vi.fn(() => false),
     getFavorites: vi.fn(() => [] as string[]),
     migrateFavoriteKeys: vi.fn(),
   },
@@ -238,6 +239,34 @@ describe('PlaylistService.load', () => {
     const result = await PlaylistService.load();
     expect(result.map(c => c.name)).toEqual(['Bravo Dup', 'Charlie']);
     expect(fetchTextMock).toHaveBeenCalled();
+  });
+
+  it('reuses in-memory channels when cache is skipped (playlist too large)', async () => {
+    storageMock.getCachedPlaylist.mockReturnValue(null);
+    storageMock.isCacheSkipped.mockReturnValue(true);
+    PlaylistService.channels = [channel({ name: 'InMem', url: 'http://x' })];
+    const result = await PlaylistService.load();
+    expect(result[0].name).toBe('InMem');
+    expect(fetchTextMock).not.toHaveBeenCalled();
+  });
+
+  it('refreshes when cache is skipped but no in-memory channels exist', async () => {
+    storageMock.getCachedPlaylist.mockReturnValue(null);
+    storageMock.isCacheSkipped.mockReturnValue(true);
+    storageMock.getPlaylists.mockReturnValue([{ name: 'P2', url: 'http://host2/p2.m3u' }]);
+    fetchTextMock.mockResolvedValue(P2);
+    PlaylistService.channels = [];
+    const result = await PlaylistService.load();
+    expect(result.map(c => c.name)).toEqual(['Bravo Dup', 'Charlie']);
+    expect(fetchTextMock).toHaveBeenCalled();
+  });
+
+  it('skips cache write when isCacheSkipped is true', async () => {
+    storageMock.isCacheSkipped.mockReturnValue(true);
+    storageMock.getPlaylists.mockReturnValue([{ id: 'a', name: 'P1', url: 'http://host1/p1.m3u' }]);
+    fetchTextMock.mockResolvedValue(P1);
+    await PlaylistService.refresh();
+    expect(storageMock.setCachedPlaylist).not.toHaveBeenCalled();
   });
 });
 
