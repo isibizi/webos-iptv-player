@@ -47,12 +47,14 @@ function remove(key: string): void {
 
 function evictCache(): void {
   remove('cached_playlist');
+  remove('cache_skip_until');
 }
 
 export const StorageService = {
   get,
   set,
   remove,
+  evictCache,
 
   getPlaylists(): PlaylistEntry[] {
     const list = get<PlaylistEntry[]>('playlists', []);
@@ -216,7 +218,16 @@ export const StorageService = {
   },
   setCachedPlaylist(channels: Channel[], epgUrls: string[] = []): void {
     if (!channels.length) return;
-    set('cached_playlist', { version: CACHE_VERSION, channels, epgUrls, timestamp: Date.now() });
+    if (!set('cached_playlist', { version: CACHE_VERSION, channels, epgUrls, timestamp: Date.now() })) {
+      // Playlist too large for localStorage — store a lightweight marker so
+      // the next load() knows a network refresh is needed but does not
+      // re-attempt a doomed cache write within the refresh window.
+      set('cache_skip_until', Date.now() + CONFIG.PLAYLIST_REFRESH_INTERVAL);
+    }
+  },
+  isCacheSkipped(): boolean {
+    const until = get<number>('cache_skip_until', 0);
+    return until > 0 && Date.now() < until;
   },
 
   // Resume points, one localStorage map keyed `${accountId}|${kind}|${itemId}`.

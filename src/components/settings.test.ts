@@ -46,6 +46,7 @@ const { state, storageMock, themeMock, toastMock, uploadMock, xtreamMock } = vi.
       setTzMode: vi.fn(),
       setOnlineSubtitleConfig: vi.fn((cfg: any) => { state.onlineSubtitles = cfg; }),
       remove: vi.fn(),
+      evictCache: vi.fn(),
     },
     toastMock: { showToast: vi.fn() },
     uploadMock: {
@@ -327,7 +328,7 @@ describe('Settings editing', () => {
 
   it('clears the playlist and EPG caches and shows a toast', () => {
     click('#clear-cache');
-    expect(storageMock.remove).toHaveBeenCalledWith('cached_playlist');
+    expect(storageMock.evictCache).toHaveBeenCalled();
     expect(clearCachedEpg).toHaveBeenCalled();
     expect(toastMock.showToast).toHaveBeenCalledWith('Cache cleared');
   });
@@ -506,7 +507,7 @@ describe('Settings uploads section', () => {
     expect(storageMock.setPlaylists).toHaveBeenCalledWith([
       { name: 'Manual', url: 'http://manual', source: 'url' },
     ]);
-    expect(storageMock.remove).toHaveBeenCalledWith('cached_playlist');
+    expect(storageMock.evictCache).toHaveBeenCalled();
     expect(toastMock.showToast).toHaveBeenCalledWith('Uploaded playlist removed');
   });
 

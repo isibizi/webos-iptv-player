@@ -466,7 +466,7 @@ export class Settings {
     } else if (el.id === 'refresh-data') {
       this.onSave('reload');
     } else if (el.id === 'clear-cache') {
-      StorageService.remove('cached_playlist');
+      StorageService.evictCache();
       void clearCachedEpg();
       showToast('Cache cleared');
     } else if (el.tagName === 'INPUT') {
@@ -791,7 +791,7 @@ export class Settings {
 
     const remaining = StorageService.getPlaylists().filter(pl => pl.url !== url);
     StorageService.setPlaylists(remaining);
-    StorageService.remove('cached_playlist');
+    StorageService.evictCache();
     showToast('Uploaded playlist removed');
 
     await this.refreshUploads();

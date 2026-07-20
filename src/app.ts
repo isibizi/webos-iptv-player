@@ -877,7 +877,7 @@ class App {
 
   private async onSettingsSaved(action: SaveAction): Promise<void> {
     if (action === 'reload') {
-      StorageService.remove('cached_playlist');
+      StorageService.evictCache();
       this.showView('channels');
       await this.loadData();
       return;

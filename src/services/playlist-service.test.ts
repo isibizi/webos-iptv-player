@@ -6,6 +6,7 @@ const { storageMock, fetchTextMock } = vi.hoisted(() => ({
     getCachedPlaylist: vi.fn(),
     getPlaylists: vi.fn(),
     setCachedPlaylist: vi.fn(),
+    isCacheSkipped: vi.fn(() => false),
     getFavorites: vi.fn(() => [] as string[]),
     migrateFavoriteKeys: vi.fn(),
   },
@@ -160,6 +161,13 @@ describe('PlaylistService.refresh', () => {
     );
   });
 
+  it('skips cache write when isCacheSkipped is true', async () => {
+    storageMock.isCacheSkipped.mockReturnValue(true);
+    await PlaylistService.refresh();
+    expect(storageMock.setCachedPlaylist).not.toHaveBeenCalled();
+    storageMock.isCacheSkipped.mockReturnValue(false);
+  });
+
   it('returns an empty list and skips fetching when no playlists are configured', async () => {
     storageMock.getPlaylists.mockReturnValue([]);
     const channels = await PlaylistService.refresh();
@@ -233,6 +241,26 @@ describe('PlaylistService.load', () => {
 
   it('refreshes from the network on a cache miss', async () => {
     storageMock.getCachedPlaylist.mockReturnValue(null);
+    storageMock.getPlaylists.mockReturnValue([{ name: 'P2', url: 'http://host2/p2.m3u' }]);
+    fetchTextMock.mockResolvedValue(P2);
+    const result = await PlaylistService.load();
+    expect(result.map(c => c.name)).toEqual(['Bravo Dup', 'Charlie']);
+    expect(fetchTextMock).toHaveBeenCalled();
+  });
+
+  it('reuses in-memory channels when cache is skipped (playlist too large)', async () => {
+    PlaylistService.channels = [channel({ name: 'Alpha', playlistIds: ['a'] })];
+    storageMock.getCachedPlaylist.mockReturnValue(null);
+    storageMock.isCacheSkipped.mockReturnValue(true);
+    const result = await PlaylistService.load();
+    expect(result.map(c => c.name)).toEqual(['Alpha']);
+    expect(fetchTextMock).not.toHaveBeenCalled();
+  });
+
+  it('refreshes from network when cache is skipped but no in-memory channels', async () => {
+    PlaylistService.channels = [];
+    storageMock.getCachedPlaylist.mockReturnValue(null);
+    storageMock.isCacheSkipped.mockReturnValue(true);
     storageMock.getPlaylists.mockReturnValue([{ name: 'P2', url: 'http://host2/p2.m3u' }]);
     fetchTextMock.mockResolvedValue(P2);
     const result = await PlaylistService.load();
