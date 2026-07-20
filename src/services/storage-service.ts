@@ -1,4 +1,5 @@
 import { CONFIG } from '../config';
+import { DEFAULT_THEME, DEFAULT_OVERLAY, type OverlayStyle } from '../config/themes';
 import type { AudioPref, CatchupProgressEntry, Channel, PlaylistEntry, Reminder, ResumeEntry, ResumeKind, SubtitlePref, TzMode } from '../types';
 import type { OnlineSubtitleConfig, PickedOnlineSub } from './subtitle-search/types';
 import { channelKey } from '../utils/channel';
@@ -133,6 +134,22 @@ export const StorageService = {
   },
   setAutoPlay(val: boolean): void {
     set('auto_play', val);
+  },
+
+  // Selected color theme id (see src/config/themes.ts). Default = Midnight.
+  getTheme(): string {
+    return get<string>('theme', DEFAULT_THEME);
+  },
+  setTheme(id: string): void {
+    set('theme', id);
+  },
+
+  // Player overlay glass style (see src/config/themes.ts). Default = dark-glass.
+  getOverlayStyle(): OverlayStyle {
+    return get<OverlayStyle>('overlay_style', DEFAULT_OVERLAY);
+  },
+  setOverlayStyle(style: OverlayStyle): void {
+    set('overlay_style', style);
   },
 
   // Preferred audio track per channel (keyed by channelKey). Absent = follow the stream's default.

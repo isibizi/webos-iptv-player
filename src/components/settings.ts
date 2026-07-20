@@ -9,6 +9,8 @@ import { createXtreamClient } from '../services/xtream-client';
 import { normalizeXtreamBaseUrl } from '../utils/xtream-url';
 import { genPlaylistId } from '../utils/playlist-id';
 import { CONFIG } from '../config';
+import { THEMES, OVERLAY_STYLES, type ThemeMeta, type OverlayStyle } from '../config/themes';
+import { previewTheme } from '../services/theme-service';
 import { showToast } from './toast';
 import qrcode from 'qrcode-generator';
 import { createLogger } from '../utils/logger';
@@ -37,6 +39,43 @@ function uploadLabel(pl: PlaylistEntry): string {
     return `${pl.name} — ${pl.count} channel${pl.count === 1 ? '' : 's'}`;
   }
   return pl.name;
+}
+
+/** One theme swatch tile: a mini mock of the app (tab bar, a focused channel
+ *  tile, list rows, status dots) plus the theme name. It carries its own
+ *  `data-theme` so every `var(--…)` inside resolves to that theme's colors,
+ *  independent of the app's active theme. The mock is decorative (aria-hidden);
+ *  the button's aria-label names the theme. */
+function themeSwatch(t: ThemeMeta, activeId: string): Safe {
+  return html`
+    <button class="theme-swatch ${t.id === activeId ? 'active' : ''}" data-focusable
+            data-theme-id="${t.id}" data-theme="${t.id}" aria-label="${t.name} theme">
+      <span class="theme-swatch-preview" aria-hidden="true">
+        <span class="tsp-tabs">
+          <span class="tsp-tab active">Live</span>
+          <span class="tsp-tab">Movies</span>
+          <span class="tsp-tab">Series</span>
+        </span>
+        <span class="tsp-tiles">
+          <span class="tsp-tile focus">ch1</span>
+          <span class="tsp-tile">ch2</span>
+          <span class="tsp-tile">ch3</span>
+        </span>
+        <span class="tsp-rows">
+          <span class="tsp-row">Channel one</span>
+          <span class="tsp-row muted">Channel two</span>
+        </span>
+        <span class="tsp-foot">
+          <span class="tsp-epg">EPG · now</span>
+          <span class="tsp-dots">
+            <span class="tsp-dot dn"></span>
+            <span class="tsp-dot su"></span>
+            <span class="tsp-dot wa"></span>
+          </span>
+        </span>
+      </span>
+      <span class="theme-swatch-name">${t.name}</span>
+    </button>`;
 }
 
 /** A single-select toggle group: connected buttons, the active one filled.
@@ -140,11 +179,13 @@ export class Settings {
   private container: HTMLElement;
   private onSave: (action: SaveAction) => void;
   private nav: SpatialNav;
+  // Pending theme selection (persisted on Save; live-previewed while browsing).
+  private selectedTheme = '';
 
   constructor(container: HTMLElement, onSave: (action: SaveAction) => void) {
     this.container = container;
     this.onSave = onSave;
-    this.nav = new SpatialNav(container);
+    this.nav = new SpatialNav(container, (el) => this.onNavFocus(el));
 
     // Mouse/pointer support: clicking a focusable element behaves like remote OK.
     // Attached once on the persistent container (render() replaces innerHTML).
@@ -170,6 +211,19 @@ export class Settings {
         if (next) this.nav.focus(next);
       }
     });
+
+    // Pointer theme preview: hovering a swatch previews that theme app-wide;
+    // moving the pointer off the swatches restores the currently selected theme
+    // immediately (no deferring until focus lands elsewhere).
+    this.container.addEventListener('mouseover', (e: MouseEvent) => {
+      const sw = (e.target as HTMLElement).closest<HTMLElement>('.theme-swatch');
+      if (sw?.dataset.themeId) previewTheme(sw.dataset.themeId);
+    });
+    this.container.addEventListener('mouseout', (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest('.theme-swatch')) return;
+      const rel = e.relatedTarget as HTMLElement | null;
+      if (!rel || !rel.closest('.theme-swatch')) previewTheme(this.selectedTheme);
+    });
   }
 
   render(): void {
@@ -182,6 +236,9 @@ export class Settings {
     const feedTime = StorageService.getTzMode() === 'feed';
     const tzOffset = StorageService.getEpgTzOffset();
     const os = StorageService.getOnlineSubtitleConfig();
+    const theme = StorageService.getTheme();
+    this.selectedTheme = theme;
+    const overlayStyle = StorageService.getOverlayStyle();
 
     this.container.innerHTML = String(html`
       <div class="settings-view">
@@ -258,6 +315,18 @@ export class Settings {
                      value="${epgUrl}" placeholder="https://example.com/epg.xml">
             </div>
           </div>
+        </div>
+
+        <div class="settings-section">
+          <h3>Appearance</h3>
+          <div class="theme-swatch-grid">
+            ${THEMES.map(t => themeSwatch(t, theme))}
+          </div>
+          <div class="settings-row settings-toggle-row">
+            <label>Player overlay glass</label>
+            ${toggleGroup('overlay-style', OVERLAY_STYLES, overlayStyle)}
+          </div>
+          <div class="empty-hint">Dark stays readable over any video. Frosted is light-glass — best on light themes.</div>
         </div>
 
         <div class="settings-section">
@@ -388,6 +457,8 @@ export class Settings {
       // Single-select toggle group: clear the siblings, activate the chosen option.
       el.parentElement?.querySelectorAll('.toggle-option').forEach(b => b.classList.remove('active'));
       el.classList.add('active');
+    } else if (el.classList.contains('theme-swatch')) {
+      this.selectThemeSwatch(el);
     } else if (el.id === 'save-settings') {
       this.save();
     } else if (el.id === 'cancel-settings') {
@@ -401,6 +472,24 @@ export class Settings {
     } else if (el.tagName === 'INPUT') {
       (el as HTMLInputElement).focus();
     }
+  }
+
+  // Live theme preview: focusing (D-pad) or hovering (pointer) a swatch previews
+  // that theme app-wide; anything else falls back to the currently selected theme.
+  private onNavFocus(el: HTMLElement | null): void {
+    if (el?.dataset.themeId) previewTheme(el.dataset.themeId);
+    else previewTheme(this.selectedTheme);
+  }
+
+  // OK on a swatch: mark it the pending selection (persisted on Save & Apply;
+  // reverted to savedTheme if Settings closes without saving — see App.showView).
+  private selectThemeSwatch(el: HTMLElement): void {
+    const id = el.dataset.themeId;
+    if (!id) return;
+    this.container.querySelectorAll('.theme-swatch').forEach(s => s.classList.remove('active'));
+    el.classList.add('active');
+    this.selectedTheme = id;
+    previewTheme(id);
   }
 
   // Open/close a custom dropdown. Closed options carry `.hidden` so SpatialNav
@@ -638,6 +727,11 @@ export class Settings {
 
     const tzModeBtn = $('#tz-mode .toggle-option.active', this.container);
     if (tzModeBtn?.dataset.value) StorageService.setTzMode(tzModeBtn.dataset.value as TzMode);
+
+    StorageService.setTheme(this.selectedTheme);
+
+    const overlayBtn = $('#overlay-style .toggle-option.active', this.container);
+    if (overlayBtn?.dataset.value) StorageService.setOverlayStyle(overlayBtn.dataset.value as OverlayStyle);
 
     const prevOs = StorageService.getOnlineSubtitleConfig();
     const osVal = (id: string) => ($(`#${id}`, this.container) as HTMLInputElement | null)?.value.trim() ?? '';

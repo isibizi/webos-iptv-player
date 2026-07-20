@@ -8,11 +8,19 @@
   --text-muted: #666680;
   --accent: #00d4ff;
   --accent-dim: #0088aa;
-  --accent-glow: rgba(0, 212, 255, 0.3);
+  --accent-rgb: 0 212 255;
+  --accent-glow: rgb(var(--accent-rgb) / 0.3);
   --danger: #ff4757;
+  --danger-rgb: 255 71 87;
   --success: #2ed573;
   --warning: #ffa502;
+  --warning-rgb: 255 165 2;
   --border: #2a2a3e;
+  --catalog-surface: #14161c;
+  --catalog-control: #23262f;
+  --catalog-focus: #5b8cff;
+  --catalog-focus-rgb: 91 140 255;
+  --catalog-hero-scrim-rgb: 10 10 15;
   --focus-ring: var(--accent);
   --radius: 8px;
   --transition: 0.2s ease;
@@ -112,7 +120,7 @@ h3 {
 }
 
 .btn-danger {
-  background: rgba(255, 71, 87, 0.2);
+  background: rgb(var(--danger-rgb) / 0.2);
   border-color: var(--danger);
   color: var(--danger);
 }
@@ -245,6 +253,7 @@ h3 {
 .catchup-resume-btn.focused {
   border-color: var(--focus-ring);
   background: var(--accent-dim);
+  color: #fff;
   box-shadow: 0 0 12px var(--accent-glow);
 }
 
@@ -259,5 +268,5 @@ h3 {
 .epg-bell-glyph.unset { color: var(--text-muted); opacity: 0.5; }
 .epg-bell-glyph.set {
   color: var(--warning);
-  filter: drop-shadow(0 0 4px rgba(255, 165, 2, 0.5));
+  filter: drop-shadow(0 0 4px rgb(var(--warning-rgb) / 0.5));
 }

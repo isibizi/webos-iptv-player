@@ -9,8 +9,8 @@
   display: flex;
   align-items: center;
   padding: 0 80px;
-  background: rgb(6, 8, 14);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
 }
 
 /* Hidden on the full-screen player / EPG. */
@@ -52,7 +52,7 @@ body.tabbar-docked #view-settings {
   font-size: 30px;
   font-weight: 700;
   line-height: 1.4;
-  color: #8b97b0;
+  color: var(--text-secondary);
   background: transparent;
   border: none;
   padding: 4px 2px;
@@ -61,12 +61,12 @@ body.tabbar-docked #view-settings {
 }
 
 .tab-bar-item.active {
-  color: #fff;
-  border-bottom-color: #5b8cff;
+  color: var(--text-primary);
+  border-bottom-color: var(--accent);
 }
 
 .tab-bar-item.focused {
-  color: #fff;
+  color: var(--text-primary);
 }
 
 .tab-bar-search {

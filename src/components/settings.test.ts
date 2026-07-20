@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { TzMode } from '../types';
 import type { XtreamAccountInfo } from '../services/xtream-client';
 
-const { state, storageMock, toastMock, uploadMock, xtreamMock } = vi.hoisted(() => {
+const { state, storageMock, themeMock, toastMock, uploadMock, xtreamMock } = vi.hoisted(() => {
   const state = {
     playlists: [] as {
       id?: string;
@@ -15,6 +15,8 @@ const { state, storageMock, toastMock, uploadMock, xtreamMock } = vi.hoisted(() 
     }[],
     epg: '',
     autoPlay: false,
+    theme: 'midnight' as string,
+    overlayStyle: 'dark' as string,
     tzMode: 'device' as TzMode,
     tzOffset: null as number | null,
     onlineSubtitles: {
@@ -26,16 +28,21 @@ const { state, storageMock, toastMock, uploadMock, xtreamMock } = vi.hoisted(() 
   };
   return {
     state,
+    themeMock: { previewTheme: vi.fn(), applyTheme: vi.fn(), initTheme: vi.fn() },
     storageMock: {
       getPlaylists: vi.fn(() => state.playlists),
       getEpgUrl: vi.fn(() => state.epg),
       getAutoPlay: vi.fn(() => state.autoPlay),
+      getTheme: vi.fn(() => state.theme),
+      getOverlayStyle: vi.fn(() => state.overlayStyle),
       getTzMode: vi.fn(() => state.tzMode),
       getEpgTzOffset: vi.fn(() => state.tzOffset),
       getOnlineSubtitleConfig: vi.fn(() => state.onlineSubtitles),
       setPlaylists: vi.fn(),
       setEpgUrl: vi.fn(),
       setAutoPlay: vi.fn(),
+      setTheme: vi.fn((id: string) => { state.theme = id; }),
+      setOverlayStyle: vi.fn((s: string) => { state.overlayStyle = s; }),
       setTzMode: vi.fn(),
       setOnlineSubtitleConfig: vi.fn((cfg: any) => { state.onlineSubtitles = cfg; }),
       remove: vi.fn(),
@@ -58,6 +65,7 @@ const { state, storageMock, toastMock, uploadMock, xtreamMock } = vi.hoisted(() 
 });
 
 vi.mock('../services/storage-service', () => ({ StorageService: storageMock }));
+vi.mock('../services/theme-service', () => themeMock);
 vi.mock('../services/idb-cache', () => ({ clearCachedEpg: vi.fn(async () => {}) }));
 vi.mock('./toast', () => ({ showToast: toastMock.showToast }));
 vi.mock('../services/xtream-client', () => ({
@@ -83,6 +91,8 @@ beforeEach(() => {
   state.playlists = [];
   state.epg = '';
   state.autoPlay = false;
+  state.theme = 'midnight';
+  state.overlayStyle = 'dark';
   state.onlineSubtitles = {
     preferredLanguage: '',
     subdl: { apiKey: '' },
@@ -123,6 +133,70 @@ describe('Settings.render', () => {
     state.autoPlay = true;
     settings.render();
     expect(container.querySelector('#auto-play .toggle-option.active')!.getAttribute('data-value')).toBe('on');
+  });
+});
+
+describe('Settings theme picker', () => {
+  beforeEach(() => settings.render());
+
+  it('renders a swatch per registered theme with the saved theme active', () => {
+    expect(container.querySelectorAll('.theme-swatch')).toHaveLength(14);
+    expect(container.querySelector('.theme-swatch.active')!.getAttribute('data-theme-id')).toBe('midnight');
+  });
+
+  it('marks the saved theme active on open', () => {
+    state.theme = 'plum-night';
+    settings.render();
+    const active = container.querySelectorAll('.theme-swatch.active');
+    expect(active).toHaveLength(1);
+    expect(active[0].getAttribute('data-theme-id')).toBe('plum-night');
+  });
+
+  it('selecting a swatch previews it and moves the active marker', () => {
+    click('.theme-swatch[data-theme-id="arctic"]');
+    expect(themeMock.previewTheme).toHaveBeenCalledWith('arctic');
+    const active = container.querySelectorAll('.theme-swatch.active');
+    expect(active).toHaveLength(1);
+    expect(active[0].getAttribute('data-theme-id')).toBe('arctic');
+  });
+
+  it('previews on pointer hover and restores the selected theme when the pointer leaves', () => {
+    // Select Arctic (pending), then hover a different swatch and move the pointer off.
+    click('.theme-swatch[data-theme-id="arctic"]');
+    const amber = container.querySelector<HTMLElement>('.theme-swatch[data-theme-id="vintage-amber"]')!;
+    amber.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    expect(themeMock.previewTheme).toHaveBeenLastCalledWith('vintage-amber');
+    // Leaving to a non-swatch restores the selected (Arctic), not the saved (midnight).
+    amber.dispatchEvent(new MouseEvent('mouseout', { bubbles: true, relatedTarget: document.body }));
+    expect(themeMock.previewTheme).toHaveBeenLastCalledWith('arctic');
+  });
+
+  it('keeps previewing when the pointer moves between swatches', () => {
+    const arctic = container.querySelector<HTMLElement>('.theme-swatch[data-theme-id="arctic"]')!;
+    const amber = container.querySelector<HTMLElement>('.theme-swatch[data-theme-id="vintage-amber"]')!;
+    themeMock.previewTheme.mockClear();
+    arctic.dispatchEvent(new MouseEvent('mouseout', { bubbles: true, relatedTarget: amber }));
+    // Moving swatch→swatch must NOT restore the saved theme.
+    expect(themeMock.previewTheme).not.toHaveBeenCalled();
+  });
+
+  it('persists the selected theme only on Save & Apply', () => {
+    click('.theme-swatch[data-theme-id="vintage-amber"]');
+    expect(storageMock.setTheme).not.toHaveBeenCalled();
+    click('#save-settings');
+    expect(storageMock.setTheme).toHaveBeenCalledWith('vintage-amber');
+  });
+
+  it('reflects the saved overlay style on the toggle', () => {
+    state.overlayStyle = 'frosted';
+    settings.render();
+    expect(container.querySelector('#overlay-style .toggle-option.active')!.getAttribute('data-value')).toBe('frosted');
+  });
+
+  it('persists the overlay style on Save & Apply', () => {
+    click('#overlay-style .toggle-option[data-value="frosted"]');
+    click('#save-settings');
+    expect(storageMock.setOverlayStyle).toHaveBeenCalledWith('frosted');
   });
 });
 

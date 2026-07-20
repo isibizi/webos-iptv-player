@@ -4,7 +4,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=1920, height=1080, initial-scale=1.0">
   <title>webOS IPTV Player</title>
+  <script>
+    // Anti-FOUC (Flash of Unstyled Content): apply the saved theme before first paint.
+    // StorageService JSON-encodes values, so the stored id is a quoted string.
+    try { var t = JSON.parse(localStorage.getItem('iptv_theme')); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+  </script>
   <link rel="stylesheet" href="css/main.css">
+  <link rel="stylesheet" href="css/themes.css">
   <link rel="stylesheet" href="css/navigation.css">
   <link rel="stylesheet" href="css/channel-list.css">
   <link rel="stylesheet" href="css/player.css">
@@ -44,15 +50,7 @@
   <div id="view-series" class="view hidden"></div>
   <div id="view-search" class="view hidden"></div>
 
-  <script>
-    if (/webOS|Web0S/i.test(navigator.userAgent)) {
-      // Load webOS system library for Luna Service access
-      document.write('<script src="webOSjs/webOS.js"><\/script>');
-    } else {
-      // Load hls.js + mpegts.js only on desktop (not needed on webOS)
-      document.write('<script src="js/preview-libs.js"><\/script>');
-    }
-  </script>
+  <script src="webOSjs/webOS.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

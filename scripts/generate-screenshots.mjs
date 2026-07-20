@@ -625,7 +625,7 @@ async function gotoChannels(page, base) {
 // ---------------------------------------------------------------------------
 
 console.log('Building app (esbuild)...');
-execSync('node esbuild.config.mjs', { cwd: ROOT, stdio: 'inherit' });
+execSync('node esbuild.config.mjs --preview', { cwd: ROOT, stdio: 'inherit' });
 await mkdir(SHOTS, { recursive: true });
 
 const { server, port } = await startServer();

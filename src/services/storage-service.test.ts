@@ -36,6 +36,18 @@ describe('StorageService', () => {
     expect(StorageService.getEpgUrl()).toBe('http://epg/guide.xml');
   });
 
+  it('defaults the theme to midnight and round-trips a selection', () => {
+    expect(StorageService.getTheme()).toBe('midnight');
+    StorageService.setTheme('arctic');
+    expect(StorageService.getTheme()).toBe('arctic');
+  });
+
+  it('defaults the overlay style to dark and round-trips a selection', () => {
+    expect(StorageService.getOverlayStyle()).toBe('dark');
+    StorageService.setOverlayStyle('frosted');
+    expect(StorageService.getOverlayStyle()).toBe('frosted');
+  });
+
   it('defaults reminders to an empty array and round-trips them', () => {
     expect(StorageService.getReminders()).toEqual([]);
     const list = [{ channelKey: 'k1', channelName: 'Chan A', title: 'Alpha', startMs: 100, stopMs: 200 }];

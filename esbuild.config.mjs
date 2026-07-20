@@ -1,9 +1,10 @@
 import * as esbuild from 'esbuild';
-import { cpSync, readFileSync, writeFileSync, readdirSync, appendFileSync } from 'fs';
+import { cpSync, readFileSync, writeFileSync, readdirSync, appendFileSync, rmSync } from 'fs';
 import postcss from 'postcss';
 import { scanBundle, formatViolations } from './scripts/compat-gate.mjs';
 
 const isWatch = process.argv.includes('--watch');
+const isPreview = process.argv.includes('--preview');
 // Read version from package.json (single source of truth)
 const version = JSON.parse(readFileSync('package.json', 'utf8')).version;
 
@@ -39,8 +40,16 @@ function generateGapFallback(srcDir) {
   return `\n/* AUTO-GENERATED from source \`gap\` declarations (esbuild.config.mjs) — do not edit. */\n@supports not (inset: 0) {\n${rules.join('\n')}\n}\n`;
 }
 
-// Copy static assets to dist
-cpSync('index.html', 'dist/index.html');
+// Copy static assets to dist. The source HTML is the production/webOS version;
+// preview builds swap only the platform library at build time.
+const indexHtml = readFileSync('index.html', 'utf8');
+const outputIndexHtml = isPreview
+  ? indexHtml.replace('src="webOSjs/webOS.js"', 'src="js/preview-libs.js"')
+  : indexHtml;
+if (isPreview && outputIndexHtml === indexHtml) {
+  throw new Error('Preview build could not find the webOS platform script in index.html.');
+}
+writeFileSync('dist/index.html', outputIndexHtml);
 cpSync('appinfo.json', 'dist/appinfo.json');
 cpSync('css', 'dist/css', { recursive: true });
 // Append the generated flex-`gap` fallback to legacy-webos.css (loaded last).
@@ -97,15 +106,19 @@ if (isWatch) {
   console.log('Compat gate: bundle is Chromium-68 clean.');
 }
 
-// Desktop preview libs — separate bundle loaded only in preview, excluded from
-// the IPK. Built in both modes.
-await esbuild.build({
-  entryPoints: ['src/preview-libs.ts'],
-  bundle: true,
-  outfile: 'dist/js/preview-libs.js',
-  format: 'iife',
-  target: TARGET,
-  minify: true,
-});
+// Desktop-only playback libraries. Production builds neither reference nor
+// generate this bundle, so it cannot leak into the IPK.
+if (isPreview) {
+  await esbuild.build({
+    entryPoints: ['src/preview-libs.ts'],
+    bundle: true,
+    outfile: 'dist/js/preview-libs.js',
+    format: 'iife',
+    target: TARGET,
+    minify: true,
+  });
+} else {
+  rmSync('dist/js/preview-libs.js', { force: true });
+}
 
 console.log('Build complete.');

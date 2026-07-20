@@ -34,7 +34,7 @@
 }
 
 .account-avatar.focused {
-  box-shadow: 0 0 0 3px #5b8cff;
+  box-shadow: 0 0 0 3px var(--accent);
 }
 
 .account-menu {
@@ -42,8 +42,8 @@
   top: calc(100% + 12px);
   right: 0;
   min-width: 320px;
-  background: rgb(18, 22, 32);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 8px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
@@ -56,14 +56,14 @@
   gap: 16px;
   padding: 12px 14px;
   border-radius: 8px;
-  color: #c7d0e3;
+  color: var(--text-secondary);
   cursor: pointer;
   transition: background 120ms ease, color 120ms ease;
 }
 
 .account-menu-item.focused {
-  background: rgba(91, 140, 255, 0.18);
-  color: #fff;
+  background: rgb(var(--accent-rgb) / 0.18);
+  color: var(--text-primary);
 }
 
 .account-menu-avatar {
@@ -90,7 +90,7 @@
   flex: 0 0 auto;
   width: 26px;
   height: 26px;
-  color: #5b8cff;
+  color: var(--accent);
 }
 
 .account-menu-check svg {

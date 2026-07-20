@@ -24,6 +24,11 @@
   margin-bottom: 12px;
 }
 
+.settings-view .btn:not(.btn-large) {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
 .settings-field {
   display: flex;
   flex-direction: column;
@@ -260,7 +265,7 @@
 .toggle-option.active {
   background: var(--accent);
   border-color: var(--accent);
-  color: var(--bg-primary);
+  color: #fff;
   font-weight: 600;
   z-index: 1; /* lift the accent border above the neighboring option */
 }
@@ -301,3 +306,150 @@
 
 .xtream-status.ok { color: var(--accent); }
 .xtream-status.err { color: var(--danger); }
+
+/* Theme picker: focusable swatch tiles. Each tile carries its own data-theme, so
+   its mini app-mock (tab bar, focused channel tile, list rows, status dots) and
+   its own surfaces/text render in that theme's colors. */
+.theme-swatch-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 18px;
+  margin-bottom: 24px;
+}
+
+.theme-swatch {
+  display: block;
+  padding: 0;
+  overflow: hidden;
+  text-align: left;
+  cursor: pointer;
+  background: var(--bg-primary);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  transition: var(--transition);
+}
+
+.theme-swatch-preview {
+  display: block;
+  padding: 14px;
+  color: var(--text-primary);
+}
+
+.tsp-tabs {
+  display: flex;
+  gap: 14px;
+  margin-bottom: 12px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.tsp-tab {
+  color: var(--text-secondary);
+  padding-bottom: 3px;
+  border-bottom: 2px solid transparent;
+  opacity: 0.7;
+}
+
+.tsp-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  opacity: 1;
+}
+
+.tsp-tiles {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.tsp-tile {
+  flex: 1;
+  height: 44px;
+  border-radius: 6px;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  border: 2px solid transparent;
+  display: flex;
+  align-items: flex-end;
+  padding: 5px;
+  font-size: 13px;
+}
+
+.tsp-tile.focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 10px var(--accent-glow);
+  color: var(--text-primary);
+}
+
+.tsp-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.tsp-row {
+  height: 22px;
+  border-radius: 4px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  padding: 0 9px;
+}
+
+.tsp-row.muted {
+  color: var(--text-muted);
+}
+
+.tsp-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.tsp-epg {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.tsp-dots {
+  display: flex;
+  gap: 8px;
+}
+
+.tsp-dot {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+}
+
+.tsp-dot.dn { background: var(--danger); }
+.tsp-dot.su { background: var(--success); }
+.tsp-dot.wa { background: var(--warning); }
+
+.theme-swatch-name {
+  display: block;
+  padding: 10px 14px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 20px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.theme-swatch.active {
+  border-color: var(--accent);
+}
+
+.theme-swatch.active .theme-swatch-name {
+  color: var(--accent);
+}
+
+.theme-swatch.focused {
+  border-color: var(--focus-ring);
+  box-shadow: 0 0 0 3px var(--accent-glow), 0 0 16px var(--accent-glow);
+}

@@ -56,6 +56,43 @@
   z-index: 60;
 }
 
+/* Player overlays use a fixed dark palette for video readability; accents still
+   follow the theme. The light variant is opt-in via "Player overlay". */
+.player-osd,
+.player-sidebar,
+.player-menu,
+.subs-overlay,
+.subs-offset-card {
+  --text-primary: #e8e8e8;
+  --text-secondary: #a0a0b0;
+  --text-muted: #666680;
+  --bg-tertiary: #1a1a2e;
+  --border: #2a2a3e;
+  --overlay-divider: rgba(255, 255, 255, 0.25);
+  --overlay-chip: rgba(255, 255, 255, 0.14);
+  color: var(--text-primary);
+}
+
+/* Frosted — opaque light glass. Cohesive with light themes; over dark video it
+   reads as a bright card. */
+[data-overlay="frosted"] .player-osd,
+[data-overlay="frosted"] .player-sidebar,
+[data-overlay="frosted"] .player-menu,
+[data-overlay="frosted"] .subs-overlay,
+[data-overlay="frosted"] .subs-offset-card {
+  background: rgba(244, 246, 249, 0.85);
+  border-color: rgba(0, 0, 0, 0.1);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+  --text-primary: #1f2430;
+  --text-secondary: #4a5160;
+  --text-muted: #79808f;
+  --bg-tertiary: #dfe4ea;
+  --border: #cfd5dd;
+  --overlay-divider: rgba(0, 0, 0, 0.18);
+  --overlay-chip: rgba(0, 0, 0, 0.08);
+  color: var(--text-primary);
+}
+
 .osd-channel {
   display: flex;
   align-items: center;
@@ -87,7 +124,7 @@
   align-items: center;
   gap: 8px;
   padding-left: 16px;
-  border-left: 2px solid rgba(255, 255, 255, 0.25); /* divider from the channel title */
+  border-left: 2px solid var(--overlay-divider);
 }
 
 .si-badge {
@@ -110,13 +147,13 @@
   font-weight: 600;
   padding: 2px 10px;
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.14);
-  color: #e8eaf0;
+  background: var(--overlay-chip);
+  color: var(--text-primary);
 }
 
 .si-text {
   font-size: 18px;
-  color: #c8cdd8;
+  color: var(--text-secondary);
 }
 
 .osd-programme {
@@ -456,7 +493,7 @@
 }
 
 .player-sidebar .sidebar-ch-item.playing {
-  background: rgba(0, 212, 255, 0.1);
+  background: rgb(var(--accent-rgb) / 0.1);
   border-color: var(--accent-dim);
 }
 
@@ -466,7 +503,7 @@
 }
 
 .player-sidebar .sidebar-ch-item.playing.focused {
-  background: rgba(0, 212, 255, 0.2);
+  background: rgb(var(--accent-rgb) / 0.2);
   border-color: var(--accent);
 }
 
@@ -841,7 +878,7 @@
 
 .subs-offset-reset.focused,
 .subs-offset-reset:hover {
-  background: var(--accent-glow);
+  background: var(--accent-dim);
   border-color: var(--accent);
+  color: #fff;
 }
-

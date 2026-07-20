@@ -7,7 +7,7 @@
   flex-direction: column;
   height: 1080px;
   background:
-    radial-gradient(1200px 600px at 78% -10%, rgba(0, 212, 255, 0.06), transparent 60%),
+    radial-gradient(1200px 600px at 78% -10%, rgb(var(--accent-rgb) / 0.06), transparent 60%),
     var(--bg-primary);
 }
 
@@ -87,16 +87,16 @@
 }
 
 .epg-channel-item:hover {
-  background: rgba(0, 212, 255, 0.06);
+  background: rgb(var(--accent-rgb) / 0.06);
 }
 
 .epg-channel-item.selected {
-  background: rgba(0, 212, 255, 0.14);
+  background: rgb(var(--accent-rgb) / 0.14);
   box-shadow: inset 4px 0 0 var(--accent);
 }
 
 .epg-channel-item.focused {
-  background: rgba(0, 212, 255, 0.28);
+  background: rgb(var(--accent-rgb) / 0.28);
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
@@ -185,12 +185,12 @@
 
 .epg-date-item.selected {
   background: var(--accent);
-  color: var(--bg-primary);
+  color: #fff;
   border-top-color: transparent;
 }
 
 .epg-date-item.selected .epg-date-weekday {
-  color: var(--bg-primary);
+  color: #fff;
   opacity: 0.85;
 }
 
@@ -231,7 +231,7 @@
 .epg-programme-item.state-future { --row-color: var(--future); }
 
 .epg-programme-item:hover {
-  background: rgba(0, 212, 255, 0.06);
+  background: rgb(var(--accent-rgb) / 0.06);
 }
 
 .epg-programme-item.state-past .epg-prog-time { color: var(--past); }
@@ -248,7 +248,7 @@
 .epg-programme-item.state-live .epg-prog-time { color: var(--live); }
 
 .epg-programme-item.focused {
-  background: rgba(0, 212, 255, 0.2);
+  background: rgb(var(--accent-rgb) / 0.2);
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
@@ -367,7 +367,7 @@
   vertical-align: middle;
 }
 .epg-catchup-badge.resume {
-  background: rgba(0, 212, 255, 0.18);
+  background: rgb(var(--accent-rgb) / 0.18);
   color: var(--accent);
 }
 .epg-catchup-badge.watched {
@@ -387,7 +387,7 @@
   border-radius: 2px;
 }
 .epg-programme-item.focused .epg-catchup-badge.resume {
-  background: rgba(0, 212, 255, 0.28);
+  background: rgb(var(--accent-rgb) / 0.28);
 }
 .epg-programme-item.focused .epg-catchup-badge.watched {
   background: rgba(95, 201, 154, 0.25);

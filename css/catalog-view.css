@@ -30,7 +30,7 @@
   position: absolute;
   top: 0; left: 0; right: 0; bottom: 0;
   background:
-    linear-gradient(90deg, rgba(10, 10, 15, 0.95) 2%, rgba(10, 10, 15, 0.5) 40%, transparent 72%),
+    linear-gradient(90deg, rgb(var(--catalog-hero-scrim-rgb) / 0.95) 2%, rgb(var(--catalog-hero-scrim-rgb) / 0.5) 40%, transparent 72%),
     linear-gradient(0deg, var(--bg-primary) 6%, transparent 52%);
 }
 .catalog-hero-body {
@@ -58,7 +58,7 @@
 .catalog-rails-body {
   min-height: 42%;
   padding: 8px 80px 60px;
-  background: linear-gradient(180deg, transparent 0, rgba(10, 10, 15, 0.85) 90px, var(--bg-primary) 240px);
+  background: linear-gradient(180deg, transparent 0, rgb(var(--catalog-hero-scrim-rgb) / 0.85) 90px, var(--bg-primary) 240px);
 }
 
 .catalog-rail { margin-bottom: 28px; }
@@ -72,7 +72,7 @@
 .catalog-poster-wrap {
   width: 220px; height: 330px;
   border-radius: 12px; overflow: hidden;
-  background: #14161c;
+  background: var(--catalog-surface);
 }
 .catalog-poster { width: 100%; height: 100%; object-fit: cover; display: block; }
 .catalog-poster-empty { display: flex; align-items: center; justify-content: center; font-size: 72px; color: var(--text-secondary); }
@@ -86,28 +86,28 @@
   border-color: transparent !important;
 }
 .catalog-tile.focused .catalog-poster-wrap {
-  outline: 3px solid #5b8cff;
+  outline: 3px solid var(--catalog-focus);
   outline-offset: 2px;
-  box-shadow: 0 0 0 6px rgba(91, 140, 255, 0.25), 0 10px 24px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 0 0 6px rgb(var(--catalog-focus-rgb) / 0.25), 0 10px 24px rgba(0, 0, 0, 0.6);
 }
 
 .catalog-cat {
   width: 300px; height: 120px; flex: 0 0 auto;
   display: flex; align-items: center; justify-content: center;
-  border-radius: 12px; background: #14161c; border: 3px solid transparent;
+  border-radius: 12px; background: var(--catalog-surface); border: 3px solid transparent;
   font-size: 26px; color: var(--text-primary); text-align: center; padding: 0 16px;
   box-sizing: border-box;
 }
 .catalog-cat.focused {
-  outline: 3px solid #5b8cff;
+  outline: 3px solid var(--catalog-focus);
   outline-offset: 2px;
-  box-shadow: 0 0 0 6px rgba(91, 140, 255, 0.25);
+  box-shadow: 0 0 0 6px rgb(var(--catalog-focus-rgb) / 0.25);
 }
 
 .movies-detail { display: flex; gap: 56px; }
 .detail-poster-wrap {
   width: 360px; height: 540px; flex: 0 0 auto;
-  border-radius: 16px; overflow: hidden; background: #14161c;
+  border-radius: 16px; overflow: hidden; background: var(--catalog-surface);
 }
 .detail-body { flex: 1 1 auto; max-width: 1000px; }
 .detail-title { margin: 0 0 12px; font-size: 56px; font-weight: 700; color: var(--text-primary); }
@@ -119,9 +119,9 @@
 .detail-btn {
   display: inline-flex; align-items: center; gap: 12px;
   padding: 16px 36px; border-radius: 10px; border: 3px solid transparent;
-  background: #23262f; color: var(--text-primary); font-size: 28px; font-weight: 600; cursor: pointer;
+  background: var(--catalog-control); color: var(--text-primary); font-size: 28px; font-weight: 600; cursor: pointer;
 }
-.detail-btn-primary { background: var(--accent, #3ea6ff); color: #06121f; }
+.detail-btn-primary { background: var(--accent, #3ea6ff); color: #fff; }
 .detail-btn.focused { border-color: var(--text-primary); }
 .detail-btn-icon { display: inline-flex; width: 28px; height: 28px; }
 .detail-btn-icon svg { width: 100%; height: 100%; }
@@ -134,15 +134,15 @@
 .series-seasons { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 24px; }
 .series-season-btn {
   padding: 12px 28px; border-radius: 10px; border: 3px solid transparent;
-  background: #23262f; color: var(--text-primary); font-size: 26px; font-weight: 600; cursor: pointer;
+  background: var(--catalog-control); color: var(--text-primary); font-size: 26px; font-weight: 600; cursor: pointer;
 }
-.series-season-btn.active { background: var(--accent, #3ea6ff); color: #06121f; }
+.series-season-btn.active { background: var(--accent, #3ea6ff); color: #fff; }
 .series-season-btn.focused { border-color: var(--text-primary); }
 
 .series-episodes { display: flex; flex-direction: column; gap: 16px; }
 .episode-row {
   display: flex; gap: 20px; align-items: flex-start;
-  padding: 20px 24px; border-radius: 12px; background: #14161c;
+  padding: 20px 24px; border-radius: 12px; background: var(--catalog-surface);
   border: 3px solid transparent; cursor: pointer;
 }
 .episode-row.focused { border-color: var(--accent, #3ea6ff); }
@@ -153,7 +153,7 @@
 .episode-num { color: var(--text-secondary); font-weight: 700; }
 .episode-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .episode-resume {
-  font-size: 20px; font-weight: 600; color: #06121f;
+  font-size: 20px; font-weight: 600; color: #fff;
   background: var(--accent, #3ea6ff); border-radius: 6px; padding: 2px 12px;
 }
 .episode-meta { font-size: 22px; color: var(--text-secondary); margin-top: 6px; }
