@@ -64,8 +64,8 @@ test.describe('Settings playlists', () => {
     await page.keyboard.press('Enter');
 
     await expect(page.locator('#view-channels')).toBeVisible();
-    await expect(page.getByText('Channel One')).toBeVisible();
-    await expect(page.getByText('Channel Two')).toBeVisible();
+    await expect(page.locator('.channel-main .channel-name').filter({ hasText: 'Channel One' })).toBeVisible();
+    await expect(page.locator('.channel-main .channel-name').filter({ hasText: 'Channel Two' })).toBeVisible();
   });
 
   test('removing the last playlist clears in-memory channels so back returns an empty list', async ({ page }) => {
