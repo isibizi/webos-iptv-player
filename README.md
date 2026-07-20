@@ -105,13 +105,13 @@ Install the community
 then open **Settings → Add repository** and enter:
 
 ```text
-https://raw.githubusercontent.com/lennylxx/webos-iptv-player/main/homebrew-repository.json
+https://raw.githubusercontent.com/isibizi/webos-iptv-player/main/homebrew-repository.json
 ```
 
 To prefill the repository URL from a computer configured with `ares-cli`, run:
 
 ```bash
-ares-launch --device tv org.webosbrew.hbchannel -p '{"launchMode":"addRepository","url":"https://raw.githubusercontent.com/lennylxx/webos-iptv-player/main/homebrew-repository.json"}'
+ares-launch --device tv org.webosbrew.hbchannel -p '{"launchMode":"addRepository","url":"https://raw.githubusercontent.com/isibizi/webos-iptv-player/main/homebrew-repository.json"}'
 ```
 
 Confirm **Add repository** on the TV. Homebrew Channel can then install the app

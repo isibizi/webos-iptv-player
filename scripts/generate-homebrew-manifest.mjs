@@ -23,14 +23,16 @@ if (basename(ipkPath) !== expectedIpk) {
 
 const ipkHash = createHash('sha256').update(readFileSync(ipkPath)).digest('hex');
 
+const repo = process.env.GITHUB_REPOSITORY || 'isibizi/webos-iptv-player';
+
 const manifest = {
   id: appInfo.id,
   version: packageInfo.version,
   type: appInfo.type,
   title: appInfo.title,
   appDescription: appInfo.appDescription,
-  iconUri: 'https://raw.githubusercontent.com/lennylxx/webos-iptv-player/main/assets/icon130.png',
-  sourceUrl: 'https://github.com/lennylxx/webos-iptv-player',
+  iconUri: `https://raw.githubusercontent.com/${repo}/main/assets/icon130.png`,
+  sourceUrl: `https://github.com/${repo}`,
   rootRequired: false,
   ipkUrl: basename(ipkPath),
   ipkHash: {
