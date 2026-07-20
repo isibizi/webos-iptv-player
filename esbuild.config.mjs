@@ -1,5 +1,5 @@
 import * as esbuild from 'esbuild';
-import { cpSync, readFileSync, writeFileSync, readdirSync, appendFileSync, rmSync } from 'fs';
+import { cpSync, readFileSync, writeFileSync, readdirSync, appendFileSync, rmSync, mkdirSync } from 'fs';
 import postcss from 'postcss';
 import { scanBundle, formatViolations } from './scripts/compat-gate.mjs';
 
@@ -42,6 +42,7 @@ function generateGapFallback(srcDir) {
 
 // Copy static assets to dist. The source HTML is the production/webOS version;
 // preview builds swap only the platform library at build time.
+mkdirSync('dist', { recursive: true });
 const indexHtml = readFileSync('index.html', 'utf8');
 const outputIndexHtml = isPreview
   ? indexHtml.replace('src="webOSjs/webOS.js"', 'src="js/preview-libs.js"')
