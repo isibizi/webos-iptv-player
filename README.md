@@ -58,6 +58,7 @@ An IPTV player for LG webOS TVs. Supports M3U playlists, Xtream Codes accounts, 
 - **Channel sidebar** — switch channels over the video with current-program info
 - **Favorites, auto-play, and genre group icons** for faster browsing
 - **Full remote & Magic Remote** — spatial D-pad navigation and pointer control across every view
+- **Color themes** — choose from light and dark app-wide themes with live previews, plus Dark or Frosted player overlays; selections persist across launches
 
 **Development**
 
@@ -161,6 +162,7 @@ Open with the **Blue** key or the **Settings** tab in the top bar. Sections:
 - **Playlists** — add, edit, or remove M3U URLs. Re-applied on Save.
 - **Upload Playlist** — QR code + LAN URL on the left, list of currently uploaded playlists on the right. Scan the QR from a phone/laptop on the same network to upload `.m3u` files; they appear in this list within milliseconds via Luna push.
 - **EPG (Electronic Program Guide)** — set the XMLTV URL (also auto-detected from `x-tvg-url` in M3U).
+- **Appearance** — preview and select an app-wide color theme, and choose Dark or Frosted glass for player overlays.
 - **Display** — *Program time zone*: show EPG times in your **Device** time zone (default), or the **Feed**'s own time zone (auto-detected from the EPG feed when it loads).
 - **Playback** — toggle auto-play (resume last watched channel on launch).
 - **Data Management** — *Refresh All Data* re-fetches playlists and EPG; *Clear Cache* drops the cached playlist + EPG.
